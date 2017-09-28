@@ -72,12 +72,12 @@ If you want to manipulate definitions, other tools exist –– though they typi
 
 Two forms of quasiquotes co-exist in Squid:
 
- * **Simple Quasiquotes [(tutorial)](doc/tuto/Quasiquotes.md)** provide the basic functionalities expected from statically-typed quasiquotes,
+ * **Simple Quasiquotes [(tutorial)](/doc/tuto/Quasiquotes.md)** provide the basic functionalities expected from statically-typed quasiquotes,
    and can be used for a wide range of tasks, including [multi-stage programming (MSP)](https://en.wikipedia.org/wiki/Multi-stage_programming).
    They support both runtime interpretation, runtime compilation and static code generation.
    For more information, see [[1]](#scala17).
 
- * **Contextual Quasiquotes [(tutorial)](doc/tuto/ContextualQuasiquotes.md)** 
+ * **Contextual Quasiquotes [(tutorial)](/doc/tuto/ContextualQuasiquotes.md)** 
    push the type-safety guarantees already offered by simple quasiquotes even further,
    making sure that all generated programs are well-scoped in addition to being well-typed.
    While they are slightly less ergonomic than the previous flavor, 
@@ -92,20 +92,31 @@ we provide a [cheat sheet](doc/reference/Quasiquotes.md) that summarizes the fea
 
 
 
+<a name="transformers"/>
+
 ### Program Transformation Support
 
 TODO
 
+
+
+<a name="irs"/>
 
 ### Intermediate Representations
 
 TODO
 
 
-### Library-Defined Optimizations
+
+<a name="qsr"/>
+
+### Library-Defined Optimizations with Quoted Staged Rewriting (QSR)
 
 TODO
 
+
+
+<a name="smacros"/>
 
 ### Squid Macros
 
