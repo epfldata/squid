@@ -42,9 +42,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
 
   /** holes: Seq(either term or type); splicedHoles: which holes are spliced term holes (eg: List($xs*))
     * holes in ction mode are interpreted as free variables (and are never spliced)
-    * unquotedTypes contains the types unquoted in (in ction mode with $ and in xtion mode with $$)
-    * TODO: actually use `unquotedTypes`!
-    * TODO maybe this should go in QuasiMacros... */
+    * unquotedTypes contains the types that are inserted (in ction mode with $ and in xtion mode with $$) */
   def applyQQ(Base: Tree, tree: c.Tree, holes: Seq[Either[TermName,TypeName]], 
             splicedHoles: collection.Set[TermName], hopvHoles: collection.Map[TermName,List[List[TermName]]],
             typeBounds: Map[TypeName,EitherOrBoth[Tree,Tree]],
@@ -497,7 +495,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               hopvHoles get TermName(name) match {
                 case Some(idents) =>
                   
-                  // TODO make sure HOPV holes withb the same name are not repeated? or at least have the same param types
+                  // TODO make sure HOPV holes with the same name are not repeated? or at least have the same param types
                   // TODO handle HOPV holes in spliced position?
                   
                   val scp = ctx map { case k -> v => k.name -> (k -> v) }
