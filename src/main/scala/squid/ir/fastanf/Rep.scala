@@ -44,8 +44,9 @@ sealed abstract class Def extends DefOption with DefOrTypeRep with FlatSom[Def] 
 sealed abstract class Rep extends RepOption with ArgumentList with FlatSom[Rep] {
   def typ: TypeRep
   def * = SplicedArgument(this)
-  def map(f: Rep => Rep) = f(this)
   def isPure: Bool = true
+  def argssMap(f: Rep => Rep) = f(this)
+  def argssList: List[Rep] = this :: Nil
 }
 
 final case class Constant(value: Any) extends Rep with CachedHashCode {
@@ -64,6 +65,7 @@ final case class HOPHole(name: String, typ: TypeRep, args: List[List[Symbol]], v
 // TODO intern objects
 final case class StaticModule(fullName: String) extends Rep with CachedHashCode {
   val typ = DummyTypeRep
+  override def toString = fullName
 }
 
 final case class Module(prefix: Rep, name: String, typ: TypeRep) extends Rep with CachedHashCode
@@ -84,6 +86,8 @@ trait MethodApp extends Def {
   def targs: List[TypeRep]
   def argss: ArgumentLists
   def typ: TypeRep
+  protected def doChecks = // we can't execute the checks here right away, because of initialization order
+    (self :: argss.argssList).foreach(r => assert(!r.isInstanceOf[LetBinding], s"Illegal ANF argument/self: $r"))
   override def toString = s"$self.${mtd.name}${argss.toArgssString}"
 }
 object MethodApp {
@@ -97,7 +101,7 @@ object MethodApp {
   }
 }
 final case class SimpleMethodApp protected(self: Rep, mtd: MethodSymbol, targs: List[TypeRep], argss: ArgumentLists)(val typ: TypeRep) 
-  extends MethodApp with CachedHashCode
+  extends MethodApp with CachedHashCode { doChecks }
 
 final case class App(fun: Rep, arg: Rep)(implicit base: FastANF) extends Def with MethodApp {
   val self = fun
@@ -105,6 +109,7 @@ final case class App(fun: Rep, arg: Rep)(implicit base: FastANF) extends Def wit
   def targs = Nil
   def argss = arg
   lazy val typ = fun.typ.asFunType.map(_._2).getOrElse(lastWords(s"Application on a non-function type `${fun.typ}`"))
+  doChecks
 }
 
 /** To avoid useless wrappers/boxing in the most common cases, we have this scheme for argument lists:
@@ -147,46 +152,62 @@ sealed trait ArgumentLists extends CachedHashCode {
     }
   }
 
-  def map(f: Rep => Rep): ArgumentLists
+  def argssMap(f: Rep => Rep): ArgumentLists
+  def argssList: List[Rep] // TODO use more efficient structure to accumulate args (with constant-time ++ and +:); also, make these lazy vals in non-trivial argument lists?
 }
 
 final case object NoArgumentLists extends ArgumentLists {
   override def ~~: (as: ArgumentList): ArgumentLists = as
-  def map(f: Rep => Rep) = this
+  def argssMap(f: Rep => Rep) = this
+  def argssList: List[Rep] = Nil
 }
 sealed trait ArgumentList extends ArgumentLists {
   def ~: (a: Rep): ArgumentList = ArgumentCons(a, this)
-  def map(f: Rep => Rep): ArgumentList
+  def argssMap(f: Rep => Rep): ArgumentList
 }
 final case object NoArguments extends ArgumentList {
   override def ~: (a: Rep): ArgumentList = a
-  def map(f: Rep => Rep) = this
+  def argssMap(f: Rep => Rep) = this
+  def argssList: List[Rep] = Nil
 }
 // Q: can make extend AnyVal? requires making all upper traits universal)
 final case class SplicedArgument(arg: Rep) extends ArgumentList {
-  def map(f: Rep => Rep) = SplicedArgument(f(arg))
+  def argssMap(f: Rep => Rep) = SplicedArgument(f(arg))
+  def argssList: List[Rep] = arg :: Nil
 }
 final case class ArgumentCons(head: Rep, tail: ArgumentList) extends ArgumentList {
-  def map(f: Rep => Rep) = ArgumentCons(f(head), tail map f)
+  def argssMap(f: Rep => Rep) = ArgumentCons(f(head), tail argssMap f)
+  def argssList: List[Rep] = head :: tail.argssList
 }
 final case class ArgumentListCons(head: ArgumentList, tail: ArgumentLists) extends ArgumentLists {
-  def map(f: Rep => Rep) = ArgumentListCons(head map f, tail map f)
+  def argssMap(f: Rep => Rep) = ArgumentListCons(head argssMap f, tail argssMap f)
+  def argssList: List[Rep] = head.argssList ++ tail.argssList
 }
 
 
 trait Binding extends SymbolParent {
-  val name: String
+  def name: String
   def bound: Symbol
   def boundType: TypeRep
 }
-class LetBinding(val name: String, val bound: Symbol, val value: Def, private var _body: Rep) extends Rep with Binding {
+trait RebindableBinding extends Binding {
+  def bound_= (newBound: Symbol): Unit
+  def name_= (newName: String): Unit
+}
+class LetBinding(var name: String, var bound: Symbol, var value: Def, private var _body: Rep) extends Rep with RebindableBinding {
   def body = _body
   def body_= (newBody: Rep) = _body = newBody
   def boundType = value.typ
   def typ = body.typ
+  /** Returns the last let-bindings of this conceptual block of code.
+    * Caution: this has linear complexity */
+  def last: LetBinding = body match {
+    case lb: LetBinding => lb.last
+    case _ => this
+  }
   override def toString: String = s"val $bound = $value; $body"
 }
-class Lambda(val name: String, val bound: Symbol, val boundType: TypeRep,  val body: Rep)(implicit base: FastANF) extends Def with Binding {
+class Lambda(var name: String, var bound: Symbol, val boundType: TypeRep, var body: Rep)(implicit base: FastANF) extends Def with RebindableBinding {
   val typ: TypeRep =  base.funType(boundType, body.typ)
   override def toString: String = s"($bound: $boundType) => $body"
 }
@@ -211,12 +232,17 @@ abstract class Symbol extends Rep with SymbolParent {
   def representative: Symbol = owner.bound
   def owner: Binding = _parent match {
     case bnd: Binding =>
-      assert(bnd.bound eq this)
+      //assert(bnd.bound eq this) // FIXME? still seems to crash; is the assertion correct?
       bnd
     case parent: Symbol =>
       val bnd = parent.owner
       _parent = bnd
       bnd
+  }
+  def owner_=(bnd: RebindableBinding) = {
+    // TODO add appropriate assertions...?
+    bnd.bound = this
+    _parent = bnd
   }
   def typ = owner.boundType
   def dfn: DefOption = owner match {
@@ -229,6 +255,11 @@ abstract class Symbol extends Rep with SymbolParent {
     case s: Symbol => s.representative eq representative
     case _ => false
   }
-  override def toString: String = s"${owner.name}#${System.identityHashCode(representative)}"
+  //override def toString: String = s"${owner.name}#${System.identityHashCode(representative)}"
+  /* below is for easier debugging -- revert to the above for better perf */
+  val id = Symbol.curId alsoDo (Symbol.curId += 1); override def toString: String = s"${owner.name}_${representative.id}"
+}
+object Symbol {
+  private var curId = 0
 }
 

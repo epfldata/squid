@@ -21,6 +21,7 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
   
   def reinterpret(r: Rep, newBase: Base)(extrudedHandle: (BoundVal => newBase.Rep) = DefaultExtrudedHandler): newBase.Rep
   
+  // TODO rename to `defaultValue`
   def nullValue[T: IRType]: IR[T,{}]
   
   

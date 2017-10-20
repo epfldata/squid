@@ -38,7 +38,9 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
   
   @inline final def currentScope = scopes.head
 
-  def toArgumentLists(argss: List[ArgList]): ArgumentLists = {
+  def toArgumentLists(argss0: List[ArgList]): ArgumentLists = {
+    val argss = argss0.map(_.map(this)(inlineBlock)) // TODO optimize: avoid reconstruction of the ArgList's
+
     def toArgumentList(args: Seq[Rep]): ArgumentList =
       args.foldRight(NoArguments: ArgumentList)(_ ~: _)
     def toArgumentListWithSpliced(args: Seq[Rep])(splicedArg: Rep) =
@@ -83,7 +85,7 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
   // * --- * --- * --- *  Implementations of `Base` methods  * --- * --- * --- *
   
   def bindVal(name: String, typ: TypeRep, annots: List[Annot]): BoundVal = new UnboundSymbol(name,typ)
-  def readVal(bv: BoundVal): Rep = bv
+  def readVal(bv: BoundVal): Rep = curSub getOrElse (bv, bv)
   def const(value: Any): Rep = Constant(value)
   
   // Note: method `lambda(params: List[BoundVal], body: => Rep): Rep` is implemented by CurryEncoding
@@ -98,12 +100,49 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
   def module(prefix: Rep, name: String, typ: TypeRep): Rep = Module(prefix, name, typ)
   def newObject(typ: TypeRep): Rep = NewObject(typ)
   def methodApp(self: Rep, mtd: MtdSymbol, targs: List[TypeRep], argss: List[ArgList], tp: TypeRep): Rep = {
-    MethodApp(self, mtd, targs, argss |> toArgumentLists, tp) |> letbind
+    MethodApp(self |> inlineBlock, mtd, targs, argss |> toArgumentLists, tp) |> letbind
   }
   def byName(mkArg: => Rep): Rep = wrapNest(mkArg)
   
   def letbind(d: Def): Rep = currentScope += d
-  
+  def inlineBlock(r: Rep): Rep = r |>=? {
+    case lb: LetBinding =>
+      currentScope += lb
+      inlineBlock(lb.body)
+  }
+
+  override def letin(bound: BoundVal, value: Rep, body: => Rep, bodyType: TypeRep): Rep = {
+    value match {
+      case s: Symbol =>
+        s.owner |>? {
+          case lb: RebindableBinding =>
+            lb.name = bound.name
+        }
+        bound rebind s
+        body
+      case lb: LetBinding =>
+        // conceptually, does like `inlineBlock`, but additionally rewrites `bound` and renames `lb`'s last binding
+        val last = lb.last
+        bound rebind last.bound
+        last.body = body
+        last.name = bound.name // TODO make sure we're only renaming an automatically-named binding?
+        lb
+      case (_:HOPHole) | (_:Hole) | (_:SplicedHole) =>
+        ??? // TODO holes should probably be Def's; note that it's not safe to do a substitution for holes
+      case _ =>
+        withSubs(bound -> value)(body)
+        // ^ executing `body` will reify some statements into the reification scope, and likely return a symbol
+        // during this reification, we need all references to `bound` to be replaced by the actual `value`
+    }
+  }
+
+  var curSub: Map[Symbol,Rep] = Map.empty
+  def withSubs[R](subs: Symbol -> Rep)(k: => R): R = {
+    val oldSub = curSub
+    curSub += subs
+    try k finally curSub = oldSub
+  }
+
   override def ascribe(self: Rep, typ: TypeRep): Rep = if (self.typ =:= typ) self else self match {
     case Ascribe(trueSelf, _) => Ascribe(trueSelf, typ) // Hopefully Scala's subtyping is transitive!
     case _ => Ascribe(self, typ)
@@ -150,7 +189,7 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
 
   // * --- * --- * --- *  Implementations of `IntermediateBase` methods  * --- * --- * --- *
 
-  def nullValue[T: IRType]: IR[T,{}] = IR[T, {}](const(DummyTypeRep))
+  def nullValue[T: IRType]: IR[T,{}] = IR[T, {}](const(null)) // FIXME: should implement proper semantics; e.g. nullValue[Int] == ir"0", not ir"null"
   def reinterpret(r: Rep, newBase: Base)(extrudedHandle: BoundVal => newBase.Rep): newBase.Rep = {
     def go: Rep => newBase.Rep = r => reinterpret(r, newBase)(extrudedHandle)
     def reinterpretType: TypeRep => newBase.TypeRep = t => newBase.staticTypeApp(newBase.loadTypSymbol("scala.Any"), Nil)
@@ -208,25 +247,31 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
     def _transformRepAndDef(r: Rep) = transformRepAndDef(r)(pre, post)(preDef, postDef)
 
     def transformDef(d: Def): Def = (d map preDef match {
-      case App(f, a) => App(_transformRepAndDef(f), _transformRepAndDef(a))
-      case ma: MethodApp => MethodApp(_transformRepAndDef(ma.self), ma.mtd, ma.targs, ma.argss map (_transformRepAndDef(_)), ma.typ)
-      case l: Lambda => new Lambda(l.name, l.bound, l.boundType, _transformRepAndDef(l.body))
+      case App(f, a) => App(_transformRepAndDef(f), _transformRepAndDef(a)) // Note: App is a MethodApp, but we can transform it more efficiently this way
+      case ma: MethodApp => MethodApp(_transformRepAndDef(ma.self), ma.mtd, ma.targs, ma.argss argssMap (_transformRepAndDef(_)), ma.typ)
+      case l: Lambda => // Note: destructive modification of the lambda binding!
+        //new Lambda(l.name, l.bound, l.boundType, _transformRepAndDef(l.body))
+        l.body = l.body |> _transformRepAndDef
+        l
     }) map postDef
 
-    (r map pre match {
-      case lb: LetBinding =>
-        new LetBinding(
-          lb.name,
-          lb.bound,
-          transformDef(lb.value),
-          _transformRepAndDef(lb.body)
-        )
+    post(pre(r) match {
+      case lb: LetBinding => // Note: destructive modification of the let-binding!
+        //new LetBinding(
+        //  lb.name,
+        //  lb.bound,
+        //  transformDef(lb.value),
+        //  _transformRepAndDef(lb.body)
+        //)
+        lb.value = lb.value |> transformDef
+        lb.body = lb.body |> _transformRepAndDef
+        lb
       case Ascribe(s, t) =>
         Ascribe(_transformRepAndDef(s), t)
       case Module(p, n, t) =>
         Module(_transformRepAndDef(p), n, t)
       case r @ ((_:Constant) | (_:Hole) | (_:Symbol) | (_:SplicedHole) | (_:HOPHole) | (_:NewObject) | (_:StaticModule)) => r
-    }) map post
+    })
   }
   
   def transformRep(r: Rep)(pre: Rep => Rep, post: Rep => Rep = identity): Rep =
@@ -369,7 +414,7 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
 
       def letIn(body: Rep)(xBV: BoundVal, newX: Rep): Rep = {
         println(s"----- In $body replacing $xBV with $newX")
-        def findAndReplace(argss: ArgumentLists, r: BoundVal, newR: BoundVal): ArgumentLists = argss.map {
+        def findAndReplace(argss: ArgumentLists, r: BoundVal, newR: BoundVal): ArgumentLists = argss.argssMap {
           case a if a == r => println(s"### $a -> $newR"); newR
           case a => println(s"+++ $a"); a
         }
