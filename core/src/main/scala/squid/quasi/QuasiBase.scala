@@ -46,6 +46,14 @@ self: Base =>
     * this should check that the extracted term does not contain any reference to a bound value contained in the `no` 
     * parameter, and it should extract a function term with the arity of the `yes` parameter. */
   def hopHole(name: String, typ: TypeRep, yes: List[List[BoundVal]], no: List[BoundVal]): Rep
+  def hopHole2(name: String, typ: TypeRep, args: List[List[Rep]], visible: List[BoundVal]): Rep = {
+    // TODO remove `hopHole` and implement this correctly everywhere
+    //val vars = args map (_ map (_.asInstanceOf[BoundVal]))\
+    // ^ Note: this will succeed even if there are some non-BoundVal, because BoundVal is eliminated by erasure
+    //   it's actually wrong (in AST, readVal(_:BoundVal) adds a Rep wrapper!
+    //hopHole(name, typ, vars, visible.toSet -- vars.flatten toList)
+    throw new UnsupportedOperationException("Higher-order patterns")
+  }
   
   /** Pattern hole in type position */
   def typeHole(name: String): TypeRep
@@ -320,10 +328,13 @@ self: Base =>
   def $Code[T](q: Code[T]): T = ??? // TODO B/E  -- also, rename to 'unquote'?
   def $Code[A,B](q: Code[A] => Code[B]): A => B = ???
   
-  /* To support hole syntax `xs?` (old syntax `$$xs`) (in ction) or `$xs` (in xtion)  */
+  /* To support hole syntax `?xs` (old syntax `$$xs`) (in ction) or `$xs` (in xtion)  */
   def $$[T](name: Symbol): T = ???
   /* To support hole syntax `$$xs: _*` (in ction) or `$xs: _*` (in xtion)  */
   def $$_*[T](name: Symbol): Seq[T] = ???
+  
+  /** Higher-order pattern */
+  def $$_hop[T](name: Symbol)(args: Any*): T = ???
   
   
   implicit def liftFun[A:IRType,B,C](qf: IR[A,C] => IR[B,C]): IR[A => B,C] = {

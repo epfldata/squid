@@ -43,10 +43,10 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
   /** holes: Seq(either term or type); splicedHoles: which holes are spliced term holes (eg: List($xs*))
     * holes in ction mode are interpreted as free variables (and are never spliced)
     * unquotedTypes contains the types that are inserted (in ction mode with $ and in xtion mode with $$) */
-  def applyQQ(Base: Tree, tree: c.Tree, holes: Seq[Either[TermName,TypeName]], 
-            splicedHoles: collection.Set[TermName], hopvHoles: collection.Map[TermName,List[List[TermName]]],
-            typeBounds: Map[TypeName,EitherOrBoth[Tree,Tree]],
-            unquotedTypes: Seq[(TypeName, Type, Tree)], unapply: Option[c.Tree], config: QuasiConfig): c.Tree = {
+  def applyQQ(Base: Tree, tree: c.Tree, holes: Seq[Either[TermName,TypeName]],
+              splicedHoles: collection.Set[TermName], hopHoles: collection.Set[TermName],
+              typeBounds: Map[TypeName,EitherOrBoth[Tree,Tree]],
+              unquotedTypes: Seq[(TypeName, Type, Tree)], unapply: Option[c.Tree], config: QuasiConfig): c.Tree = {
     
     //debug("HOLES:",holes)
     
@@ -224,7 +224,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
     
     
     apply(Base, finalTree, termScope, config, unapply, 
-      typeSymbols, holeSymbols, holes, splicedHoles, hopvHoles, termHoles, typeHoles, typedTree, typedTreeType, stmts, convNames, unquotedTypes)
+      typeSymbols, holeSymbols, holes, splicedHoles, hopHoles, termHoles, typeHoles, typedTree, typedTreeType, stmts, convNames, unquotedTypes)
     
   }
   
@@ -240,7 +240,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
   def apply(
     baseTree: Tree, rawTree: c.Tree, termScopeParam: List[Type], config: QuasiConfig, unapply: Option[c.Tree],
     typeSymbols: Map[TypeName, Symbol], holeSymbols: Set[Symbol], 
-    holes: Seq[Either[TermName,TypeName]], splicedHoles: collection.Set[TermName], hopvHoles: collection.Map[TermName,List[List[TermName]]],
+    holes: Seq[Either[TermName,TypeName]], splicedHoles: collection.Set[TermName], hopHoles: collection.Set[TermName],
     termHoles: Set[TermName], typeHoles: Set[TypeName], typedTree: Tree, typedTreeType: Type, stmts: List[Tree], 
     convNames: Set[TermName], unquotedTypes: Seq[(TypeName, Type, Tree)]
   ): c.Tree = {
@@ -320,6 +320,23 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
           
           override def liftTerm(x: Tree, parent: Tree, expectedType: Option[Type], inVarargsPos: Boolean)(implicit ctx: Map[TermSymbol, b.BoundVal]): b.Rep = {
           object HoleName { def unapply(tr: Tree) = Some(holeName(tr,x)) }
+          def mkHoleType(name: String, tpt: Tree) = expectedType match {
+            case None if tpt.tpe <:< Nothing => throw EmbeddingException(s"No type info for hole '$name'" + (
+              if (debug.debugOptionEnabled) s", in: $parent" else "" )) // TODO: check only after we have explored all repetitions of the hole? (not sure if possible)
+            case Some(tp) =>
+              assert(!SCALA_REPEATED(tp.typeSymbol.fullName.toString))
+              
+              if (tp <:< Nothing) parent match {
+                case q"$_: $_" => // this hole is ascribed explicitly; the Nothing type must be desired
+                case _ => macroContext.warning(macroContext.enclosingPosition,
+                  s"Type inferred for hole '$name' was Nothing. Ascribe the hole explicitly to remove this warning.") // TODO show real hole in its original form
+              }
+              
+              val mergedTp = if (tp <:< tpt.tpe || tpt.tpe <:< Nothing) tp else tpt.tpe
+              debug(s"[Hole '$name'] Expected",tp," required",tpt.tpe," merged",mergedTp)
+              
+              mergedTp
+          }
           x match {
               
               
@@ -463,73 +480,56 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               throw QuasiException("Unknown use of free variable syntax operator `?`.")
               
               
+            /** Handling of higher-order patterns: */
+            case q"$baseTree.$$$$_hop[$tpt](${nameTree @ HoleName(name)})(..$args)" => // TODO check baseTree
+              // TODO remove _extracted_ binders (as in `val $x = ...`) from 'visible' bindings?; add them to context requirements...
+              debug("HOP",tpt,nameTree,args)
+              
+              val holeType = mkHoleType(name, tpt)
+              
+              // TODO handle contexts and FVs...
+              // TODO make sure HOPV holes with the same name are not repeated? or at least have the same param types
+              // Q: handle HOPV holes in spliced position?
+              
+              val termName = TermName(name)
+              
+              val hopvType = FunctionType(args map (_.tpe) : _*)(holeType)
+              termHoleInfo(termName) = Map() -> hopvType
+              
+              val largs = args map (liftTerm(_,x,None,false))
+              
+              b.hopHole2(name, liftType(holeType), (largs)::Nil, ctx.values.toList)
+              
               
             /** Replaces calls to $$(name) with actual holes */
             case q"$baseTree.$$$$[$tpt]($nameTree)" => // TODO check baseTree
               
               val name = holeName(nameTree, x)
               
-              val holeType = expectedType match {
-                case None if tpt.tpe <:< Nothing => throw EmbeddingException(s"No type info for hole '$name'" + (
-                  if (debug.debugOptionEnabled) s", in: $parent" else "" )) // TODO: check only after we have explored all repetitions of the hole? (not sure if possible)
-                case Some(tp) =>
-                  assert(!SCALA_REPEATED(tp.typeSymbol.fullName.toString))
-                  
-                  if (tp <:< Nothing) parent match {
-                    case q"$_: $_" => // this hole is ascribed explicitly; the Nothing type must be desired
-                    case _ => macroContext.warning(macroContext.enclosingPosition,
-                      s"Type inferred for hole '$name' was Nothing. Ascribe the hole explicitly to remove this warning.") // TODO show real hole in its original form
-                  }
-                  
-                  val mergedTp = if (tp <:< tpt.tpe || tpt.tpe <:< Nothing) tp else tpt.tpe
-                  debug(s"[Hole '$name'] Expected",tp," required",tpt.tpe," merged",mergedTp)
-                  
-                  mergedTp
-              }
-              
+              val holeType = mkHoleType(name, tpt)
               
               //if (splicedHoles(TermName(name))) throw EmbeddingException(s"Misplaced spliced hole: '$name'") // used to be: q"$Base.splicedHole[${_expectedType}](${name.toString})"
               
               val termName = TermName(name)
               
-              hopvHoles get TermName(name) match {
-                case Some(idents) =>
-                  
-                  // TODO make sure HOPV holes with the same name are not repeated? or at least have the same param types
-                  // TODO handle HOPV holes in spliced position?
-                  
-                  val scp = ctx map { case k -> v => k.name -> (k -> v) }
-                  val identVals = idents map (_ map scp)
-                  val yes = identVals map (_ map (_._2))
-                  val keys = idents.flatten.toSet
-                  val no = scp.filterKeys(!keys(_)).values.map(_._2).toList
-                  debug(s"HOPV: yes=$yes; no=$no")
-                  val List(identVals2) = identVals // FIXME generalize
-                  val hopvType = FunctionType(identVals2 map (_._1.typeSignature) : _*)(holeType)
-                  termHoleInfo(termName) = Map() -> hopvType
-                  b.hopHole(name, liftType(holeType), yes, no)
-                  
-                case _ =>
-                  if (unapply isEmpty) {
-                    debug(s"Free variable: $name: $tpt")
-                    freeVariableInstances ::= name -> holeType
-                    // TODO maybe aggregate glb type beforehand so we can pass the precise type here... could even pass the _same_ hole!
-                  } else {
-                    //val termName = TermName(name)
-                    val scp = ctx.keys map (k => k.name -> k.typeSignature) toMap;
-                    termHoleInfo get termName map { case (scp0, holeType0) =>
-                      val newScp = scp0 ++ scp.map { case (n,t) => lub(t :: scp0.getOrElse(n, Any) :: Nil) }
-                      newScp -> lub(holeType :: holeType0 :: Nil)
-                    } getOrElse {
-                      termHoleInfo(termName) = scp -> holeType
-                    }
-                  }
-                  
-                  if (splicedHoles(TermName(name)))
-                       b.splicedHole(name, liftType(holeType))
-                  else b.hole(name, liftType(holeType))
-                  
+              if (unapply isEmpty) {
+                debug(s"Free variable: $name: $tpt")
+                freeVariableInstances ::= name -> holeType
+                // TODO maybe aggregate glb type beforehand so we can pass the precise type here... could even pass the _same_ hole!
+              } else {
+                //val termName = TermName(name)
+                val scp = ctx.keys map (k => k.name -> k.typeSignature) toMap;
+                termHoleInfo get termName map { case (scp0, holeType0) =>
+                  val newScp = scp0 ++ scp.map { case (n,t) => lub(t :: scp0.getOrElse(n, Any) :: Nil) }
+                  newScp -> lub(holeType :: holeType0 :: Nil)
+                } getOrElse {
+                  termHoleInfo(termName) = scp -> holeType
+                }
               }
+              
+              if (splicedHoles(TermName(name)))
+                   b.splicedHole(name, liftType(holeType))
+              else b.hole(name, liftType(holeType))
               
             /** Removes implicit conversions that were generated in order to apply the subtyping knowledge extracted from pattern matching */
             case q"${Ident(name:TermName)}.apply($x)" if convNames(name) => 
@@ -640,7 +640,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
         val typeTypesToExtract = typeSymbols mapValues { sym => tq"$baseTree.IRType[$sym]" }
         
         val extrTyps = holes.map {
-          case Left(vname) => termTypesToExtract(vname)
+          case Left(vname) => termTypesToExtract(vname) // TODO B/E
           case Right(tname) => typeTypesToExtract(tname) // TODO B/E
         }
         debug("Extracted Types: "+extrTyps.map(showCode(_)).mkString(", "))

@@ -95,7 +95,7 @@ trait InspectableBase extends IntermediateBase with quasi.QuasiBase with TraceDe
     
   }
   protected implicit class ProtectedInspectableRepOps(private val self: Rep) {
-    def extract (that: Rep) = baseSelf.extract(self, that)
+    def extract (that: Rep) = baseSelf.extractRep(self, that)
   }
   implicit class InspectableRepOps(private val self: Rep) {
     /** Note: this is only a to-level call to `base.extractRep`; not supposed to be called in implementations of `extract` itself */

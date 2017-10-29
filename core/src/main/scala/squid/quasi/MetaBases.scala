@@ -170,6 +170,8 @@ trait MetaBases {
     def hole(name: String, typ: TypeRep): Rep = q"$Base.hole($name, $typ)"
     def hopHole(name: String, typ: TypeRep, yes: List[List[BoundVal]], no: List[BoundVal]): Rep =
       q"$Base.hopHole($name, $typ, ${yes map (_ map (_._2))}, ${no map (_._2)})"
+    override def hopHole2(name: String, typ: TypeRep, argss: List[List[Rep]], visible: List[BoundVal]): Rep =
+      q"$Base.hopHole2($name, $typ, ${argss}, ${visible map (_._2)})"
     def splicedHole(name: String, typ: TypeRep): Rep = q"$Base.splicedHole($name, $typ)"
     
     def substitute(r: => Rep, defs: Map[String, Rep]): Rep =
