@@ -73,20 +73,28 @@ class BasicTests extends MyFunSuiteBase(BasicTests.Embedding) {
   }
 
   test("Transformers") {
-    object Tr extends BasicTests.Embedding.SelfTransformer with SimpleRuleBasedTransformer with TopDownTransformer {
-      rewrite {
-        case ir"123" => ir"111"
-        case ir"readInt" => ir"42"
-      }
+    //object Tr extends BasicTests.Embedding.SelfTransformer with SimpleRuleBasedTransformer with TopDownTransformer {
+    //  rewrite {
+    //    case ir"123" => ir"readInt + 5"
+    //    case ir"readDouble" => ir"10.0"
+    //  }
+    //}
+    //
+    //val p =
+    //  BasicTests.Embedding.debugFor {
+    //    ir"123+readDouble+123" alsoApply println transformWith Tr alsoApply println
+    //  }
+  }
+
+  test("Rewriting simple expressions only once") {
+    val a = ir"println((50,60))"
+    val b = a rewrite {
+      case ir"($x:Int,$y:Int)" =>
+        ir"($y:Int,$x:Int)"
+      case ir"(${Const(n)}:Int)" => Const(n+1)
     }
 
-    val p =
-      BasicTests.Embedding.debugFor {
-        ir"readInt+123" alsoApply println transformWith Tr alsoApply println
-      }
-
-    assert(p =~= ir"${ir"42"}+123")
-
+    assert(b =~= ir"println((61,51))")
   }
 
   test("Extract") {

@@ -209,7 +209,7 @@ class LetBinding(var name: String, var bound: Symbol, var value: Def, private va
 }
 class Lambda(var name: String, var bound: Symbol, val boundType: TypeRep, var body: Rep)(implicit base: FastANF) extends Def with RebindableBinding {
   val typ: TypeRep =  base.funType(boundType, body.typ)
-  override def toString: String = s"($bound: $boundType) => $body"
+  override def toString: String = s"($bound: $boundType) => $body --"
 }
 
 /** Currently used mainly for reification. */ // Note: could intern these objects

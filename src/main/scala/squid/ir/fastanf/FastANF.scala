@@ -123,10 +123,12 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
       case lb: LetBinding =>
         // conceptually, does like `inlineBlock`, but additionally rewrites `bound` and renames `lb`'s last binding
         val last = lb.last
+        val boundName = bound.name
         bound rebind last.bound
         last.body = body
-        last.name = bound.name // TODO make sure we're only renaming an automatically-named binding?
+        last.name = boundName // TODO make sure we're only renaming an automatically-named binding?
         lb
+      // case c: Constant => bottomUpPartial(body) { case `bound` => c }
       case (_:HOPHole) | (_:Hole) | (_:SplicedHole) =>
         ??? // TODO holes should probably be Def's; note that it's not safe to do a substitution for holes
       case _ =>
@@ -141,6 +143,16 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
     val oldSub = curSub
     curSub += subs
     try k finally curSub = oldSub
+  }
+
+  override def tryInline(fun: Rep, arg: Rep)(retTp: TypeRep): Rep = {
+    fun match {
+      case lb: LetBinding => lb.value match {
+        case l: Lambda => letin(l.bound, arg, l.body, l.body.typ)
+        case _ => super.tryInline(fun, arg)(retTp)
+      }
+      case _ => super.tryInline(fun, arg)(retTp)
+    }
   }
 
   override def ascribe(self: Rep, typ: TypeRep): Rep = if (self.typ =:= typ) self else self match {
@@ -159,32 +171,8 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
 
   //   /** Artifact of a term extraction: map from hole name to terms, types and spliced term lists */
 
-  def repEq(a: Rep, b: Rep): Boolean = {
-    (a extractRep b) === (b extractRep a) && (a extractRep b) === Some(EmptyExtract) && (b extractRep a) === Some(EmptyExtract)
-
-    //val aExtractB = a extractRep b
-    //
-    //if (aExtractB.isEmpty) false
-    //else {
-    //  (aExtractB, b extractRep a) match {
-    //    case (Some((xs, xts, fxs)), Some((ys, yts, fys))) =>
-    //      val extractsHole: (String -> Rep) => Boolean = {
-    //        case (k: String, Hole(n, _)) if k == n => true
-    //        case _ => false
-    //      }
-    //
-    //      val extractsTypeHole: (String -> TypeRep) => Boolean = {
-    //        case (k: String, DummyTypeRep) => true
-    //        case _ => false
-    //      }
-    //
-    //      fxs.isEmpty && fys.isEmpty &&
-    //        (xs forall extractsHole) && (ys forall extractsHole) &&
-    //        (xts forall extractsTypeHole) && (yts forall extractsTypeHole)
-    //    case _ => false
-    //  }
-    //}
-  }
+  def repEq(a: Rep, b: Rep): Boolean =
+    (a extractRep b) === Some(EmptyExtract) && (b extractRep a) === Some(EmptyExtract)
 
 
   // * --- * --- * --- *  Implementations of `IntermediateBase` methods  * --- * --- * --- *
@@ -219,11 +207,11 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
       case Hole(n, t) => newBase.hole(n, reinterpretType(t))
       case SplicedHole(n, t) => newBase.splicedHole(n, reinterpretType(t))
       case Ascribe(s, t) => newBase.ascribe(go(s), reinterpretType(t))
-      case HOPHole(n, t, yes, no) => newBase.hopHole(
+      case HOPHole(n, t, args, visible) => newBase.hopHole(
         n,
         reinterpretType(t),
-        yes.map(_.map(reinterpretBV)),
-        no.map(reinterpretBV))
+        args.map(_.map(reinterpretBV)),
+        visible.map(reinterpretBV))
       case Module(p, n, t) => newBase.module(go(p), n, reinterpretType(t))
       case lb: LetBinding => newBase.letin(
         reinterpretBV(lb.bound),
@@ -244,14 +232,14 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
   def bottomUp(r: Rep)(f: Rep => Rep): Rep = transformRepAndDef(r)(identity, f)(identity)
   def topDown(r: Rep)(f: Rep => Rep): Rep = transformRepAndDef(r)(f)(identity)
   def transformRepAndDef(r: Rep)(pre: Rep => Rep, post: Rep => Rep = identity)(preDef: Def => Def, postDef: Def => Def = identity): Rep = {
-    def _transformRepAndDef(r: Rep) = transformRepAndDef(r)(pre, post)(preDef, postDef)
+    def transformRepAndDef0(r: Rep) = transformRepAndDef(r)(pre, post)(preDef, postDef)
 
     def transformDef(d: Def): Def = (d map preDef match {
-      case App(f, a) => App(_transformRepAndDef(f), _transformRepAndDef(a)) // Note: App is a MethodApp, but we can transform it more efficiently this way
-      case ma: MethodApp => MethodApp(_transformRepAndDef(ma.self), ma.mtd, ma.targs, ma.argss argssMap (_transformRepAndDef(_)), ma.typ)
+      case App(f, a) => App(transformRepAndDef0(f), transformRepAndDef0(a)) // Note: App is a MethodApp, but we can transform it more efficiently this way
+      case ma: MethodApp => MethodApp(transformRepAndDef0(ma.self), ma.mtd, ma.targs, ma.argss argssMap (transformRepAndDef0(_)), ma.typ)
       case l: Lambda => // Note: destructive modification of the lambda binding!
-        //new Lambda(l.name, l.bound, l.boundType, _transformRepAndDef(l.body))
-        l.body = l.body |> _transformRepAndDef
+        //new Lambda(l.name, l.bound, l.boundType, transformRepAndDef0(l.body))
+        l.body = l.body |> transformRepAndDef0
         l
     }) map postDef
 
@@ -261,15 +249,15 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
         //  lb.name,
         //  lb.bound,
         //  transformDef(lb.value),
-        //  _transformRepAndDef(lb.body)
+        //  transformRepAndDef0(lb.body)
         //)
         lb.value = lb.value |> transformDef
-        lb.body = lb.body |> _transformRepAndDef
+        lb.body = lb.body |> transformRepAndDef0
         lb
       case Ascribe(s, t) =>
-        Ascribe(_transformRepAndDef(s), t)
+        Ascribe(transformRepAndDef0(s), t)
       case Module(p, n, t) =>
-        Module(_transformRepAndDef(p), n, t)
+        Module(transformRepAndDef0(p), n, t)
       case r @ ((_:Constant) | (_:Hole) | (_:Symbol) | (_:SplicedHole) | (_:HOPHole) | (_:NewObject) | (_:StaticModule)) => r
     })
   }
@@ -279,64 +267,107 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
 
   protected def extract(xtor: Rep, xtee: Rep): Option[Extract] = extractWithCtx(xtor, xtee)(ListMap.empty)
 
-  def extractWithCtx(xtor: Rep, xtee: Rep)(implicit ctx: ListMap[BoundVal, BoundVal]): Option[Extract] = xtor -> xtee match {
-    case (lb1: LetBinding, lb2: LetBinding) =>
-      val normal = for {
-      //e1 <- extractWithCtx(lb1.bound, lb2.bound)
-        e1 <- lb1.boundType extract (lb1.boundType, Covariant)
-        e2 <- extractValue(lb1.value, lb2.value)
-        e3 <- extractWithCtx(lb1.body, lb2.body)(ctx + (lb1.bound -> lb2.bound))
-        m <- mergeAll(e1, e2, e3)
-      } yield m
+  def extractWithCtx(xtor: Rep, xtee: Rep)(implicit ctx: ListMap[BoundVal, Set[BoundVal]]): Option[Extract] = {
+    def reverse[A, B](m: Map[A, Set[B]]): Map[B, A] = for {
+      (a, bs) <- m
+      b <- bs
+    } yield b -> a
 
-      /*
-       * For instance when:
-       * xtor: val x0 = List(Hole(...): _*)
-       * xtee: val x0 = Seq(1, 2, 3); val x1 = List(x0)
-       */
-      // TODO CHECK CTX
-      lazy val lookFurtherInXtee = extractWithCtx(lb1, lb2.body)(ctx + (lb1.bound -> lb2.bound))
-      lazy val lookFurtherInXtor = extractWithCtx(lb1.body, lb2)(ctx + (lb1.bound -> lb2.bound))
+    xtor -> xtee match {
+      case (lb1: LetBinding, lb2: LetBinding) =>
+        val normal = for {
+          //e1 <- extractWithCtx(lb1.bound, lb2.bound)
+          e1 <- lb1.boundType extract (lb1.boundType, Covariant)
+          e2 <- extractValue(lb1.value, lb2.value)
+          e3 <- extractWithCtx(lb1.body, lb2.body)(ctx + (lb1.bound -> Set(lb2.bound)))
+          m <- mergeAll(e1, e2, e3)
+        } yield m
 
-      normal //orElse lookFurtherInXtee orElse lookFurtherInXtor
+        /*
+         * For instance when:
+         * xtor: val x0 = List(Hole(...): _*)
+         * xtee: val x0 = Seq(1, 2, 3); val x1 = List(x0)
+         */
+        lazy val lookFurtherInXtee = extractWithCtx(lb1, lb2.body)
+        // lazy val lookFurtherInXtor = extractWithCtx(lb1.body, lb2)
 
-    // Matches 42 and 42: Any, is it safe to ignore the typ?
-    case (_, Ascribe(s, _)) => extractWithCtx(xtor, s)
+        normal orElse lookFurtherInXtee //orElse lookFurtherInXtor
 
-    case (Ascribe(s, t) , _) =>
-      for {
-        e1 <- t extract (xtee.typ, Covariant) // t <:< a.typ, which one to use?
-        e2 <- extractWithCtx(s, xtee)
-        m <- merge(e1, e2)
-      } yield m
+      // Matches 42 and 42: Any, is it safe to ignore the typ?
+      case (_, Ascribe(s, _)) => extractWithCtx(xtor, s)
 
-    case (Hole(n, t), _) =>
-      for {
-        e <- t extract (xtee.typ, Covariant)
-        m <- merge(e, repExtract(n -> xtee))
-      } yield m
+      case (Ascribe(s, t) , _) =>
+        for {
+          e1 <- t extract (xtee.typ, Covariant) // t <:< a.typ, which one to use?
+          e2 <- extractWithCtx(s, xtee)
+          m <- merge(e1, e2)
+        } yield m
 
-    case (HOPHole(name, typ, args, visible), _) => unsupported
+      case (Hole(n, t), bv: BoundVal) =>
+        val r = bv.owner match {
+          case lb: LetBinding =>
+            new LetBinding(lb.name, lb.bound, lb.value, lb.bound)
+          case _ => bv
+        }
 
-    case (bv1: BoundVal, bv2: BoundVal) =>
-      if (bv1 == bv2) Some(EmptyExtract)
-      else for {
-        candidate <- ctx.get(bv1)
-        if candidate == bv2
-      } yield EmptyExtract
+        for {
+          e <- t extract (xtee.typ, Covariant)
+          m <- merge(e, repExtract(n -> r))
+        } yield m
 
-    case (Constant(v1), Constant(v2)) if v1 == v2 =>
-      xtor.typ extract (xtee.typ, Covariant)
+      case (Hole(n, t), _) =>
+        for {
+          e <- t extract (xtee.typ, Covariant)
+          m <- merge(e, repExtract(n -> xtee))
+        } yield m
 
-    // Assuming if they have the same name the type is the same
-    case (StaticModule(fn1), StaticModule(fn2)) if fn1 == fn2 => Some(EmptyExtract)
+      case (h @ HOPHole(name, typ, argss, visible), _) =>
+        type Func = List[List[BoundVal]] -> Rep
+        def emptyFunc(r: Rep) = List.empty[List[BoundVal]] -> r
+        def fargss(f: Func) = f._1
+        def fbody(f: Func) = f._2
 
-    // Assuming if they have the same name and prefix the type is the same
-    case (Module(p1, n1, _), Module(p2, n2, _)) if n1 == n2 => extractWithCtx(p1, p2)
+        val ctx0 = ctx.mapValues(_.head)
+        val invCtx = reverse(ctx)
 
-    case (NewObject(t1), NewObject(t2)) => t1 extract (t2, Covariant)
+        bottomUpPartial(xtee) { case bv: BoundVal if visible contains invCtx(bv) => return None }
 
-    case _ => None
+        def extendFunc(args: List[Rep], f: Func): Func = {
+          val args0 = args.map(bottomUpPartial(_) { case bv: BoundVal => ctx0.getOrElse(bv, bv) })
+          val xs = args.map(arg => bindVal("hopArg", arg.typ, Nil))
+          val transformation = (args0 zip xs).toMap
+          val body0 = bottomUp(fbody(f)) { case r => transformation.getOrElse(r, r) }
+          (xs :: fargss(f)) -> body0
+        }
+
+        for {
+          e1 <- typ extract (xtee.typ, Covariant)
+          f = argss.foldRight(emptyFunc(xtee))(extendFunc)
+          l = fargss(f).foldRight(fbody(f)) { case (args, body) => wrapConstruct(lambda(args, body)) }
+          e2 = repExtract(name -> l)
+          m <- merge(e1, e2)
+        } yield m
+
+      case (bv1: BoundVal, bv2: BoundVal) =>
+        if (bv1 == bv2) Some(EmptyExtract)
+        else for {
+          candidates <- ctx.get(bv1)
+          if candidates contains bv2
+        } yield EmptyExtract
+
+      case (Constant(v1), Constant(v2)) if v1 == v2 =>
+        xtor.typ extract (xtee.typ, Covariant)
+
+      // Assuming if they have the same name the type is the same
+      case (StaticModule(fn1), StaticModule(fn2)) if fn1 == fn2 => Some(EmptyExtract)
+
+      // Assuming if they have the same name and prefix the type is the same
+      case (Module(p1, n1, _), Module(p2, n2, _)) if n1 == n2 => extractWithCtx(p1, p2)
+
+      case (NewObject(t1), NewObject(t2)) => t1 extract (t2, Covariant)
+
+      case _ => None
+    }
   }
   
   protected def spliceExtract(xtor: Rep, args: Args): Option[Extract] = xtor match {
@@ -359,23 +390,21 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
   }
 
   override def rewriteRep(xtor: Rep, xtee: Rep, code: Extract => Option[Rep]): Option[Rep] = {
-    def go(ex: Extract, matchedBVs: Set[BoundVal])(_xtor: Rep, _xtee: Rep)(implicit ctx: ListMap[BoundVal, BoundVal]): Option[Rep] = {
-      println(s"XTEE ->> ${_xtee}")
-
+    def rewriteRep0(ex: Extract, matchedBVs: Set[BoundVal])(xtor: Rep, xtee: Rep)(implicit ctx: ListMap[BoundVal, Set[BoundVal]]): Option[Rep] = {
       def checkRefs(r: Rep): Option[Rep] = {
         def refs(r: Rep): Set[BoundVal] = {
           def bvsUsed(value: Def): Set[BoundVal] = value match {
             case ma: MethodApp =>
               def bvsInArgss(argss: ArgumentLists): Set[BoundVal] = {
-                def go(argss: ArgumentLists, acc: Set[BoundVal]): Set[BoundVal] = argss match {
-                  case ArgumentListCons(h, t) => go(t, go(h, acc))
-                  case ArgumentCons(h, t) => go(t, go(h, acc))
+                def bvsInArgss0(argss: ArgumentLists, acc: Set[BoundVal]): Set[BoundVal] = argss match {
+                  case ArgumentListCons(h, t) => bvsInArgss0(t, bvsInArgss0(h, acc))
+                  case ArgumentCons(h, t) => bvsInArgss0(t, bvsInArgss0(h, acc))
                   case SplicedArgument(bv: BoundVal) => acc + bv
                   case bv: BoundVal => acc + bv
                   case _ => acc
                 }
 
-                go(argss, Set.empty)
+                bvsInArgss0(argss, Set.empty)
               }
 
               val selfBV = ma.self match {
@@ -408,137 +437,80 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
       def mkCode(e: Extract): Option[Rep] = {
         for {
           c <- code(e)
-          c <- checkRefs(c)
+//          c <- checkRefs(c)
         } yield c
       }
 
-      def letIn(body: Rep)(xBV: BoundVal, newX: Rep): Rep = {
-        println(s"----- In $body replacing $xBV with $newX")
-        def findAndReplace(argss: ArgumentLists, r: BoundVal, newR: BoundVal): ArgumentLists = argss.argssMap {
-          case a if a == r => println(s"### $a -> $newR"); newR
-          case a => println(s"+++ $a"); a
-        }
+      // TODO function name?
+      def traverseO[A](r: Rep)(f: LetBinding => Option[A]): Option[A] = r match {
+        case lb: LetBinding => f(lb) orElse traverseO(lb.body)(f)
+        case _ => None
+      }
 
-        // In `body` replace every occurrence of `x` with `outerLB`
-        def _letIn(body: Rep)(xBV: BoundVal, outerLB: LetBinding): Rep = {
-          def replaceInValue(v: Def): Def = {
-            v match {
-              case ma: MethodApp =>
-                println(s"@@@@ $ma")
-                MethodApp(
-                  if (ma.self == xBV) outerLB.bound else ma.self,
-                  ma.mtd,
-                  ma.targs,
-                  findAndReplace(ma.argss, xBV, outerLB.bound),
-                  ma.typ)
-              case l: Lambda =>
-                new Lambda(l.name,
-                  l.bound,
-                  l.boundType,
-                  _letIn(l.body)(xBV, outerLB))
+      def extractValueWithBV(v: Def, r: Rep): Option[Extract -> Set[BoundVal]] = traverseO(r) { lb =>
+        def getBVs(e: Extract): Set[BoundVal] = {
+          val a = e._1.values.foldLeft(Set.empty[BoundVal]) { case (acc, r) =>
+            r match {
+              case lb: LetBinding => acc + lb.bound
+              case _ => acc
             }
           }
 
-          body match {
-            case lb: LetBinding if lb.bound == xBV => new LetBinding(outerLB.name, outerLB.bound, outerLB.value, _letIn(lb.body)(xBV, outerLB))
-
-            case lb: LetBinding =>
-              new LetBinding(
-                lb.name,
-                lb.bound,
-                replaceInValue(lb.value),
-                _letIn(lb.body)(xBV, outerLB))
-
-            case `xBV` => outerLB.bound
-            case _ => body
+          val b = e._3.values.flatten.foldLeft(Set.empty[BoundVal]) { case (acc, r) =>
+            r match {
+              case lb: LetBinding => acc + lb.bound
+              case _ => acc
+            }
           }
+
+          a ++ b
         }
 
-        newX match {
-          case outerLB: LetBinding =>
-            //xBV rebind outerLB.bound
-            //body
-            _letIn(removeBVs(body, matchedBVs - xBV))(xBV, outerLB) alsoApply println
-
-          case bv: BoundVal =>
-            xBV rebind bv
-            body
-
-          case _ => ??? //_letIn(removeBVs(body, matchedBVs - xBV))(xBV, newX)
-        }
+        extractValue(v, lb.value) map (e => e -> (getBVs(e) + lb.bound))
       }
 
-      def withBV(r: Rep)(f: LetBinding => Option[Extract]): Option[Extract -> BoundVal] = {
-//        def extractArgss(f: A => Option[Extract])(argss: ArgumentLists): Option[Extract -> BoundVal] = argss match {
-//          case ArgumentListCons(h, t) => extractArgss(f)(h) orElse extractArgss(f)(t)
-//          case ArgumentCons(h, t) => extractArgss(f)(h) orElse extractArgss(f)(t)
-//          case SplicedArgument(a) => withBV(f)(a)
-//          case r: Rep => withBV(f)(r)
-//          case NoArguments | NoArgumentLists => None
-//        }
-
-        r match {
-          case lb: LetBinding =>
-            f(lb) map { _ -> lb.bound} orElse {
-              lb.value match {
-                case l: Lambda => withBV(l.body)(f)
-                case _ => None
-              }
-            } orElse withBV(lb.body)(f)
-
-          case _ => None
-        }
+      def removeBVs(r: Rep, bvs: Set[BoundVal]): Rep = r match {
+        case lb: LetBinding if bvs contains lb.bound => removeBVs(lb.body, bvs)
+        case lb: LetBinding => new LetBinding(lb.name, lb.bound, lb.value, removeBVs(lb.body, bvs))
+        case _ => r
       }
 
-      def extractValueWithBV(v: Def, r: Rep): Option[Extract -> BoundVal] = withBV(r) { lb => extractValue(v, lb.value) }
-      def extractBVWithBV(bv: BoundVal, r: Rep): Option[Extract -> BoundVal] = withBV(r) { lb => extractWithCtx(bv, lb.bound) }
-
-      def removeBVs(r: Rep, bvs: Set[BoundVal]): Rep = {
-        def lambdaRemove(l: Lambda): Def = {
-          // TODO check l.bound?
-          new Lambda(l.name, l.bound, l.boundType, removeBVs(l.body, bvs))
-        }
-
-        r match {
-          case lb: LetBinding if bvs contains lb.bound => lb.body
-          case lb: LetBinding => lb.value match {
-            case l: Lambda => new LetBinding(lb.name, lb.bound, lambdaRemove(l), removeBVs(lb.body, bvs))
-            case _ => new LetBinding(lb.name, lb.bound, lb.value, removeBVs(lb.body, bvs))
-          }
-          case _ => r
-        }
-      }
-
-      (_xtor, _xtee) match {
+      (xtor, xtee) match {
         case (lb1: LetBinding, lb2: LetBinding) =>
           for {
-            (e, matchedBV) <- extractValueWithBV(lb1.value, lb2)
-            _ = println(s"----- Matched $matchedBV")
-            if !(matchedBVs contains matchedBV) // Cannot match twice the same code line
+            (e, newBVs) <- extractValueWithBV(lb1.value, lb2)
             m <- merge(e, ex)
-            r <- go(m, matchedBVs + matchedBV)(lb1.body, lb2)(ctx + (lb1.bound -> matchedBV))
+            removed = removeBVs(lb2, newBVs)
+            r <- rewriteRep0(m, matchedBVs ++ newBVs)(lb1.body, removed)(ctx + (lb1.bound -> newBVs))
           } yield r
 
         // Match return of `xtor` with something in `xtee`
-        case (bv: BoundVal, lb: LetBinding) =>
-          println(s"Knowing: $ctx")
-          println(s"Matching... $bv in $lb")
+        case (bv: BoundVal, _: LetBinding) =>
           for {
-            (e, matchedBV) <- extractBVWithBV(bv, lb)
-            _ = println(s"----->> Matched $matchedBV")
-            m <- merge(e, ex)
-            newX <- mkCode(m)
-            _ = println(s"Code => $newX")
-            newC = letIn(lb)(matchedBV, newX) alsoApply (c => println(s"New code => $c"))
-          } yield newC
+            x <- ctx.get(bv)
+            newX <- mkCode(ex)
+            _ = assert(x.size == 1)
+            xHead = x.head
+            newLB = newX match {
+              case _: LetBinding => letin(xHead, newX, xtee, xtee.typ)
+              case _ => bottomUpPartial(xtee) { case `xHead` => newX }
+            }
+          } yield newLB
 
-        case (bv: BoundVal, xtee: Rep) =>
+        case (h: HOPHole, lb: LetBinding) =>
           for {
-            (e, matchedBV) <- extractBVWithBV(bv, xtee)
+            e <- extractWithCtx(h, lb)
             m <- merge(e, ex)
             newX <- mkCode(m)
-            newC = letIn(xtee)(matchedBV, newX)
-          } yield newC
+          } yield newX
+
+        case (h: Hole, lb: LetBinding) =>
+          for {
+            e <- extractWithCtx(h, lb)
+            m <- merge(e, ex)
+            newX <- mkCode(m)
+            // _ = lb.body = newX
+          } yield newX
 
         // Match Constant(42) with `value` of the `LetBinding`
         case (xtor: Rep, lb: LetBinding) =>
@@ -615,9 +587,9 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
               rewrittenValue map { case value -> lbs => new LetBinding(lb.name, lb.bound, value, lb.body) -> lbs}
             }
 
-            def go(lb: LetBinding, acc: Option[List[LazyInlined[Rep]]]): Option[List[LazyInlined[Rep]]] = lb.body match {
+            def rewriteValue0(lb: LetBinding, acc: Option[List[LazyInlined[Rep]]]): Option[List[LazyInlined[Rep]]] = lb.body match {
               case innerLB: LetBinding =>
-                go(innerLB,
+                rewriteValue0(innerLB,
                   for {
                     acc <- acc
                     lb <- rewriteValue(lb)
@@ -630,65 +602,70 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
                 } yield lazyInlined(ret) :: lb :: acc
             }
 
-            go(lb, Some(List.empty)) map {
+            rewriteValue0(lb, Some(List.empty)) map {
               case ret :: outerLBs => run(outerLBs.foldLeft(ret)(surroundWithLB))
+              case _ => lb
             }
           }
 
           rewrite(lb)
 
-        // Matching return values
-        case (r1: Rep, r2: Rep) =>
+        case (_: Rep, _: Rep) =>
           for {
-            e <- extractWithCtx(r1, r2)
+            e <- extractWithCtx(xtor, xtee)
             m <- merge(e, ex)
             c <- mkCode(m)
           } yield c
+
+        // Matching return values
+        case _ => None
       }
     }
 
-    go(EmptyExtract, Set.empty)(xtor, xtee)(ListMap.empty)
+    rewriteRep0(EmptyExtract, Set.empty)(xtor, xtee)(ListMap.empty)
   }
 
-  def extractValue(v1: Def, v2: Def)(implicit ctx: ListMap[BoundVal, BoundVal]) = (v1, v2) match {
-    case (l1: Lambda, l2: Lambda) =>
-      for {
-        e1 <- l1.boundType extract (l2.boundType, Covariant)
-        e2 <- extractWithCtx(l1.body, l2.body)(ctx + (l1.bound -> l2.bound))
-        m <- merge(e1, e2)
-      } yield m
+  def extractValue(v1: Def, v2: Def)(implicit ctx: ListMap[BoundVal, Set[BoundVal]]) = {
+    (v1, v2) match {
+      case (l1: Lambda, l2: Lambda) =>
+        for {
+          e1 <- l1.boundType extract (l2.boundType, Covariant)
+          e2 <- extractWithCtx(l1.body, l2.body)(ctx + (l1.bound -> Set(l2.bound)))
+          m <- merge(e1, e2)
+        } yield m
 
-    case (ma1: MethodApp, ma2: MethodApp) if ma1.mtd == ma2.mtd =>
-      lazy val targExtract = mergeAll(for {
-        (e1, e2) <- ma1.targs zip ma2.targs
-      } yield e1 extract (e2, Invariant)) // TODO Invariant? Depends on its positions...
+      case (ma1: MethodApp, ma2: MethodApp) if ma1.mtd == ma2.mtd =>
+        lazy val targExtract = mergeAll(for {
+                                          (e1, e2) <- ma1.targs zip ma2.targs
+                                        } yield e1 extract (e2, Invariant)) // TODO Invariant? Depends on its positions...
 
-      def extractArgss(argss1: ArgumentLists, argss2: ArgumentLists): Option[Extract] = {
-        def go(argss1: ArgumentLists, argss2: ArgumentLists, acc: List[Rep]): Option[Extract] = (argss1, argss2) match {
-          case (ArgumentListCons(h1, t1), ArgumentListCons(h2, t2)) => mergeOpt(go(h1, h2, acc), go(t1, t2, acc))
-          case (ArgumentCons(h1, t1), ArgumentCons(h2, t2)) => mergeOpt(go(h1, h2, acc), go(t1, t2, acc))
-          case (SplicedArgument(arg1), SplicedArgument(arg2)) => extractWithCtx(arg1, arg2)
-          case (sa: SplicedArgument, ArgumentCons(h, t)) => go(sa, t, h :: acc)
-          case (sa: SplicedArgument, r: Rep) => go(sa, NoArguments, r :: acc)
-          case (SplicedArgument(arg), NoArguments) => spliceExtract(arg, Args(acc.reverse: _*)) // Reverses list...
-          case (r1: Rep, r2: Rep) => extractWithCtx(r1, r2)
-          case (NoArguments, NoArguments) => Some(EmptyExtract)
-          case (NoArgumentLists, NoArgumentLists) => Some(EmptyExtract)
-          case _ => None
+        def extractArgss(argss1: ArgumentLists, argss2: ArgumentLists): Option[Extract] = {
+          def extractArgss0(argss1: ArgumentLists, argss2: ArgumentLists, acc: List[Rep]): Option[Extract] = (argss1, argss2) match {
+            case (ArgumentListCons(h1, t1), ArgumentListCons(h2, t2)) => mergeOpt(extractArgss0(h1, h2, acc), extractArgss0(t1, t2, acc))
+            case (ArgumentCons(h1, t1), ArgumentCons(h2, t2)) => mergeOpt(extractArgss0(h1, h2, acc), extractArgss0(t1, t2, acc))
+            case (SplicedArgument(arg1), SplicedArgument(arg2)) => extractWithCtx(arg1, arg2)
+            case (sa: SplicedArgument, ArgumentCons(h, t)) => extractArgss0(sa, t, h :: acc)
+            case (sa: SplicedArgument, r: Rep) => extractArgss0(sa, NoArguments, r :: acc)
+            case (SplicedArgument(arg), NoArguments) => spliceExtract(arg, Args(acc.reverse: _*)) // Reverses list...
+            case (r1: Rep, r2: Rep) => extractWithCtx(r1, r2)
+            case (NoArguments, NoArguments) => Some(EmptyExtract)
+            case (NoArgumentLists, NoArgumentLists) => Some(EmptyExtract)
+            case _ => None
+          }
+
+          extractArgss0(argss1, argss2, Nil)
         }
 
-        go(argss1, argss2, Nil)
-      }
+        for {
+          e1 <- extractWithCtx(ma1.self, ma2.self)
+          e2 <- targExtract
+          e3 <- extractArgss(ma1.argss, ma2.argss)
+          e4 <- ma1.typ extract (ma2.typ, Covariant)
+          m <- mergeAll(e1, e2, e3, e4)
+        } yield m
 
-      for {
-        e1 <- extractWithCtx(ma1.self, ma2.self)
-        e2 <- targExtract
-        e3 <- extractArgss(ma1.argss, ma2.argss)
-        e4 <- ma1.typ extract (ma2.typ, Covariant)
-        m <- mergeAll(e1, e2, e3, e4)
-      } yield m
-
-    case _ => None
+      case _ => None
+    }
   }
   
   // * --- * --- * --- *  Implementations of `QuasiBase` methods  * --- * --- * --- *
