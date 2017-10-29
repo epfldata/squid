@@ -5,6 +5,10 @@ package fastir
 class RewritingTests extends MyFunSuiteBase(BasicTests.Embedding) {
   import RewritingTests.Embedding.Predef._
 
+  //object T extends SimpleRuleBasedTransformer with TopDownTransformer {
+  //  val base: DSL.type = DSL
+  //}
+
   test("Simple rewrites") {
     val a = ir"123" rewrite {
       case ir"123" => ir"666"
@@ -20,6 +24,14 @@ class RewritingTests extends MyFunSuiteBase(BasicTests.Embedding) {
       case ir"(${Const(n)}: Int).toDouble" => ir"${Const(n.toDouble)}"
     }
     assert(c =~= ir"42.0")
+
+    //assertDoesNotCompile("""
+    //  T.rewrite { case ir"0.5" => ir"42" }
+    //""")
+
+    //assertDoesNotCompile("""
+    //  T.rewrite { case ir"123" => ir"($$n:Int)" }
+    //""")
   }
 
   test("Rewriting subpatterns") {
@@ -28,29 +40,39 @@ class RewritingTests extends MyFunSuiteBase(BasicTests.Embedding) {
     }
     assert(a =~= ir"readInt * .25")
 
-    val b = ir"(x: Int) => (x-5) * 32" rewrite {
-      case ir"($b: Int) * 32" => ir"$b"
-    }
-    assert(b =~= ir"(x: Int) => x - 5")
-
-    val c = ir"Option(42).get" rewrite {
+    val b = ir"Option(42).get" rewrite {
       case ir"Option(($n: Int)).get" => n
     }
-    assert(c =~= ir"42")
+    assert(b =~= ir"42")
 
-    val d = ir"val a = Option(42).get; a * 5" rewrite {
+    val c = ir"val a = Option(42).get; a * 5" rewrite {
       case ir"Option(($n: Int)).get" => n
       case ir"($a: Int) * 5" => ir"$a * 2"
     }
-    assert(d =~= ir"val a = 42; a * 2")
+    assert(c =~= ir"val a = 42; a * 2")
   }
 
   test("Rewriting simple expressions only once") {
     val a = ir"println((50, 60))" rewrite {
       case ir"($x:Int,$y:Int)" => ir"($y:Int,$x:Int)"
       case ir"(${Const(n)}:Int)" => Const(n+1)
-    } alsoApply println
+    }
     assert(a =~= ir"println((61,51))")
+  }
+
+  test("Function Rewritings") {
+    val a = ir"(x: Int) => (x-5) * 32" rewrite {
+      case ir"($b: Int) * 32" => ir"$b"
+    }
+    assert(a =~= ir"(x: Int) => x - 5")
+
+    val b = ir"(x: Int) => (x-5) * 32" rewrite {
+      case ir"(x: Int) => ($b: Int) * 32" => dbg_ir"val x = 42; (p: Int) => $b + p"
+    } alsoApply println
+
+    println(ir"val u = 42; (v: Int) => (u - 5) + v")
+
+    assert(b =~= ir"val u = 42; (v: Int) => (u - 5) + v")
   }
 }
 

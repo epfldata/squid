@@ -69,7 +69,7 @@ class BasicTests extends MyFunSuiteBase(BasicTests.Embedding) {
     //  case _ => assert(false)
     //}
 
-    assert(Embedding.bottomUpPartial(code"println((1, 23))".rep) { case Constant(1) => Constant(42) } == code"println((42,23))".rep)
+    //assert(Embedding.bottomUpPartial(code"println((1, 23))".rep) { case Constant(1) => Constant(42) } == code"println((42,23))".rep)
   }
 
   test("Transformers") {

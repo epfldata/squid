@@ -62,6 +62,8 @@ final case class SplicedHole(name: String, typ: TypeRep) extends Rep with Cached
 
 final case class HOPHole(name: String, typ: TypeRep, args: List[List[Symbol]], visible: List[Symbol]) extends Rep with CachedHashCode
 
+final case class HOPHole2(name: String, typ: TypeRep, args: List[List[Rep]], visible: List[Symbol]) extends Rep with CachedHashCode
+
 // TODO intern objects
 final case class StaticModule(fullName: String) extends Rep with CachedHashCode {
   val typ = DummyTypeRep

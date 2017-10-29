@@ -129,7 +129,7 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
         last.name = boundName // TODO make sure we're only renaming an automatically-named binding?
         lb
       // case c: Constant => bottomUpPartial(body) { case `bound` => c }
-      case (_:HOPHole) | (_:Hole) | (_:SplicedHole) =>
+      case (_:HOPHole) | (_:HOPHole2) | (_:Hole) | (_:SplicedHole) =>
         ??? // TODO holes should probably be Def's; note that it's not safe to do a substitution for holes
       case _ =>
         withSubs(bound -> value)(body)
@@ -179,25 +179,25 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
 
   def nullValue[T: IRType]: IR[T,{}] = IR[T, {}](const(null)) // FIXME: should implement proper semantics; e.g. nullValue[Int] == ir"0", not ir"null"
   def reinterpret(r: Rep, newBase: Base)(extrudedHandle: BoundVal => newBase.Rep): newBase.Rep = {
-    def go: Rep => newBase.Rep = r => reinterpret(r, newBase)(extrudedHandle)
+    def reinterpret0: Rep => newBase.Rep = r => reinterpret(r, newBase)(extrudedHandle)
     def reinterpretType: TypeRep => newBase.TypeRep = t => newBase.staticTypeApp(newBase.loadTypSymbol("scala.Any"), Nil)
     def reinterpretBV:BoundVal => newBase.BoundVal = bv => newBase.bindVal(bv.name, reinterpretType(bv.typ), Nil)
     def reinterpretTypSym(t: TypeSymbol): newBase.TypSymbol = newBase.loadTypSymbol(t.name)
     def reinterpretMtdSym(s: MtdSymbol): newBase.MtdSymbol = newBase.loadMtdSymbol(reinterpretTypSym(s.typ), s.name)
     def reinterpretArgList(argss: ArgumentLists): List[newBase.ArgList] = toListOfArgList(argss) map {
-      case ArgsVarargSpliced(args, varargs) => newBase.ArgsVarargSpliced(args.map(newBase)(go), go(varargs))
-      case ArgsVarargs(args, varargs) => newBase.ArgsVarargs(args.map(newBase)(go), varargs.map(newBase)(go))
-      case args : Args => args.map(newBase)(go)
+      case ArgsVarargSpliced(args, varargs) => newBase.ArgsVarargSpliced(args.map(newBase)(reinterpret0), reinterpret0(varargs))
+      case ArgsVarargs(args, varargs) => newBase.ArgsVarargs(args.map(newBase)(reinterpret0), varargs.map(newBase)(reinterpret0))
+      case args : Args => args.map(newBase)(reinterpret0)
     }
     def defToRep(d: Def): newBase.Rep = d match {
-      case app @ App(f, a) => newBase.app(go(f), go(a))(reinterpretType(app.typ))
+      case app @ App(f, a) => newBase.app(reinterpret0(f), reinterpret0(a))(reinterpretType(app.typ))
       case ma : MethodApp => newBase.methodApp(
-        go(ma.self),
+        reinterpret0(ma.self),
         reinterpretMtdSym(ma.mtd),
         ma.targs.map(reinterpretType),
         reinterpretArgList(ma.argss),
         reinterpretType(ma.typ))
-      case l: Lambda => newBase.lambda(List(reinterpretBV(l.bound)), go(l.body))
+      case l: Lambda => newBase.lambda(List(reinterpretBV(l.bound)), reinterpret0(l.body))
     }
 
     r match {
@@ -206,17 +206,23 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
       case NewObject(t) => newBase.newObject(reinterpretType(t))
       case Hole(n, t) => newBase.hole(n, reinterpretType(t))
       case SplicedHole(n, t) => newBase.splicedHole(n, reinterpretType(t))
-      case Ascribe(s, t) => newBase.ascribe(go(s), reinterpretType(t))
+      case Ascribe(s, t) => newBase.ascribe(reinterpret0(s), reinterpretType(t))
       case HOPHole(n, t, args, visible) => newBase.hopHole(
         n,
         reinterpretType(t),
         args.map(_.map(reinterpretBV)),
         visible.map(reinterpretBV))
-      case Module(p, n, t) => newBase.module(go(p), n, reinterpretType(t))
+      case HOPHole2(n, t, args, visible) => newBase.hopHole2(
+        n,
+        reinterpretType(t),
+        args.map(_.map(reinterpret0)),
+        visible.map(reinterpretBV)
+      )
+      case Module(p, n, t) => newBase.module(reinterpret0(p), n, reinterpretType(t))
       case lb: LetBinding => newBase.letin(
         reinterpretBV(lb.bound),
         defToRep(lb.value),
-        go(lb.body),
+        reinterpret0(lb.body),
         reinterpretType(lb.typ))
       case s: Symbol => extrudedHandle(s)
     }
@@ -258,7 +264,7 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
         Ascribe(transformRepAndDef0(s), t)
       case Module(p, n, t) =>
         Module(transformRepAndDef0(p), n, t)
-      case r @ ((_:Constant) | (_:Hole) | (_:Symbol) | (_:SplicedHole) | (_:HOPHole) | (_:NewObject) | (_:StaticModule)) => r
+      case r @ ((_:Constant) | (_:Hole) | (_:Symbol) | (_:SplicedHole) | (_:HOPHole) | (_:HOPHole2) | (_:NewObject) | (_:StaticModule)) => r
     })
   }
   
@@ -268,10 +274,39 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
   protected def extract(xtor: Rep, xtee: Rep): Option[Extract] = extractWithCtx(xtor, xtee)(ListMap.empty)
 
   def extractWithCtx(xtor: Rep, xtee: Rep)(implicit ctx: ListMap[BoundVal, Set[BoundVal]]): Option[Extract] = {
+    println(s"$xtor\n$xtee with $ctx\n\n")
     def reverse[A, B](m: Map[A, Set[B]]): Map[B, A] = for {
       (a, bs) <- m
       b <- bs
     } yield b -> a
+
+    def extractHOPHole(name: String, typ: TypeRep, argss: List[List[Rep]], visible: List[BoundVal]): Option[Extract] = {
+      type Func = List[List[BoundVal]] -> Rep
+      def emptyFunc(r: Rep) = List.empty[List[BoundVal]] -> r
+      def fargss(f: Func) = f._1
+      def fbody(f: Func) = f._2
+
+      val ctx0 = ctx.mapValues(_.head)
+      val invCtx = reverse(ctx)
+
+      bottomUpPartial(xtee) { case bv: BoundVal if visible contains invCtx.getOrElse(bv, bv) => return None }
+
+      def extendFunc(args: List[Rep], f: Func): Func = {
+        val args0 = args.map(bottomUpPartial(_) { case bv: BoundVal => ctx0.getOrElse(bv, bv) })
+        val xs = args.map(arg => bindVal("hopArg", arg.typ, Nil))
+        val transformation = (args0 zip xs).toMap
+        val body0 = bottomUp(fbody(f)) { case r => transformation.getOrElse(r, r) }
+        (xs :: fargss(f)) -> body0
+      }
+
+      for {
+        e1 <- typ extract (xtee.typ, Covariant)
+        f = argss.foldRight(emptyFunc(xtee))(extendFunc)
+        l = fargss(f).foldRight(fbody(f)) { case (args, body) => wrapConstruct(lambda(args, body)) }
+        e2 = repExtract(name -> l)
+        m <- merge(e1, e2)
+      } yield m
+    }
 
     xtor -> xtee match {
       case (lb1: LetBinding, lb2: LetBinding) =>
@@ -287,6 +322,13 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
          * For instance when:
          * xtor: val x0 = List(Hole(...): _*)
          * xtee: val x0 = Seq(1, 2, 3); val x1 = List(x0)
+         */
+
+        /* TODO problematic since it will ignore `val aX = 42`
+         * XTEE: `val a = readInt; val b = 42`
+         * XTOR: `val aX = 42; val bX = readInt`
+         * Could swap `a` and `b` if they are pure, and not linked (b references a)?
+         * Would be nice to have `x + y + z` match `y + x + z`
          */
         lazy val lookFurtherInXtee = extractWithCtx(lb1, lb2.body)
         // lazy val lookFurtherInXtor = extractWithCtx(lb1.body, lb2)
@@ -305,8 +347,7 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
 
       case (Hole(n, t), bv: BoundVal) =>
         val r = bv.owner match {
-          case lb: LetBinding =>
-            new LetBinding(lb.name, lb.bound, lb.value, lb.bound)
+          case lb: LetBinding => new LetBinding(lb.name, lb.bound, lb.value, lb.bound) // Why doesn't `lb.body = lb.bound; lb` work? 
           case _ => bv
         }
 
@@ -321,32 +362,10 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
           m <- merge(e, repExtract(n -> xtee))
         } yield m
 
-      case (h @ HOPHole(name, typ, argss, visible), _) =>
-        type Func = List[List[BoundVal]] -> Rep
-        def emptyFunc(r: Rep) = List.empty[List[BoundVal]] -> r
-        def fargss(f: Func) = f._1
-        def fbody(f: Func) = f._2
-
-        val ctx0 = ctx.mapValues(_.head)
-        val invCtx = reverse(ctx)
-
-        bottomUpPartial(xtee) { case bv: BoundVal if visible contains invCtx(bv) => return None }
-
-        def extendFunc(args: List[Rep], f: Func): Func = {
-          val args0 = args.map(bottomUpPartial(_) { case bv: BoundVal => ctx0.getOrElse(bv, bv) })
-          val xs = args.map(arg => bindVal("hopArg", arg.typ, Nil))
-          val transformation = (args0 zip xs).toMap
-          val body0 = bottomUp(fbody(f)) { case r => transformation.getOrElse(r, r) }
-          (xs :: fargss(f)) -> body0
-        }
-
-        for {
-          e1 <- typ extract (xtee.typ, Covariant)
-          f = argss.foldRight(emptyFunc(xtee))(extendFunc)
-          l = fargss(f).foldRight(fbody(f)) { case (args, body) => wrapConstruct(lambda(args, body)) }
-          e2 = repExtract(name -> l)
-          m <- merge(e1, e2)
-        } yield m
+      case (HOPHole(name, typ, argss, visible), _) => extractHOPHole(name, typ, argss, visible)
+      case (h@HOPHole2(name, typ, argss, visible), _) =>
+        //println(s"Hole $h -> $xtee\n\n")
+        extractHOPHole(name, typ, argss, visible)
 
       case (bv1: BoundVal, bv2: BoundVal) =>
         if (bv1 == bv2) Some(EmptyExtract)
@@ -471,7 +490,9 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
 
       def removeBVs(r: Rep, bvs: Set[BoundVal]): Rep = r match {
         case lb: LetBinding if bvs contains lb.bound => removeBVs(lb.body, bvs)
-        case lb: LetBinding => new LetBinding(lb.name, lb.bound, lb.value, removeBVs(lb.body, bvs))
+        case lb: LetBinding =>
+          lb.body = removeBVs(lb.body, bvs)
+          lb
         case _ => r
       }
 
@@ -504,6 +525,13 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
             newX <- mkCode(m)
           } yield newX
 
+        case (h2: HOPHole2, lb: LetBinding) =>
+          for {
+            e <- extractWithCtx(h2, lb)
+            m <- merge(e, ex)
+            newX <- mkCode(m)
+          } yield newX
+
         case (h: Hole, lb: LetBinding) =>
           for {
             e <- extractWithCtx(h, lb)
@@ -517,13 +545,14 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
           type LazyInlined[R] = R -> List[LetBinding]
           implicit def lazyInlined[R](r: R): LazyInlined[R] = r -> List.empty
           def run(lr: LazyInlined[Rep]): Rep = lr match {
-            case r -> lbs => lbs.foldLeft(r) { (acc, outerLB) => new LetBinding(outerLB.name, outerLB.bound, outerLB.value, acc) }
+            case r -> lbs => lbs.foldLeft(r) { (acc, outerLB) => outerLB.body = acc; outerLB }
           }
 
           // Puts `acc` inside `outer`.
           def surroundWithLB(acc: LazyInlined[Rep], outer: LazyInlined[Rep]): LazyInlined[Rep] = outer match {
             case (outerLB: LetBinding, lbs) =>
-              new LetBinding(outerLB.name, outerLB.bound, outerLB.value, run(acc)) -> lbs
+              outerLB.body = run(acc)
+              outerLB -> lbs
             case _ => throw new IllegalArgumentException
           }
 
@@ -578,13 +607,19 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
                   } yield MethodApp(self, ma.mtd, ma.targs, argss, ma.typ) -> (innerLBs ::: outerLBs)
 
                   case l: Lambda => rewriteRep(l.body) map {
-                    case body -> lbs => new Lambda(l.name, l.bound, l.boundType, body) -> lbs
+                    case body -> lbs =>
+                      l.body = body
+                      l -> lbs
                   }
                 }
               }
 
               // Puts the value back into its LB
-              rewrittenValue map { case value -> lbs => new LetBinding(lb.name, lb.bound, value, lb.body) -> lbs}
+              rewrittenValue map {
+                case value -> lbs =>
+                  lb.value = value
+                  lb -> lbs
+              }
             }
 
             def rewriteValue0(lb: LetBinding, acc: Option[List[LazyInlined[Rep]]]): Option[List[LazyInlined[Rep]]] = lb.body match {
@@ -626,6 +661,7 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
   }
 
   def extractValue(v1: Def, v2: Def)(implicit ctx: ListMap[BoundVal, Set[BoundVal]]) = {
+    //println(s"$v1\n$v2 with $ctx \n\n")
     (v1, v2) match {
       case (l1: Lambda, l2: Lambda) =>
         for {
@@ -674,12 +710,14 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
   def splicedHole(name: String, typ: TypeRep): Rep = SplicedHole(name, typ)
   def typeHole(name: String): TypeRep = DummyTypeRep
   def hopHole(name: String, typ: TypeRep, yes: List[List[BoundVal]], no: List[BoundVal]) = HOPHole(name, typ, yes, no)
-
+  override def hopHole2(name: String, typ: TypeRep, args: List[List[Rep]], visible: List[BoundVal]) =
+    HOPHole2(name, typ, args, visible filterNot (args.flatten contains _))
   def substitute(r: => Rep, defs: Map[String, Rep]): Rep =
     if (defs isEmpty) r |> inlineBlock
     else bottomUp(r) {
       case h @ Hole(n, _) => defs getOrElse(n, h)
       case h @ SplicedHole(n, _) => defs getOrElse(n, h)
+      case h: BoundVal => defs getOrElse(h.name, h) // TODO FVs in lambda become BVs too early, this should be changed!!
       case h => h
     } |> inlineBlock
 
