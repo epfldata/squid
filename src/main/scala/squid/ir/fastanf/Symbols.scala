@@ -3,10 +3,10 @@ package ir.fastanf
 
 import utils._
 
-class TypeSymbol {
+case class TypeSymbol(name: String) {
   
 }
 
-case class MethodSymbol(name: String) {
+case class MethodSymbol(typ: TypeSymbol, name: String) {
   
 }

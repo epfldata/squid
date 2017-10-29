@@ -299,6 +299,8 @@ self: Base =>
     res
   }
   
+  protected def mergeAll(as: Extract*): Option[Extract] = mergeAll(as.map(Some(_)))
+
   def mergeableReps(a: Rep, b: Rep): Boolean = a =~= b
   
   def mergeTypes(a: TypeRep, b: TypeRep): Option[TypeRep] =

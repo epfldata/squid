@@ -37,24 +37,38 @@ object Som {
 /** Trivial expression, that can be used as arguments */
 sealed abstract class Def extends DefOption with DefOrTypeRep with FlatSom[Def] {
   def fold[R](df: Def => R, typeRep: TypeRep => R): R = df(this)
+  def map(f: Def => Def): Def = f(this)
 }
 
 /** Expression that can be used as an argument or result; this includes let bindings. */
 sealed abstract class Rep extends RepOption with ArgumentList with FlatSom[Rep] {
   def typ: TypeRep
   def * = SplicedArgument(this)
+  def map(f: Rep => Rep) = f(this)
+  def isPure: Bool = true
 }
 
 final case class Constant(value: Any) extends Rep with CachedHashCode {
-  lazy val typ = value match { // TODO impl and rm lazy
-    case _ => lastWords(s"Not a valid constant: $value")
+  // TODO impl and rm lazy
+  lazy val typ = value match {
+    case _ => DummyTypeRep
   }
 }
 
+final case class Hole(name: String, typ: TypeRep) extends Rep with CachedHashCode
+
+final case class SplicedHole(name: String, typ: TypeRep) extends Rep with CachedHashCode
+
+final case class HOPHole(name: String, typ: TypeRep, args: List[List[Symbol]], visible: List[Symbol]) extends Rep with CachedHashCode
+
 // TODO intern objects
 final case class StaticModule(fullName: String) extends Rep with CachedHashCode {
-  lazy val typ = ???
+  val typ = DummyTypeRep
 }
+
+final case class Module(prefix: Rep, name: String, typ: TypeRep) extends Rep with CachedHashCode
+
+final case class NewObject(typ: TypeRep) extends Rep with CachedHashCode
 
 // TODO make sure this does not generate a field for `base`
 //  if it does, perhaps use `private[this] implicit val`?
@@ -112,26 +126,52 @@ sealed trait ArgumentLists extends CachedHashCode {
   def asSingleArg: Rep = this.asInstanceOf[Rep]
   
   def ~~: (as: ArgumentList): ArgumentLists = ArgumentListCons(as, this)
-  
-  def toArgssString = this match {
-    case NoArgumentLists => ""
-    case NoArguments => s"()"
-    case r: Rep => s"($r)"
-    case _ => ??? // TODO
+
+  def toArgssString: String = {
+    def withoutParen(args: ArgumentList): String = args match {
+      case NoArguments => ""
+      case r: Rep => s"$r"
+      case SplicedArgument(r) => s"$r: _*"
+      case ArgumentCons(h, t: Rep) => s"$h, ${withoutParen(t)}"
+      case ArgumentCons(h, NoArguments) => s"$h"
+      case ArgumentCons(h, t) => s"$h, ${withoutParen(t)}"
+    }
+
+    this match {
+      case NoArgumentLists => ""
+      case NoArguments => s"()"
+      case r: Rep => s"(${withoutParen(r)})"
+      case s: SplicedArgument => s"(${withoutParen(s)})"
+      case args: ArgumentCons => s"(${withoutParen(args)})"
+      case ArgumentListCons(h, t) => s"(${withoutParen(h)})${t.toArgssString}"
+    }
   }
+
+  def map(f: Rep => Rep): ArgumentLists
 }
+
 final case object NoArgumentLists extends ArgumentLists {
   override def ~~: (as: ArgumentList): ArgumentLists = as
+  def map(f: Rep => Rep) = this
 }
 sealed trait ArgumentList extends ArgumentLists {
   def ~: (a: Rep): ArgumentList = ArgumentCons(a, this)
+  def map(f: Rep => Rep): ArgumentList
 }
 final case object NoArguments extends ArgumentList {
   override def ~: (a: Rep): ArgumentList = a
+  def map(f: Rep => Rep) = this
 }
-final case class SplicedArgument(arg: Rep) extends ArgumentList // Q: can make extend AnyVal? requires making all upper traits universal)
-final case class ArgumentCons(head: Rep, tail: ArgumentLists) extends ArgumentList
-final case class ArgumentListCons(head: ArgumentList, tail: ArgumentLists) extends ArgumentLists
+// Q: can make extend AnyVal? requires making all upper traits universal)
+final case class SplicedArgument(arg: Rep) extends ArgumentList {
+  def map(f: Rep => Rep) = SplicedArgument(f(arg))
+}
+final case class ArgumentCons(head: Rep, tail: ArgumentList) extends ArgumentList {
+  def map(f: Rep => Rep) = ArgumentCons(f(head), tail map f)
+}
+final case class ArgumentListCons(head: ArgumentList, tail: ArgumentLists) extends ArgumentLists {
+  def map(f: Rep => Rep) = ArgumentListCons(head map f, tail map f)
+}
 
 
 trait Binding extends SymbolParent {
