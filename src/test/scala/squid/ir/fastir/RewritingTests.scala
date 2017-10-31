@@ -51,29 +51,43 @@ class RewritingTests extends MyFunSuiteBase(BasicTests.Embedding) {
     }
     assert(c =~= ir"val a = 42; a * 2")
   }
-
-  test("Rewriting simple expressions only once") {
-    val a = ir"println((50, 60))" rewrite {
-      case ir"($x:Int,$y:Int)" => ir"($y:Int,$x:Int)"
-      case ir"(${Const(n)}:Int)" => Const(n+1)
+  
+  test("Rewriting with dead-ends") {
+    val b = ir"Option(42).get; 20" rewrite {
+      case ir"Option(($n: Int)).get; 20" => n
     }
-    assert(a =~= ir"println((61,51))")
-  }
+    assert(b =~= ir"42")
+  } 
+  
+  //test("Rewriting with impures") {
+  //  val a = ir"val a = readInt; val b = readInt; (a + b) * 0.5" rewrite {
+  //    case ir"(($h1: Int) + ($h2: Int)) * 0.5" => dbg_ir"($h1 * $h2) + 42.0"
+  //  }
+  //  assert(a =~= ir"(readInt + readInt) + 42.0")
+  //}
 
-  test("Function Rewritings") {
-    val a = ir"(x: Int) => (x-5) * 32" rewrite {
-      case ir"($b: Int) * 32" => ir"$b"
-    }
-    assert(a =~= ir"(x: Int) => x - 5")
-
-    val b = ir"(x: Int) => (x-5) * 32" rewrite {
-      case ir"(x: Int) => ($b: Int) * 32" => dbg_ir"val x = 42; (p: Int) => $b + p"
-    } alsoApply println
-
-    println(ir"val u = 42; (v: Int) => (u - 5) + v")
-
-    assert(b =~= ir"val u = 42; (v: Int) => (u - 5) + v")
-  }
+  //test("Rewriting simple expressions only once") {
+  //  val a = ir"println((50, 60))" rewrite {
+  //    case ir"($x:Int,$y:Int)" => ir"($y:Int,$x:Int)"
+  //    case ir"(${Const(n)}:Int)" => Const(n+1)
+  //  }
+  //  assert(a =~= ir"println((61,51))")
+  //}
+  //
+  //test("Function Rewritings") {
+  //  val a = ir"(x: Int) => (x-5) * 32" rewrite {
+  //    case ir"($b: Int) * 32" => ir"$b"
+  //  }
+  //  assert(a =~= ir"(x: Int) => x - 5")
+  //
+  //  val b = ir"(x: Int) => (x-5) * 32" rewrite {
+  //    case ir"(x: Int) => ($b: Int) * 32" => dbg_ir"val x = 42; (p: Int) => $b + p"
+  //  } alsoApply println
+  //
+  //  println(ir"val u = 42; (v: Int) => (u - 5) + v")
+  //
+  //  assert(b =~= ir"val u = 42; (v: Int) => (u - 5) + v")
+  //}
 }
 
 object RewritingTests {

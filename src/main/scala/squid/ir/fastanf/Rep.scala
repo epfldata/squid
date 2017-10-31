@@ -40,11 +40,14 @@ sealed abstract class Def extends DefOption with DefOrTypeRep with FlatSom[Def] 
   def map(f: Def => Def): Def = f(this)
 }
 
+case object Unreachable extends Def {
+  override def typ = ???
+}
+
 /** Expression that can be used as an argument or result; this includes let bindings. */
 sealed abstract class Rep extends RepOption with ArgumentList with FlatSom[Rep] {
   def typ: TypeRep
   def * = SplicedArgument(this)
-  def isPure: Bool = true
   def argssMap(f: Rep => Rep) = f(this)
   def argssList: List[Rep] = this :: Nil
 }
@@ -113,6 +116,10 @@ final case class App(fun: Rep, arg: Rep)(implicit base: FastANF) extends Def wit
   def argss = arg
   lazy val typ = fun.typ.asFunType.map(_._2).getOrElse(lastWords(s"Application on a non-function type `${fun.typ}`"))
   doChecks
+}
+
+final case class DefHole(hole: Hole) extends Def {
+  def typ: TypeRep = hole.typ
 }
 
 /** To avoid useless wrappers/boxing in the most common cases, we have this scheme for argument lists:
