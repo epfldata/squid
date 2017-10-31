@@ -37,15 +37,15 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
   override final def wrapExtract(r: => Rep): Rep = wrap(super.wrapExtract(r), true)
   
   @inline final def currentScope = scopes.head
-
-  def toArgumentLists(argss0: List[ArgList]): ArgumentLists = {
-    val argss = argss0.map(_.map(this)(inlineBlock)) // TODO optimize: avoid reconstruction of the ArgList's
-
+  
+  def toArgumentLists(argss: List[ArgList]): ArgumentLists = {
+    // Note: some arguments may be let-bindings (ie: blocks), which is only possible if they are by-name arguments
+    
     def toArgumentList(args: Seq[Rep]): ArgumentList =
       args.foldRight(NoArguments: ArgumentList)(_ ~: _)
     def toArgumentListWithSpliced(args: Seq[Rep])(splicedArg: Rep) =
       args.foldRight(SplicedArgument(splicedArg): ArgumentList)(_ ~: _)
-
+    
     argss.foldRight(NoArgumentLists: ArgumentLists) {
       (args, acc) => args match {
         case Args(as @ _*) => toArgumentList(as) ~~: acc
@@ -54,7 +54,7 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
       }
     }
   }
-
+  
   def toListOfArgList(argss: ArgumentLists): List[ArgList] = {
     def toArgList(args: ArgumentList): List[Rep] -> Option[Rep] = args match {
       case NoArguments => Nil -> None
@@ -676,12 +676,12 @@ class FastANF extends InspectableBase with CurryEncoding with ScalaCore {
   def hopHole(name: String, typ: TypeRep, yes: List[List[BoundVal]], no: List[BoundVal]) = HOPHole(name, typ, yes, no)
 
   def substitute(r: => Rep, defs: Map[String, Rep]): Rep =
-    if (defs isEmpty) r
+    if (defs isEmpty) r |> inlineBlock
     else bottomUp(r) {
       case h @ Hole(n, _) => defs getOrElse(n, h)
       case h @ SplicedHole(n, _) => defs getOrElse(n, h)
       case h => h
-    }
+    } |> inlineBlock
 
 
   // * --- * --- * --- *  Implementations of `TypingBase` methods  * --- * --- * --- *

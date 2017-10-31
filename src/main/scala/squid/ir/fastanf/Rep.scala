@@ -87,7 +87,8 @@ trait MethodApp extends Def {
   def argss: ArgumentLists
   def typ: TypeRep
   protected def doChecks = // we can't execute the checks here right away, because of initialization order
-    (self :: argss.argssList).foreach(r => assert(!r.isInstanceOf[LetBinding], s"Illegal ANF argument/self: $r"))
+    //(self :: argss.argssList).foreach(r => assert(!r.isInstanceOf[LetBinding], s"Illegal ANF argument/self: $r"))
+    assert(!self.isInstanceOf[LetBinding], s"Illegal ANF self argument: $self") // ^ some arguments may be by-name!
   override def toString = s"$self.${mtd.name}${argss.toArgssString}"
 }
 object MethodApp {
