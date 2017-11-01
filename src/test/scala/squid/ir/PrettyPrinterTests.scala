@@ -26,7 +26,7 @@ class PrettyPrinterTests extends FunSuite {
     
   })
   
-  test("Basic") {/*Inter.debugFor*/{
+  test("Basic") {{
 
     val act0 = shallowAndDeep(b){ "ok".reverse }
     val exp0 =
@@ -385,6 +385,34 @@ class PrettyPrinterTests extends FunSuite {
         |x
       """.stripMargin.trim
 
+    val act13 = shallowAndDeep(b){ var x = 10; while (x > 0) { x = x - 1 }; x }
+    val exp13 =
+      """
+        |var x: scala.Int = 10
+        |while (x.>(0)) { x = x.-(1) }
+        |x
+      """.stripMargin.trim
+
+    val act14 = shallowAndDeep(b){
+      var x = 10
+      while (x > 0) {
+        var y = 10
+        while (y > 0) { y = y - 1 }
+        x = x - 1
+      }
+      x
+    }
+    val exp14 =
+      """
+        |var x: scala.Int = 10
+        |while (x.>(0)) {
+        |  var y: scala.Int = 10
+        |  while (y.>(0)) { y = y.-(1) }
+        |  x = x.-(1)
+        |}
+        |x
+      """.stripMargin.trim
+
     runSame(act0, exp0)
     runSame(act1, exp1)
     runSame(act2, exp2)
@@ -398,6 +426,8 @@ class PrettyPrinterTests extends FunSuite {
     runSame(act10, exp10)
     runSame(act11, exp11)
     runSame(act12, exp12)
+    runSame(act13, exp13)
+    runSame(act14, exp14)
   }
 
   test("Java") {{

@@ -127,7 +127,7 @@ class PrettyPrinter extends Base with TraceDebug {
         if (stmt_.contains("\n"))
           str.mkString("\n") + "\n" + (" " * offset + "}")
         else
-          str.mkString(" ")
+          str.mkString(" ") + " }"
       }
 
       case (SquidLib, "Imperative") => {
