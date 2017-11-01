@@ -10,32 +10,34 @@ class PrettyPrinter extends Base with TraceDebug {
 
   override type Rep = Int => String
   override type BoundVal = (String, TypeRep) // (name, type)
-  override type TypeRep  = TypSymbol
+  override type TypeRep = TypSymbol
   type TypSymbol = String
   type MtdSymbol = String
 
   def repEq(a: Rep, b: Rep): Boolean = a == b
+
   def typLeq(a: TypeRep, b: TypeRep): Boolean = a == b
 
   val indent = 2
+  val SquidLib = "squid.lib.package"
 
   private def removeBrackets(exp: String): String = exp.drop(1).dropRight(1)
 
   val escape = (str: String) => str
     .replace("\b", "\\b")
-    .replace("\n","\\n")
+    .replace("\n", "\\n")
     .replace("\t", "\\t")
-    .replace("\r","\\r")
+    .replace("\r", "\\r")
     .replace("\f", "\\f")
-    .replace("\"","\\\"")
-    .replace("\\","\\\\")
+    .replace("\"", "\\\"")
+    .replace("\\", "\\\\")
 
   override def bindVal(name: String, typ: TypeRep, annots: List[Annot]): BoundVal = (name, typ)
 
   override def readVal(v: BoundVal): Rep = offset => v._1 // get the name as string
 
   override def const(value: Any): Rep = offset => value match {
-    case _: Char   => s"""'$value'"""
+    case _: Char => s"""'$value'"""
     case v: String => s""""${escape(v)}""""
     case _ => value.toString
   }
@@ -69,54 +71,66 @@ class PrettyPrinter extends Base with TraceDebug {
   override def methodApp(self: Rep, mtd: MtdSymbol, targs: List[TypeRep], args: List[ArgList], tp: TypeRep): Rep = offset => {
 
     val argumentLists = args.map(_.reps) // Seq[Int => String]
-    val arguments     = argumentLists.map(seq => seq.map(arg => arg(offset)))
+    val arguments = argumentLists.map(seq => seq.map(arg => arg(offset)))
 
-    val tArgList =  if (targs.nonEmpty) s"[${targs.mkString(", ")}]" else ""
+    val tArgList = if (targs.nonEmpty) s"[${targs.mkString(", ")}]" else ""
 
     val mtdDecoded = sru.TermName(mtd).decodedName
 
     (self(offset), mtd) match {
-      case (squidLib, "IfThenElse") => {
-        val if_   = args.head.reps(0)(offset + indent)
+      case (SquidLib, "IfThenElse") => {
+        val if_ = args.head.reps(0)(offset + indent)
         val then_ = args.head.reps(1)(offset + indent)
         val else_ = args.head.reps(2)(offset + indent)
 
-        var str = Seq(
-            s"if ($if_) {",
-            s"$then_",
-            " " * offset + "}"
-          )
+        val ifStr   = s"if ($if_) {"
 
-        if (else_ != "()") str = str.dropRight(1) ++
-          Seq(
-            " " * offset + "} else {",
-            s"$else_",
-            " " * offset + "}"
-          )
+        val ifThenStr =
+          if (then_.contains("\n")) {
+            val s = ifStr :: List(s"$then_", " " * offset + "}")
+            s.mkString("\n")
+          }
+          else {
+            val s = ifStr :: List(s"$then_", "}")
+            s.mkString(" ")
+          }
 
-        if (!else_.contains("\n") && !then_.contains("\n"))
-          str.mkString(" ")
-        else
-          str.mkString("\n")
+        val ifThenElseStr =
+          if (else_ == "()") {
+            ifThenStr
+          }
+          else if (then_.contains("\n") && else_.contains("\n")) {
+            val s = List(ifThenStr + s" else {", s"$else_", " " * offset + "}")
+            s.mkString("\n")
+          }
+          else if (else_.contains("\n")) {
+            val s = ifThenStr :: List(" " * offset + s"else {", s"$else_", " " * offset + "}")
+            s.mkString("\n")
+          }
+          else {
+            val s = ifThenStr :: List(s"else {", s"$else_", "}")
+            s.mkString(" ")
+          }
+
+        ifThenElseStr
       }
 
-      case (squidLib, "While") => {
+      case (SquidLib, "While") => {
         val cond_ = args.head.reps(0)(offset + indent)
         val stmt_ = args.head.reps(1)(offset + indent)
 
         val str = Seq(
           s"while ($cond_) {",
-          s"$stmt_",
-          " " * offset + "}"
+          s"$stmt_"
         )
 
         if (stmt_.contains("\n"))
-          str.mkString("\n")
+          str.mkString("\n") + "\n" + (" " * offset + "}")
         else
           str.mkString(" ")
       }
 
-      case (squidLib, "Imperative") => {
+      case (SquidLib, "Imperative") => {
         val statements = args(0).reps.map(s => s(offset)).mkString("\n")
         val result = args(1).reps.head(offset)
 
@@ -163,13 +177,16 @@ class PrettyPrinter extends Base with TraceDebug {
   override def byName(arg: => Rep): Rep = offset => arg(offset)
 
   def uninterpretedType[A: sru.TypeTag]: TypeRep = sru.typeOf[A].typeSymbol.asType.fullName
+
   def moduleType(fullName: String): TypeRep = fullName
+
   def typeApp(self: TypeRep, typ: TypSymbol, targs: List[TypeRep]): TypeRep = typ
 
   def staticTypeApp(typ: TypSymbol, targs: List[TypeRep]): TypeRep =
     if (targs.nonEmpty) s"$typ[${targs.mkString(", ")}]" else typ
 
   def recordType(fields: List[(String, TypeRep)]): TypeRep = ???
+
   def constType(value: Any, underlying: TypeRep): TypeRep = ???
 
   object Const extends ConstAPI {
@@ -177,9 +194,13 @@ class PrettyPrinter extends Base with TraceDebug {
   }
 
   def hole(name: String, typ: TypeRep): Rep = offset => s"?$name"
+
   def hopHole(name: String, typ: TypeRep, yes: List[List[BoundVal]], no: List[BoundVal]): Rep = ???
+
   def splicedHole(name: String, typ: TypeRep): Rep = ???
-  def substitute(r: => Rep,defs: scala.collection.immutable.Map[String,Rep]): Rep = ???
+
+  def substitute(r: => Rep, defs: scala.collection.immutable.Map[String, Rep]): Rep = ???
+
   def typeHole(name: String): TypeRep = ???
 
   /** Parameter `static` should be true only for truly static methods (in the Java sense)

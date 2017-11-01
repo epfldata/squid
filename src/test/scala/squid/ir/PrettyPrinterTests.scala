@@ -303,6 +303,88 @@ class PrettyPrinterTests extends FunSuite {
         |A
       """.stripMargin.trim
 
+    val act10 = shallowAndDeep(b) {
+      var x = 5
+      if (5 * x > 0) {
+        x += 1
+        if (true) x += 1
+        else {
+          println(x)
+          println(x)
+        }
+      }
+      x
+    }
+    val exp10 =
+      """
+        |var x: scala.Int = 5
+        |if (5.*(x).>(0)) {
+        |  x = x.+(1)
+        |  if (true) { x = x.+(1) }
+        |  else {
+        |    scala.Predef.println(x)
+        |    scala.Predef.println(x)
+        |  }
+        |}
+        |x
+      """.stripMargin.trim
+
+    val act11 = shallowAndDeep(b) {
+      var x = 5
+      if (5 * x > 0) {
+        x += 1
+        if (true) {
+          x += 1
+          println(x)
+        }
+        else {
+          println(x)
+          println(x)
+        }
+      }
+      x
+    }
+    val exp11 =
+      """
+        |var x: scala.Int = 5
+        |if (5.*(x).>(0)) {
+        |  x = x.+(1)
+        |  if (true) {
+        |    x = x.+(1)
+        |    scala.Predef.println(x)
+        |  } else {
+        |    scala.Predef.println(x)
+        |    scala.Predef.println(x)
+        |  }
+        |}
+        |x
+      """.stripMargin.trim
+
+    val act12 = shallowAndDeep(b) {
+      var x = 5
+      if (5 * x > 0) {
+        x += 1
+        if (true) {
+          x += 1
+          println(x)
+        }
+        else { println(x) }
+      }
+      x
+    }
+    val exp12 =
+      """
+        |var x: scala.Int = 5
+        |if (5.*(x).>(0)) {
+        |  x = x.+(1)
+        |  if (true) {
+        |    x = x.+(1)
+        |    scala.Predef.println(x)
+        |  } else { scala.Predef.println(x) }
+        |}
+        |x
+      """.stripMargin.trim
+
     runSame(act0, exp0)
     runSame(act1, exp1)
     runSame(act2, exp2)
@@ -313,6 +395,9 @@ class PrettyPrinterTests extends FunSuite {
     runSame(act7, exp7)
     runSame(act8, exp8)
     runSame(act9, exp9)
+    runSame(act10, exp10)
+    runSame(act11, exp11)
+    runSame(act12, exp12)
   }
 
   test("Java") {{
