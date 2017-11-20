@@ -47,7 +47,7 @@ trait Effects {
       val argssEff = ma.argss.argssList.map(effect).fold(Pure)(_ |+| _)
       val mtdEff = mtdEffect(ma.mtd)
       selfEff |+| argssEff |+| mtdEff
-    case DefHole(_) => Pure
+    case DefHole(_) => Impure
     case Unreachable => Pure
   }
 
@@ -72,4 +72,5 @@ trait StandardEffects extends Effects {
   addPureMtd(MethodSymbol(TypeSymbol("scala.Option$"), "apply"))
   addPureMtd(MethodSymbol(TypeSymbol("scala.Option"), "get"))
   addPureMtd(MethodSymbol(TypeSymbol("scala.Tuple2$"), "apply"))
+  addPureMtd(MethodSymbol(TypeSymbol("squid.lib.package$"),"uncurried2"))
 }
