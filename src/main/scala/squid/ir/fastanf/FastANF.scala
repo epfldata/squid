@@ -491,6 +491,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
             case lb: LetBinding => 
               lb.body = lb.bound // Cut out the HOPHole
               changeRepBVs(bv)(ctx0.get)
+            case _ => ctx0.getOrElse(bv, bv)
           }
           case arg => changeRepBVs(arg)(ctx0.get)
         } // Traverse bottom up (parent, etc)
@@ -507,6 +508,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           f <- f
           _ = println(s"BEFORE $f")
           body0 <- transformations.foldLeft(Option(fbody(f))) {
+            case (Some(body), (bv: BoundVal, res)) => Some(changeRepBVs(body)(bv => Some(res)))
             case (Some(body), (xtor, res)) => rewriteRep0(xtor, body, _ => Some(res))(State.forRewriting(xtor, body), true)
             case _ => None
           }
@@ -645,7 +647,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
             es withCtx (lb1.bound, lb2.bound) withMatched lb2.bound
           }
           case (l1: Lambda, l2: Lambda) => extractDefs(l1, l2) map (_.withCtx(l1.bound, l2.bound))
-          case (_: UnboundSymbol, _: UnboundSymbol) => None
+          //case (_: UnboundSymbol, _: UnboundSymbol) => None
+          case _ => None
         }
 
       case (Constant(v1), Constant(v2)) if v1 == v2 => for {
