@@ -319,30 +319,32 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   protected def extract(xtor: Rep, xtee: Rep): Option[Extract] = {
     println(s"Extract($xtor, $xtee)")
     for {
-      es <- extractWithState(xtor, xtee)(State.forExtraction(xtor, xtee))
+      es <- extractWithState(xtor, xtee)(State.forExtraction(xtor, xtee)).fold(_ => None, Some(_))
       if es.mks.xtor.isEmpty && es.mks.xtee.isEmpty
     } yield es.ex
   }
 
   type Ctx = Map[BoundVal, Set[BoundVal]]
-  def updateWith(ctx: Ctx)(u: (BoundVal, BoundVal)): Ctx = u match {
-    case (k, v) => ctx + (k -> (ctx(k) + v))
+  def updateWith(m: Map[BoundVal, Set[BoundVal]])(u: (BoundVal, BoundVal)): Map[BoundVal, Set[BoundVal]] = u match {
+    case (k, v) => m + (k -> (m(k) + v))
   }
 
-  case class State(ex: Extract, ctx: Ctx, mks: Markers, matchedBVs: Set[BoundVal], makeUnreachable: Boolean) {
+  type ExtractState = Either[State, State]
+  case class State(ex: Extract, ctx: Ctx, mks: Markers, matchedBVs: Set[BoundVal], failedMatches: Map[BoundVal, Set[BoundVal]], makeUnreachable: Boolean) {
     def withNewExtract(newEx: Extract): State = copy(ex = newEx)
     def withCtx(newCtx: Ctx): State = copy(ctx = newCtx)
     def withCtx(p: (BoundVal, BoundVal)): State = copy(ctx = updateWith(ctx)(p))
     def updateMarkers(newMks: Markers): State = copy(mks = newMks)
     def withoutMarkers(xtorMk: BoundVal, xteeMk: BoundVal): State = copy(mks = Markers(mks.xtor - xtorMk, mks.xtee - xteeMk))
     def withMatched(bv: BoundVal): State = copy(matchedBVs = matchedBVs + bv)
+    def withFailed(p: (BoundVal, BoundVal)): State = copy(failedMatches = updateWith(failedMatches)(p))
   }
   object State {
     def forRewriting(xtor: Rep, xtee: Rep): State = State(xtor, xtee, true)
     def forExtraction(xtor: Rep, xtee: Rep): State = State(xtor, xtee, false)
     
     private def apply(xtor: Rep, xtee: Rep, makeUnreachable: Bool): State = 
-      State(EmptyExtract, ListMap.empty.withDefaultValue(Set.empty), Markers(xtor, xtee), Set.empty, makeUnreachable)
+      State(EmptyExtract, ListMap.empty.withDefaultValue(Set.empty), Markers(xtor, xtee), Set.empty, Map.empty.withDefaultValue(Set.empty), makeUnreachable)
   }
 
   sealed trait Marker
@@ -379,53 +381,9 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
       extractionStarts0(r, ListSet.empty)
     }
-    
-    //type Signature = List[Int]
-    //case class EndPoints(endPoints: ListSet[BoundVal], signatures: Map[BoundVal, Signature])
-    //def findEndPoints(r: Rep): EndPoints = {
-    //  case class Signature0(impurePos: Int, signature: List[Int])
-    //  case class EndPoints0(endPoints: ListSet[BoundVal], nodes: Map[BoundVal, Signature0], currImpurePos: Int)
-    //  
-    //  def update(acc: EndPoints0, lb: LetBinding): EndPoints0 = lb.value match {
-    //    case ma: MethodApp => 
-    //      val (newAcc, nodes) = (ma.self :: ma.argss.argssList).foldRight((acc, List.empty[Signature0])) {
-    //        case (bv: BoundVal, (acc, nodes)) => (acc.copy(endPoints = acc.endPoints - bv), acc.nodes(bv) :: nodes)
-    //        case (_, acc) => acc
-    //      }
-    //      
-    //      val impurePos = acc.currImpurePos
-    //      
-    //      val sig = for {
-    //        Signature0(childImpurePos, childSig) <- nodes
-    //        childSigComponent <- childSig
-    //        sigComponent = childSigComponent + (childImpurePos - impurePos)
-    //      } yield sigComponent 
-    //      
-    //      val sig0 = defEffect(ma) match {
-    //        case Pure => sig
-    //        case Impure => 0 :: sig
-    //      }
-    //      
-    //      newAcc.copy(
-    //        endPoints = newAcc.endPoints + lb.bound, 
-    //        nodes = acc.nodes + (lb.bound -> Signature0(impurePos, sig0)),
-    //        currImpurePos = if (isPure(lb)) newAcc.currImpurePos else newAcc.currImpurePos + 1)
-    //    case l: Lambda => ???
-    //    case DefHole(_) => acc
-    //    case Unreachable => acc
-    //  }
-    //  
-    //  def endPoints0(acc: EndPoints0, r: Rep): EndPoints0 = r match {
-    //    case lb: LetBinding => endPoints0(update(acc, lb), lb.body)
-    //    case _ => acc
-    //  }
-    //  
-    //  val res = endPoints0(EndPoints0(ListSet.empty, Map.empty, 0), r)
-    //  EndPoints(res.endPoints, res.nodes mapValues (_.signature))
-    //}
   }
 
-  def extractWithState(xtor: Rep, xtee: Rep)(implicit es: State): Option[State] = {
+  def extractWithState(xtor: Rep, xtee: Rep)(implicit es: State): ExtractState = {
 
     //println(s"$xtor\n$xtee with $ctx\n\n")
     def reverse[A, B](m: Map[A, Set[B]]): Map[B, A] = for {
@@ -433,7 +391,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       b <- bs
     } yield b -> a
 
-    def extractHOPHole(name: String, typ: TypeRep, argss: List[List[Rep]], visible: List[BoundVal])(implicit es: State): Option[State] = {
+    def extractHOPHole(name: String, typ: TypeRep, argss: List[List[Rep]], visible: List[BoundVal])(implicit es: State): ExtractState = {
       println("EXTRACTINGHOPHOLE")
       type Func = List[List[BoundVal]] -> Rep
       def emptyFunc(r: Rep) = List.empty[List[BoundVal]] -> r
@@ -444,7 +402,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       val invCtx = reverse(es.ctx)
 
       println(s"INVCTX: $invCtx")
-      //bottomUpPartial(xtee) { case bv: BoundVal if visible contains invCtx.getOrElse(bv, bv) => return None }
+      println(s"VISIBLE: $visible")
+      bottomUpPartial(xtee) { case bv: BoundVal if visible contains invCtx.getOrElse(bv, bv) => return Left(es) }
 
       def changeRepBVs(r: Rep)(f: BoundVal => Option[BoundVal]): Rep = r match {
         case bv: BoundVal =>
@@ -518,31 +477,38 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         
         after
       }
-
-      for {
+      
+      (for {
         e1 <- typ extract (xtee.typ, Covariant)
         f <- argss.foldRight(Option(emptyFunc(xtee)))(extendFunc)
         _ = println(s"F: $f")
         l = fargss(f).foldRight(fbody(f)) { case (args, body) => wrapConstruct(lambda(args, body)) }
         e2 = repExtract(name -> l)
         m <- mergeAll(e1, e2, es.ex)
-      } yield es withNewExtract m
+      } yield m)
+        .fold[ExtractState](Left(es))(ex => Right(es withNewExtract ex))
     }
 
-    def extractLBs(lb1: LetBinding, lb2: LetBinding)(implicit es: State): Option[State] = (effect(lb1.value), effect(lb2.value)) match {
-      case (Impure, Impure) => for {
-        es1 <- extractDefs(lb1.value, lb2.value)
-        _ = if (es1.makeUnreachable) lb2.value = Unreachable
-        c <- extractWithState(lb1.body, lb2.body)(es1 withCtx (lb1.bound, lb2.bound) withMatched lb2.bound)
-      } yield c
+    def extractLBs(lb1: LetBinding, lb2: LetBinding)(implicit es: State): ExtractState = (effect(lb1.value), effect(lb2.value)) match {
+      case (Impure, Impure) =>
+        extractDefs(lb1.value, lb2.value).right flatMap { es => 
+            if (es.makeUnreachable) lb2.value = Unreachable
+            extractWithState(lb1.body, lb2.body)(es withCtx (lb1.bound, lb2.bound) withMatched lb2.bound)
+        }
+        
+        //for {
+        //  es1 <- extractDefs(lb1.value, lb2.value).right
+        //  _ = if (es1.makeUnreachable) lb2.value = Unreachable
+        //  es2 <- extractWithState(lb1.body, lb2.body)(es1 withCtx (lb1.bound, lb2.bound) withMatched lb2.bound).right
+        //} yield es2
         
       case (Pure, Pure) => (es.mks.xtorMarker(lb1.bound), es.mks.xteeMarker(lb2.bound)) match {
         case (EndPoint, EndPoint) =>
           extractWithState(lb1.bound, lb2.bound) match {
-            case Some(es0) =>
-              if (es0.makeUnreachable) lb2.value = Unreachable
+            case Right(es0) =>
+              if (es.makeUnreachable) lb2.value = Unreachable
               extractWithState(lb1.body, lb2.body)(es0 withoutMarkers(lb1.bound, lb2.bound) withMatched lb2.bound)
-            case None => extractWithState(lb1, lb2.body)
+            case Left(es0) => extractWithState(lb1, lb2.body)(es0)
           }
         case (EndPoint, NonEndPoint) => extractWithState(lb1, lb2.body)
         case (NonEndPoint, EndPoint) => extractWithState(lb1.body, lb2)
@@ -553,7 +519,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case (Pure, Impure) => extractWithState(lb1.body, lb2)
     }
 
-    def extractHole(h: Hole, r: Rep)(implicit es: State): Option[State] = {
+    def extractHole(h: Hole, r: Rep)(implicit es: State): ExtractState = {
       println(s"ExtractHole: $h --> $r")
       
       (h, r) match {
@@ -563,26 +529,44 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           //  case _ => bv
           //}
 
-          for {
-            e <- t extract (xtee.typ, Covariant)
-            m <- mergeAll(e, es.ex, repExtract(n -> bv))
-          } yield es withNewExtract m withMatched bv
+          (t extract (xtee.typ, Covariant))
+            .flatMap(mergeAll(_, es.ex, repExtract(n -> bv)))
+            .fold[ExtractState](Left(es))(m => Right(es withNewExtract m withMatched bv))
+          
+          //for {
+          //  e <- t extract (xtee.typ, Covariant)
+          //  m <- mergeAll(e, es.ex, repExtract(n -> bv))
+          //} yield es withNewExtract m withMatched bv
 
-        case (Hole(n, t), lb: LetBinding) => for {
-          e <- t extract (lb.typ, Covariant)
-          newLB = wrapConstruct(letbind(lb.value))// flag
-          _ = if (es.makeUnreachable) lb.value = Unreachable
-          m <- mergeAll(e, es.ex, repExtract(n -> newLB))
-        } yield es withNewExtract m withMatched lb.bound
+        case (Hole(n, t), lb: LetBinding) => 
+          (t extract (lb.typ, Covariant))
+            .flatMap { e =>
+              val newLB = wrapConstruct(letbind(lb.value))
+              if (es.makeUnreachable) lb.value = Unreachable
+              mergeAll(e, es.ex, repExtract(n -> newLB))
+            }
+            .fold[ExtractState](Left(es))(m => Right(es withNewExtract m withMatched lb.bound))
+          
+        //  for {
+        //  e <- t extract (lb.typ, Covariant)
+        //  newLB = wrapConstruct(letbind(lb.value))// flag
+        //  _ = if (es.makeUnreachable) lb.value = Unreachable
+        //  m <- mergeAll(e, es.ex, repExtract(n -> newLB))
+        //} yield es withNewExtract m withMatched lb.bound
 
-        case (Hole(n, t), _) => for {
-          e <- t extract (xtee.typ, Covariant)
-          m <- mergeAll(e, es.ex, repExtract(n -> xtee))
-        } yield es withNewExtract m
+        case (Hole(n, t), _) => 
+          (t extract (xtee.typ, Covariant))
+            .flatMap(mergeAll(_, es.ex, repExtract(n -> xtee)))
+            .fold[ExtractState](Left(es))(m => Right(es withNewExtract m))
+          
+        //  for {
+        //  e <- t extract (xtee.typ, Covariant)
+        //  m <- mergeAll(e, es.ex, repExtract(n -> xtee))
+        //} yield es withNewExtract m
       }
     }
 
-    def extractInside(bv: BoundVal, d: Def)(implicit es: State): Option[State] = {
+    def extractInside(bv: BoundVal, d: Def)(implicit es: State): ExtractState = {
       def bvs(d: Def): List[BoundVal] = d match {
         case ma: MethodApp => (ma.self :: ma.argss.argssList).foldRight(List.empty[BoundVal]) {
           case (bv: BoundVal, acc) => bv :: acc
@@ -591,8 +575,10 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         case _ => Nil
       }
 
-      bvs(d).foldLeft(Option.empty[State]) { case (acc, bv2) =>
-        acc orElse extractWithState(bv, bv2)(es)
+      bvs(d).foldLeft[ExtractState](Left(es)) { case (acc, bv2) => for {
+        _ <- acc.left
+        es1 <- extractWithState(bv, bv2)(es).left
+      } yield es1
       } alsoApply(s => println(s"FOO: $s"))
     }
 
@@ -601,74 +587,80 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     println(s"extractWithState: $xtor\n$xtee\n")
     xtor -> xtee match {
       case (h: Hole, lb: LetBinding) => contentsOf(h) match {
-        case Some(lb1: LetBinding) if lb1.value == lb.value => Some(es)
-        case Some(_) => None
+        case Some(lb1: LetBinding) if lb1.value == lb.value => Right(es)
+        case Some(_) => Left(es)
         case None => extractHole(h, xtee)
       }
 
       case (h: Hole, _) => contentsOf(h) match {
-        case Some(`xtee`) => Some(es)
-        case Some(_) => None
+        case Some(`xtee`) => Right(es)
+        case Some(_) => Left(es)
         case None => extractHole(h, xtee)
       }
-        
+
       case (h@HOPHole2(name, typ, argss, visible), _) =>
         //println(s"Hole $h -> $xtee\n\n")
         extractHOPHole(name, typ, argss, visible)
-     
+
       case (lb1: LetBinding, lb2: LetBinding) => extractLBs(lb1, lb2)
-        
+
       // Stop at markers?  
       case (lb: LetBinding, _: Rep) => extractWithState(lb.body, xtee)
-        
-      case (bv: BoundVal, lb: LetBinding) =>
-        extractWithState(bv, lb.bound) orElse extractInside(bv, lb.value) orElse extractWithState(bv, lb.body)
-        
+
+      case (bv: BoundVal, lb: LetBinding) => for {
+        es1 <- extractWithState(bv, lb.bound).left
+        es2 <- extractInside(bv, lb.value)(es1).left
+        es3 <- extractWithState(bv, lb.body)(es2).left
+      } yield es3
+
       case (_: Rep, lb: LetBinding) if lb.value == Unreachable => extractWithState(xtor, lb.body)
 
       case (_, Ascribe(s, _)) => extractWithState(xtor, s)
-      
-      case (Ascribe(s, t) , _) =>
-        for {
-          e1 <- t extract (xtee.typ, Covariant)
-          m <- merge(e1, es.ex)
-          es2 <- extractWithState(s, xtee)(es withNewExtract m)
-        } yield es2
+
+      case (Ascribe(s, t), _) => for {
+        es1 <- (t extract(xtee.typ, Covariant))
+          .flatMap(merge(_, es.ex))
+          .fold[ExtractState](Left(es))(ex => Right(es withNewExtract ex)).right
+        es2 <- extractWithState(s, xtee)(es1).right
+      } yield es2
 
       case (HOPHole(name, typ, argss, visible), _) => extractHOPHole(name, typ, argss, visible)
 
       case (bv1: BoundVal, bv2: BoundVal) =>
         println(s"EXTRACTIONSTATE IN BV: $es")
         println(s"OWNERS: ${bv1.owner} -- ${bv2.owner}")
-        if (bv1 == bv2 || (es.ctx(bv1) contains bv2)) Some(es)
+        if (bv1 == bv2 || (es.ctx(bv1) contains bv2)) Right(es)
+        else if (es.failedMatches(bv1) contains bv2) Left(es)
         else (bv1.owner, bv2.owner) match {
-          case (lb1: LetBinding, lb2: LetBinding) => extractDefs(lb1.value, lb2.value) map { es =>
-            if (es.makeUnreachable) lb2.value = Unreachable
-            es withCtx (lb1.bound, lb2.bound) withMatched lb2.bound
+          case (lb1: LetBinding, lb2: LetBinding) => extractDefs(lb1.value, lb2.value) match {
+            case Right(es0) =>
+              if (es0.makeUnreachable) lb2.value = Unreachable
+              Right(es0 withCtx (lb1.bound, lb2.bound) withMatched lb2.bound)
+            case Left(es0) => Left(es0 withFailed lb1.bound -> lb2.bound)
           }
-          case (l1: Lambda, l2: Lambda) => extractDefs(l1, l2) map (_.withCtx(l1.bound, l2.bound))
-          //case (_: UnboundSymbol, _: UnboundSymbol) => None
-          case _ => None
+          case (l1: Lambda, l2: Lambda) => extractDefs(l1, l2).right map (_ withCtx l1.bound -> l2.bound)
+          case _ => Left(es)
         }
 
-      case (Constant(v1), Constant(v2)) if v1 == v2 => for {
+      case (Constant(v1), Constant(v2)) if v1 == v2 => (for {
         eTyp <- xtor.typ extract (xtee.typ, Covariant)
         m <- merge(eTyp, es.ex)
-      } yield es withNewExtract m
-
+      } yield es withNewExtract m)
+          .fold[ExtractState](Left(es))(Right(_))
 
       // Assuming if they have the same name the type is the same
-      case (StaticModule(fn1), StaticModule(fn2)) if fn1 == fn2 => Some(es)
+      case (StaticModule(fn1), StaticModule(fn2)) if fn1 == fn2 => Right(es)
 
       // Assuming if they have the same name and prefix the type is the same
       case (Module(p1, n1, _), Module(p2, n2, _)) if n1 == n2 => extractWithState(p1, p2)
 
-      case (NewObject(t1), NewObject(t2)) => for {
+      case (NewObject(t1), NewObject(t2)) => (for {
         eTyp <- t1 extract (t2, Covariant)
         m <- merge(eTyp, es.ex)
-      } yield es withNewExtract m
+      } yield es withNewExtract m)
+          .fold[ExtractState](Left(es))(Right(_))
 
-      case _ => None
+      case _ => Left(es)
     }
   } alsoApply (res => println(s"Extract: $res"))
   
@@ -695,12 +687,12 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     rewriteRep0(xtor, xtee, code)(State.forRewriting(xtor, xtee), false)
 
   def rewriteRep0(xtor: Rep, xtee: Rep, code: Extract => Option[Rep])(es: State, internalRec: Boolean): Option[Rep] = {
-    def rewriteRepWithState(xtor: Rep, xtee: Rep)(implicit es: State): Option[State] = {
+    def rewriteRepWithState(xtor: Rep, xtee: Rep)(implicit es: State): ExtractState = {
       println(s"rewriteRepWithState(\n\t$xtor\n\t$xtee)($es)")
 
       (xtor, xtee) match {
         case (lb1: LetBinding, lb2: LetBinding) if !internalRec => ((effect(lb1), es.mks.xtorMarker(lb1.bound)), (effect(lb2), es.mks.xteeMarker(lb2.bound))) match {
-          case ((Pure, NonEndPoint), (Pure, NonEndPoint)) => None
+          case ((Pure, NonEndPoint), (Pure, NonEndPoint)) => Left(es)
           case _ => extractWithState(lb1, lb2) // TODO With unreachable handling TODO why did I mean?
         }
         case _ => extractWithState(xtor, xtee)
@@ -729,58 +721,77 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         if check(es.matchedBVs)(cleanup(code))
       } yield code
     }
-
-    rewriteRepWithState(xtor, xtee)(es) flatMap genCode alsoApply (c => println(s"Code: $c"))
+    
+    rewriteRepWithState(xtor, xtee)(es) match {
+      case Right(es) => genCode(es)
+      case Left(_) => None
+    }
+    
+    // flatMap genCode alsoApply (c => println(s"Code: $c"))
   }
   
-  def extractDefs(v1: Def, v2: Def)(implicit es: State): Option[State] = {
+  def extractDefs(v1: Def, v2: Def)(implicit es: State): ExtractState = {
     println(s"VALUES: \n\t$v1\n\t$v2 with $es \n\n")
     (v1, v2) match {
       // Has already been matched...
-      case (_, Unreachable) => None
+      case (_, Unreachable) => Left(es)
       //case (Unreachable, _) => Some(es)
         
       case (l1: Lambda, l2: Lambda) =>
         for {
-          e1 <- l1.boundType extract (l2.boundType, Covariant)
-          m1 <- merge(e1, es.ex)
-          es2 <- extractWithState(l1.body, l2.body)(es withNewExtract m1 withCtx l1.bound -> l2.bound)
-          m2 <- merge(es2.ex, m1)
-        } yield es2 withNewExtract m2
+          es1 <- (l1.boundType extract (l2.boundType, Covariant))
+            .flatMap(merge(_, es.ex))
+            .fold[ExtractState](Left(es))(ex => Right(es withNewExtract ex)).right
+          es2 <- extractWithState(l1.body, l2.body)(es1 withCtx l1.bound -> l2.bound).right
+        } yield es2
 
       case (ma1: MethodApp, ma2: MethodApp) if ma1.mtd == ma2.mtd =>
-        lazy val targExtract = mergeAll(for {
-                                          (e1, e2) <- ma1.targs zip ma2.targs
-                                        } yield e1 extract (e2, Invariant)) // TODO Invariant? Depends on its positions...
+        def targExtract(es: State): ExtractState = mergeAll(for {
+          (e1, e2) <- ma1.targs zip ma2.targs
+        } yield e1 extract(e2, Invariant))
+          .flatMap(merge(_, es.ex))
+          .fold[ExtractState](Left(es))(ex => Right(es withNewExtract ex))
 
-        def extractArgss(argss1: ArgumentLists, argss2: ArgumentLists)(implicit es: State): Option[Extract] = {
-          def extractArgss0(argss1: ArgumentLists, argss2: ArgumentLists, acc: List[Rep])(implicit es: State): Option[Extract] = (argss1, argss2) match {
-            case (ArgumentListCons(h1, t1), ArgumentListCons(h2, t2)) => mergeOpt(extractArgss0(h1, h2, acc), extractArgss0(t1, t2, acc))
-            case (ArgumentCons(h1, t1), ArgumentCons(h2, t2)) => mergeOpt(extractArgss0(h1, h2, acc), extractArgss0(t1, t2, acc))
-            case (SplicedArgument(arg1), SplicedArgument(arg2)) => extractWithState(arg1, arg2)(es) map (_.ex)
+        def extractArgss(argss1: ArgumentLists, argss2: ArgumentLists)(implicit es: State): ExtractState = {
+          def extractArgss0(argss1: ArgumentLists, argss2: ArgumentLists, acc: List[Rep])(implicit es: State): ExtractState = (argss1, argss2) match {
+            case (ArgumentListCons(h1, t1), ArgumentListCons(h2, t2)) => for {
+              es0 <- extractArgss0(h1, h2, acc).right
+              es1 <- extractArgss0(t1, t2, acc)(es0).right
+            } yield es1
+
+            case (ArgumentCons(h1, t1), ArgumentCons(h2, t2)) => for {
+              es0 <- extractArgss0(h1, h2, acc).right
+              es1 <- extractArgss0(t1, t2, acc)(es0).right
+            } yield es1
+
+            case (SplicedArgument(arg1), SplicedArgument(arg2)) => extractWithState(arg1, arg2)
             case (sa: SplicedArgument, ArgumentCons(h, t)) => extractArgss0(sa, t, h :: acc)
             case (sa: SplicedArgument, r: Rep) => extractArgss0(sa, NoArguments, r :: acc)
-            case (SplicedArgument(arg), NoArguments) => spliceExtract(arg, Args(acc.reverse: _*)) // Reverses list...
-            case (r1: Rep, r2: Rep) => extractWithState(r1, r2)(es) map (_.ex)
-            case (NoArguments, NoArguments) => Some(es.ex)
-            case (NoArgumentLists, NoArgumentLists) => Some(es.ex)
-            case _ => None
+            case (SplicedArgument(arg), NoArguments) => spliceExtract(arg, Args(acc.reverse: _*)) match {
+              case Some(ex) => merge(ex, es.ex).fold[ExtractState](Left(es))(ex => Right(es withNewExtract ex))
+              case None => Left(es)
+            }
+            case (r1: Rep, r2: Rep) => extractWithState(r1, r2)
+            case (NoArguments, NoArguments) => Right(es)
+            case (NoArgumentLists, NoArgumentLists) => Right(es)
+            case _ => Left(es)
           }
 
           extractArgss0(argss1, argss2, Nil)
         }
 
         for {
-          es1 <- extractWithState(ma1.self, ma2.self)(es)
-          e2 <- targExtract
-          e3 <- extractArgss(ma1.argss, ma2.argss)(es1)
-          e4 <- ma1.typ extract (ma2.typ, Covariant)
-          m <- mergeAll(e2, e3, e4)
-        } yield es withNewExtract m
+          es1 <- extractWithState(ma1.self, ma2.self)(es).right
+          es2 <- targExtract(es1).right
+          es3 <- extractArgss(ma1.argss, ma2.argss)(es2).right
+          es4 <- (ma1.typ extract (ma2.typ, Covariant))
+            .flatMap(merge(_, es3.ex))
+            .fold[ExtractState](Left(es))(ex => Right(es3 withNewExtract ex)).right
+        } yield es4
 
       case (DefHole(h), _) => extractWithState(h, wrapConstruct(letbind(v2)))
 
-      case _ => None
+      case _ => Left(es)
     }
   }
   
