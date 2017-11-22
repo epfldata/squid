@@ -133,6 +133,15 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     println(s"letin: $value --> $bound")
     value match {
       case s: Symbol =>
+        s.owner |>? {
+          case lb: RebindableBinding =>
+            //println(s"LETIN $lb ")
+            lb.name = bound.name
+        }
+        s.owner |>? {
+          case lb: LetBinding =>
+            lb.userDefined = true
+        }
         withSubs(bound, value)(body)
 
       //s.owner |>? {
@@ -330,6 +339,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   }
 
   type ExtractState = Either[State, State]
+  implicit def rightBias[A, B](e: Either[A, B]): Either.RightProjection[A,B] = e.right
+  
   case class State(ex: Extract, ctx: Ctx, mks: Markers, matchedBVs: Set[BoundVal], failedMatches: Map[BoundVal, Set[BoundVal]], makeUnreachable: Boolean) {
     def withNewExtract(newEx: Extract): State = copy(ex = newEx)
     def withCtx(newCtx: Ctx): State = copy(ctx = newCtx)
@@ -339,7 +350,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     def withMatched(bv: BoundVal): State = copy(matchedBVs = matchedBVs + bv)
     def withFailed(p: (BoundVal, BoundVal)): State = copy(failedMatches = updateWith(failedMatches)(p))
 
-    def updateExtract(e: Option[Extract]*)(implicit default: State): ExtractState = {
+    def updateExtractWith(e: Option[Extract]*)(implicit default: State): ExtractState = {
       mergeAll(Some(ex) +: e).fold[ExtractState](Left(default))(ex => Right(this withNewExtract ex))
     }
   }
@@ -426,6 +437,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         
         case _ => r
       }
+      
       def changeDefBVs(d: Def)(f: BoundVal => Option[BoundVal]): Def = d match {
         case ma: MethodApp =>
           MethodApp(
@@ -471,7 +483,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           f <- f
           _ = println(s"BEFORE $f")
           body0 <- transformations.foldLeft(Option(fbody(f))) {
-            case (Some(body), (bv: BoundVal, res)) => Some(changeRepBVs(body)(bv => Some(res)))
+            case (Some(body), (bv: BoundVal, res)) => Some(changeRepBVs(body)(bv0 => Some(if (bv == bv0) res else bv0)))
             case (Some(body), (xtor, res)) => rewriteRep0(xtor, body, _ => Some(res))(State.forRewriting(xtor, body), true)
             case _ => None
           }
@@ -482,40 +494,37 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         after
       }
       
-      es.updateExtract(for {
-        e1 <- typ extract (xtee.typ, Covariant)
-        f <- argss.foldRight(Option(emptyFunc(xtee)))(extendFunc)
-        _ = println(s"F: $f")
-        l = fargss(f).foldRight(fbody(f)) { case (args, body) => wrapConstruct(lambda(args, body)) }
-        e2 = repExtract(name -> l)
-        m <- mergeAll(e1, e2, es.ex)
-      } yield m)
+      es.updateExtractWith(
+        typ extract (xtee.typ, Covariant),
+        for {
+          f <- argss.foldRight(Option(emptyFunc(xtee)))(extendFunc)
+          _ = println(s"F: $f")
+          l = fargss(f).foldRight(fbody(f)) { case (args, body) => wrapConstruct(lambda(args, body)) }
+        } yield repExtract(name -> l)
+      )
     }
 
     def extractLBs(lb1: LetBinding, lb2: LetBinding)(implicit es: State): ExtractState = (effect(lb1.value), effect(lb2.value)) match {
       case (Impure, Impure) =>
-        extractDefs(lb1.value, lb2.value).right flatMap { es => 
+        extractDefs(lb1.value, lb2.value) match {
+          case Right(es) =>
             if (es.makeUnreachable) lb2.value = Unreachable
-            extractWithState(lb1.body, lb2.body)(es withCtx (lb1.bound, lb2.bound) withMatched lb2.bound)
+            extractWithState(lb1.body, lb2.body)(es withCtx lb1.bound -> lb2.bound withMatched lb2.bound)
+          case Left(es) => Left(es withFailed lb1.bound -> lb2.bound)
         }
-        
-        //for {
-        //  es1 <- extractDefs(lb1.value, lb2.value).right
-        //  _ = if (es1.makeUnreachable) lb2.value = Unreachable
-        //  es2 <- extractWithState(lb1.body, lb2.body)(es1 withCtx (lb1.bound, lb2.bound) withMatched lb2.bound).right
-        //} yield es2
         
       case (Pure, Pure) => (es.mks.xtorMarker(lb1.bound), es.mks.xteeMarker(lb2.bound)) match {
         case (EndPoint, EndPoint) =>
           extractWithState(lb1.bound, lb2.bound) match {
-            case Right(es0) =>
+            case Right(es) =>
               if (es.makeUnreachable) lb2.value = Unreachable
-              extractWithState(lb1.body, lb2.body)(es0 withoutMarkers(lb1.bound, lb2.bound) withMatched lb2.bound)
-            case Left(es0) => extractWithState(lb1, lb2.body)(es0)
+              extractWithState(lb1.body, lb2.body)(es withoutMarkers(lb1.bound, lb2.bound) withMatched lb2.bound)
+            case Left(es) => extractWithState(lb1, lb2.body)(es)
           }
         case (EndPoint, NonEndPoint) => extractWithState(lb1, lb2.body)
-        case (NonEndPoint, EndPoint) => extractWithState(lb1.body, lb2)
-        case (NonEndPoint, NonEndPoint) => extractWithState(lb1.body, lb2)
+        case (NonEndPoint, _) => extractWithState(lb1.body, lb2)
+        //case (NonEndPoint, EndPoint) => extractWithState(lb1.body, lb2)
+        //case (NonEndPoint, NonEndPoint) => extractWithState(lb1.body, lb2)
       }
 
       case (Impure, Pure) => extractWithState(lb1, lb2.body)
@@ -531,19 +540,19 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           //  case lb: LetBinding => new LetBinding(lb.name, lb.bound, lb.value, lb.bound) // flag
           //  case _ => bv
           //}
-          es.updateExtract(
+          es.updateExtractWith(
             t extract (xtee.typ, Covariant), 
             Some(repExtract(n -> bv))
-          ).right.map(_ withMatched bv)
+          ).map(_ withMatched bv)
 
         case (Hole(n, t), lb: LetBinding) =>
-          es.updateExtract(
+          es.updateExtractWith(
             t extract(lb.typ, Covariant),
             Some(repExtract(n -> wrapConstruct(letbind(lb.value))))
-          ).right.map(_ withMatched lb.bound)
+          ).map(_ withMatched lb.bound)
 
         case (Hole(n, t), _) =>
-          es.updateExtract(
+          es.updateExtractWith(
             t extract(xtee.typ, Covariant),
             Some(repExtract(n -> xtee))
           )
@@ -559,11 +568,12 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         case _ => Nil
       }
 
-      bvs(d).foldLeft[ExtractState](Left(es)) { case (acc, bv2) => for {
-        _ <- acc.left
-        es1 <- extractWithState(bv, bv2)(es).left
-      } yield es1
-      } alsoApply(s => println(s"FOO: $s"))
+      bvs(d).foldLeft[ExtractState](Left(es)) { case (acc, bv2) => 
+        for {
+          es1 <- acc.left
+          es2 <- extractWithState(bv, bv2)(es1).left
+        } yield es2
+      } alsoApply (s => println(s"FOO: $s"))
     }
 
     def contentsOf(h: Hole)(implicit es: State): Option[Rep] = es.ex._1 get h.name // TODO check in ex._3, return Option[List[Rep]]
@@ -582,9 +592,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         case None => extractHole(h, xtee)
       }
 
-      case (h@HOPHole2(name, typ, argss, visible), _) =>
-        //println(s"Hole $h -> $xtee\n\n")
-        extractHOPHole(name, typ, argss, visible)
+      case (HOPHole2(name, typ, argss, visible), _) => extractHOPHole(name, typ, argss, visible)
 
       case (lb1: LetBinding, lb2: LetBinding) => extractLBs(lb1, lb2)
 
@@ -602,8 +610,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case (_, Ascribe(s, _)) => extractWithState(xtor, s)
 
       case (Ascribe(s, t), _) => for {
-        es1 <- es.updateExtract(t extract(xtee.typ, Covariant)).right
-        es2 <- extractWithState(s, xtee)(es1).right
+        es1 <- es.updateExtractWith(t extract(xtee.typ, Covariant))
+        es2 <- extractWithState(s, xtee)(es1)
       } yield es2
 
       case (HOPHole(name, typ, argss, visible), _) => extractHOPHole(name, typ, argss, visible)
@@ -615,17 +623,16 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         else if (es.failedMatches(bv1) contains bv2) Left(es)
         else (bv1.owner, bv2.owner) match {
           case (lb1: LetBinding, lb2: LetBinding) => extractDefs(lb1.value, lb2.value) match {
-            case Right(es0) =>
-              if (es0.makeUnreachable) lb2.value = Unreachable
-              Right(es0 withCtx (lb1.bound, lb2.bound) withMatched lb2.bound)
-            case Left(es0) => Left(es0 withFailed lb1.bound -> lb2.bound)
+            case Right(es) =>
+              if (es.makeUnreachable) lb2.value = Unreachable
+              Right(es withCtx (lb1.bound, lb2.bound) withMatched lb2.bound)
+            case Left(es) => Left(es withFailed lb1.bound -> lb2.bound)
           }
-          case (l1: Lambda, l2: Lambda) => extractDefs(l1, l2).right map (_ withCtx l1.bound -> l2.bound)
-          case _ => Left(es)
+          case (l1: Lambda, l2: Lambda) => extractDefs(l1, l2) map (_ withCtx l1.bound -> l2.bound) // TODO handle failed extract?
+          case _ => Left(es withFailed bv1 -> bv2)
         }
 
-      case (Constant(v1), Constant(v2)) if v1 == v2 => 
-        es.updateExtract(xtor.typ extract (xtee.typ, Covariant))
+      case (Constant(v1), Constant(v2)) if v1 == v2 => es updateExtractWith (xtor.typ extract(xtee.typ, Covariant))
 
       // Assuming if they have the same name the type is the same
       case (StaticModule(fn1), StaticModule(fn2)) if fn1 == fn2 => Right(es)
@@ -633,7 +640,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       // Assuming if they have the same name and prefix the type is the same
       case (Module(p1, n1, _), Module(p2, n2, _)) if n1 == n2 => extractWithState(p1, p2)
 
-      case (NewObject(t1), NewObject(t2)) => es.updateExtract(t1 extract (t2, Covariant))
+      case (NewObject(t1), NewObject(t2)) => es updateExtractWith (t1 extract(t2, Covariant))
 
       case _ => Left(es)
     }
@@ -714,34 +721,34 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         
       case (l1: Lambda, l2: Lambda) =>
         for {
-          es1 <- es.updateExtract(l1.boundType extract (l2.boundType, Covariant)).right
-          es2 <- extractWithState(l1.body, l2.body)(es1 withCtx l1.bound -> l2.bound).right
+          es1 <- es updateExtractWith (l1.boundType extract(l2.boundType, Covariant))
+          es2 <- extractWithState(l1.body, l2.body)(es1 withCtx l1.bound -> l2.bound)
         } yield es2
 
       case (ma1: MethodApp, ma2: MethodApp) if ma1.mtd == ma2.mtd =>
-        def targExtract(es0: State): ExtractState = es.updateExtract(mergeAll(for {
-          (e1, e2) <- ma1.targs zip ma2.targs
-        } yield e1 extract(e2, Invariant)))(es)
+        def targExtract(es0: State): ExtractState =
+          es0.updateExtractWith(
+            (for {
+              (e1, e2) <- ma1.targs zip ma2.targs
+            } yield e1 extract(e2, Invariant)): _*
+          )
 
         def extractArgss(argss1: ArgumentLists, argss2: ArgumentLists)(implicit es: State): ExtractState = {
           def extractArgss0(argss1: ArgumentLists, argss2: ArgumentLists, acc: List[Rep])(implicit es: State): ExtractState = (argss1, argss2) match {
             case (ArgumentListCons(h1, t1), ArgumentListCons(h2, t2)) => for {
-              es0 <- extractArgss0(h1, h2, acc).right
-              es1 <- extractArgss0(t1, t2, acc)(es0).right
+              es0 <- extractArgss0(h1, h2, acc)
+              es1 <- extractArgss0(t1, t2, acc)(es0)
             } yield es1
 
             case (ArgumentCons(h1, t1), ArgumentCons(h2, t2)) => for {
-              es0 <- extractArgss0(h1, h2, acc).right
-              es1 <- extractArgss0(t1, t2, acc)(es0).right
+              es0 <- extractArgss0(h1, h2, acc)
+              es1 <- extractArgss0(t1, t2, acc)(es0)
             } yield es1
 
             case (SplicedArgument(arg1), SplicedArgument(arg2)) => extractWithState(arg1, arg2)
             case (sa: SplicedArgument, ArgumentCons(h, t)) => extractArgss0(sa, t, h :: acc)
             case (sa: SplicedArgument, r: Rep) => extractArgss0(sa, NoArguments, r :: acc)
-            case (SplicedArgument(arg), NoArguments) => spliceExtract(arg, Args(acc.reverse: _*)) match {
-              case Some(ex) => merge(ex, es.ex).fold[ExtractState](Left(es))(ex => Right(es withNewExtract ex))
-              case None => Left(es)
-            }
+            case (SplicedArgument(arg), NoArguments) => es updateExtractWith spliceExtract(arg, Args(acc.reverse: _*))
             case (r1: Rep, r2: Rep) => extractWithState(r1, r2)
             case (NoArguments, NoArguments) => Right(es)
             case (NoArgumentLists, NoArgumentLists) => Right(es)
@@ -752,10 +759,10 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         }
 
         for {
-          es1 <- extractWithState(ma1.self, ma2.self)(es).right
-          es2 <- targExtract(es1).right
-          es3 <- extractArgss(ma1.argss, ma2.argss)(es2).right
-          es4 <- es3.updateExtract(ma1.typ extract (ma2.typ, Covariant)).right
+          es1 <- extractWithState(ma1.self, ma2.self)
+          es2 <- targExtract(es1)
+          es3 <- extractArgss(ma1.argss, ma2.argss)(es2)
+          es4 <- es3.updateExtractWith(ma1.typ extract (ma2.typ, Covariant))
         } yield es4
 
       case (DefHole(h), _) => extractWithState(h, wrapConstruct(letbind(v2)))
