@@ -40,10 +40,6 @@ sealed abstract class Def extends DefOption with DefOrTypeRep with FlatSom[Def] 
   def map(f: Def => Def): Def = f(this)
 }
 
-case object Unreachable extends Def {
-  override def typ = ???
-}
-
 /** Expression that can be used as an argument or result; this includes let bindings. */
 sealed abstract class Rep extends RepOption with ArgumentList with FlatSom[Rep] {
   def typ: TypeRep
@@ -205,7 +201,8 @@ trait RebindableBinding extends Binding {
   def name_= (newName: String): Unit
 }
 class LetBinding(var name: String, var bound: Symbol, var value: Def, private var _body: Rep) extends Rep with RebindableBinding {
-  var userDefined = false
+  var isUserDefined = false
+  var isUnreachable = false
   def body = _body
   def body_= (newBody: Rep) = _body = newBody
   def boundType = value.typ

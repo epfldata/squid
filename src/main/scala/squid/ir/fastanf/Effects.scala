@@ -48,7 +48,6 @@ trait Effects {
       val mtdEff = mtdEffect(ma.mtd)
       selfEff |+| argssEff |+| mtdEff
     case DefHole(_) => Impure
-    case Unreachable => Pure
   }
 
   sealed trait Effect {
