@@ -202,7 +202,6 @@ trait RebindableBinding extends Binding {
 }
 class LetBinding(var name: String, var bound: Symbol, var value: Def, private var _body: Rep) extends Rep with RebindableBinding {
   var isUserDefined = false
-  var isUnreachable = false
   def body = _body
   def body_= (newBody: Rep) = _body = newBody
   def boundType = value.typ
