@@ -496,7 +496,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               val hopvType = FunctionType(args map (_.tpe) : _*)(holeType)
               termHoleInfo(termName) = Map() -> hopvType
               
-              val largs = args map (liftTerm(_,x,None,false))
+              val largs = args map (arg => b.byName(liftTerm(arg,x,None,false)))
               
               b.hopHole2(name, liftType(holeType), (largs)::Nil, ctx.values.toList)
               
