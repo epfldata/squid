@@ -408,39 +408,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       def emptyFunc(r: Rep) = List.empty[List[BoundVal]] -> r
       def fargss(f: Func) = f._1
       def fbody(f: Func) = f._2
-
-      def replaceBVs(r: Rep)(f: BoundVal => BoundVal): Rep = r match {
-        case bv: BoundVal => f(bv)
-        case lb: LetBinding =>
-          lb.value = replaceBVsInDef(lb.value)(f)
-          lb
-        case _ => r
-      }
-
-      def replaceBVsInDef(d: Def)(f: BoundVal => BoundVal): Def = {
-        println(s"CHANGEDDEF: $d")
-        d match {
-          case ma: MethodApp =>
-            MethodApp(
-              replaceBVs(ma.self)(f),
-              ma.mtd,
-              ma.targs,
-              ma.argss.argssMap(r => replaceBVs(r)(f)),
-              ma.typ
-            )
-
-          case l: Lambda =>
-            new Lambda(
-              l.name,
-              l.bound,
-              l.boundType,
-              replaceBVs(l.body)(f)
-            )
-
-          case _ => d
-        }
-      }
-
+      
       def hasUndeclaredBVs(r: Rep): Boolean = {
         println(s"Checking $r")
         def hasUndeclaredBVs0(r: Rep, declared: Set[BoundVal]): Boolean = r match {
@@ -461,13 +429,11 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       }
 
       def extendFunc(args: List[Rep], maybeFunc: Option[Func]): Option[Func] = {
-        val xteeifiedArgs = args.map(arg => replaceBVs(arg)(bv => es.ctx.getOrElse(bv, bv)))
-        
-        println(s"ARGS0: $xteeifiedArgs")
+        println(s"ARGS0: $args")
         
         val hopArgs = args.map(arg => bindVal("hopArg", arg.typ, Nil))
         
-        val transformations = xteeifiedArgs zip hopArgs
+        val transformations = args zip hopArgs
         
         println(s"Transformation: $transformations")
         
@@ -475,17 +441,18 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           f <- maybeFunc
           _ = println(s"BEFORE $f")
           body0 = transformations.foldLeft(fbody(f)) {
-            case (body, (bv: BoundVal, hopArg)) => 
-              println("bv")
-              replaceBVs(body){ bv0 => if (bv0 == bv) hopArg else bv0 } alsoApply (res => println(s"BLA $res"))
-            case (body, (xtor, hopArg)) => rewriteRep0(xtor, body, _ => Some(hopArg))(true)(State.forRewriting(xtor, body)) getOrElse body
+            case (body, (bv: BoundVal, hopArg)) =>
+              val replace = es.ctx(bv)
+              bottomUpPartial(body){ case `replace` => hopArg }
+
+            case (body, (lb: LetBinding, hopArg)) => extractWithState(lb, body) map { es =>
+              val replace =  es.ctx(lb.last.bound)
+              bottomUpPartial(filterLBs(body)(es.ctx.values.toSet contains _.bound)) { case `replace` => hopArg }
+            } getOrElse body
+
+            case (body, (r, hopArg)) => bottomUpPartial(body) { case `r` => hopArg }
           }
-          _ = println(s"PASSED $body0")
-          invCtx = reverse(es.ctx)
-          _ = println(s"INVCTX: $invCtx")
-          _ = println(s"VISIBLE: $visible")
           _ = bottomUpPartial(body0) { case bv: BoundVal if visible contains bv => return None }
-          _ = println("OOPS")
         } yield (hopArgs :: fargss(f)) -> body0
         
         println(s"AFTER: $after")
@@ -500,7 +467,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           _ = println(s"F: $f")
           l = fargss(f).foldRight(fbody(f)) { case (args, body) => wrapConstruct(lambda(args, body)) }
           if !hasUndeclaredBVs(l)
-          _ = println(s"GOT THORUGHT")
         } yield repExtract(name -> l)
       )
     }
@@ -608,13 +574,11 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         case (_, Impure) => Left(es) // Assuming the return value cannot be impure
       }
         
-      case (bv: BoundVal, lb: LetBinding) => 
-        println("TRING")
-        for {
-          es1 <- extractWithState(bv, lb.bound).left
-          es2 <- extractInside(bv, lb.value)(es1).left
-          es3 <- extractWithState(bv, lb.body)(es2).left
-        } yield es3
+      case (bv: BoundVal, lb: LetBinding) => for {
+        es1 <- extractWithState(bv, lb.bound).left
+        es2 <- extractInside(bv, lb.value)(es1).left
+        es3 <- extractWithState(bv, lb.body)(es2).left
+      } yield es3
 
       case (_: Rep, lb: LetBinding) if es.matchedImpureBVs contains lb.bound => extractWithState(xtor, lb.body)
       //case (_: Rep, lb: LetBinding) if es.matchedBVs contains lb.bound => extractWithState(xtor, lb.body)
@@ -805,21 +769,12 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           case _ => true
         }
       }
-
-
-      def cleanup(r: Rep)(implicit es: State): Rep = r match {
-        case lb: LetBinding if es.matchedImpureBVs contains lb.bound => cleanup(lb.body)
-        case lb: LetBinding =>
-          lb.body = cleanup(lb.body)
-          lb
-        case _ => r
-      }
       
       if (preCheck(es.ex) alsoApply println)
         for {
           code <- code(es.ex)
           _ = println(code)
-          if check(Set.empty, es.matchedImpureBVs)(cleanup(code) alsoApply println) alsoApply println
+          if check(Set.empty, es.matchedImpureBVs)(filterLBs(code)(es.matchedImpureBVs contains _.bound) alsoApply println) alsoApply println
         } yield code
       else None
     }
@@ -828,6 +783,15 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case Right(es) => genCode(es) alsoApply println
       case Left(_) => None
     }
+  }
+
+  def filterLBs(r: Rep)(p: LetBinding => Boolean): Rep = r match {
+    case lb: LetBinding if p(lb) =>
+      filterLBs(lb.body)(p)
+    case lb: LetBinding =>
+      lb.body = filterLBs(lb.body)(p)
+      lb
+    case _ => r
   }
   
   // * --- * --- * --- *  Implementations of `QuasiBase` methods  * --- * --- * --- *

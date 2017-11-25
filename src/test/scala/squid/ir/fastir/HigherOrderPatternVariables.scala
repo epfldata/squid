@@ -2,37 +2,62 @@ package squid
 package ir
 package fastir
 
+import scala.util.Try
+
 class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVariables.Embedding) {
   import HigherOrderPatternVariables.Embedding.Predef._
 
   test("Matching lambda bodies") {
-
     val id = ir"(z:Int) => z"
 
-    ir"(a: Int) => a + 1" matches {
+    ir"(a: Int) => a + 1" match {
       case ir"(x: Int) => $body(x): Int" => assert(body == ir"(_:Int) + 1")
+    }
+
+    ir"(a: Int) => a + 1" match {
       case ir"(x: Int) => $body(x):$t" => assert(body == ir"(_:Int)+1")
+    }
+
+    ir"(a: Int) => a + 1" match {
       case ir"(x: Int) => ($exp(x):Int)+1" => assert(exp == id)
     }
 
-    ir"(a: Int, b: Int) => a + 1" matches {
-      case ir"(x: Int, y: Int) => $body(y):Int" => fail
+    assert(Try {
+      ir"(a: Int, b: Int) => a + 1" match  {
+        case ir"(x: Int, y: Int) => $body(y):Int" => fail
+      }
+    }.isFailure)
+
+    ir"(a: Int, b: Int) => a + 1" match {
       case ir"(x: Int, y: Int) => $body(x):Int" =>
-    } and {
+    }
+
+    ir"(a: Int, b: Int) => a + 1" match {
       case ir"(x: Int, y: Int) => $body(x,y):Int" =>
     }
 
-    ir"(a: Int, b: Int) => a + b" matches {
-      case ir"(x: Int, y: Int) => $body(x):Int" => fail
+
+    ir"(a: Int, b: Int) => a + b" match {
       case ir"(x: Int, y: Int) => $body(x,y):Int" => assert(body == ir"(_:Int)+(_:Int)")
     }
 
-    ir"(a: Int, b: Int) => a + b" matches {
-      case ir"(x: Int, y: Int) => ($lhs(y):Int)+($rhs(y):Int)" => fail
+    assert(Try {
+      ir"(a: Int, b: Int) => a + b" match {
+        case ir"(x: Int, y: Int) => $body(x):Int" => fail
+      }
+    }.isFailure)
+
+    ir"(a: Int, b: Int) => a + b" match {
       case ir"(x: Int, y: Int) => ($lhs(x):Int)+($rhs(y):Int)" =>
         assert(lhs == id)
         assert(rhs == id)
     }
+
+    assert(Try {
+      ir"(a: Int, b: Int) => a + b" match {
+        case ir"(x: Int, y: Int) => ($lhs(y):Int)+($rhs(y):Int)" =>
+      }
+    }.isFailure)
   }
 
   test("Matching let-binding bodies") {
@@ -50,16 +75,10 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
 
   test("Non-trivial arguments") {
     val id = ir"(z: Int) => z"
-
-    ir"(a: Int, b: Int) => a + b" matches {
-      case ir"(x: Int, y: Int) => $body(x + y): Int" => assert(body == id)
-      case ir"(x: Int, y: Int) => $body(x): Int" => fail
-      case ir"(x: Int, y: Int) => $body(y): Int" => fail
-    }
-
-    ir"(a: Int, b: Int, c: Int) => a + b + c" matches {
-      case ir"(x: Int, y: Int, z: Int) => $body(x + y, z): Int" => assert(body == ir"(r: Int, s: Int) => r + s")
-    }
+    
+    //ir"(a: Int, b: Int, c: Int) => a + b + c" matches {
+    //  case ir"(x: Int, y: Int, z: Int) => $body(x + y, z): Int" => assert(body == ir"(r: Int, s: Int) => r + s")
+    //}
 
     ir"(a: Int, b: Int, c: Int) => a + b + c" matches {
       case ir"(x: Int, y: Int, z: Int) => $body(x + y + z): Int" => assert(body == id)
@@ -71,17 +90,17 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
     // TODO doesn't "align", `extract` is too structural
     // case ir"(x: Int, y: Int, z: Int) => $body(x, y + z)" => assert(body == ir"(r: Int, s: Int) => r + s")
 
-    ir"(a: Int) => readInt + a" matches {
-      case ir"(x: Int) => $body(readInt, x): Int" => assert(body == ir"(r: Int, s: Int) => r + s")
-    }
+    //ir"(a: Int) => readInt + a" matches {
+    //  case ir"(x: Int) => $body(readInt, x): Int" => assert(body == ir"(r: Int, s: Int) => r + s")
+    //}
 
-    ir"(a: Int) => readInt + a" matches {
-      case ir"(x: Int) => $body(x, readInt): Int" => assert(body == ir"(r: Int, s: Int) => s + r")
-    }
+    //ir"(a: Int) => readInt + a" matches {
+    //  case ir"(x: Int) => $body(x, readInt): Int" => assert(body == ir"(r: Int, s: Int) => s + r")
+    //}
 
-    ir"(a: Int, b: Int) => readInt + (a + b)" matches {
-      case ir"(x: Int, y: Int) => $body(readInt, x + y): Int" => assert(body == ir"(r: Int, s: Int) => r + s")
-    }
+    //ir"(a: Int, b: Int) => readInt + (a + b)" matches {
+    //  case ir"(x: Int, y: Int) => $body(readInt, x + y): Int" => assert(body == ir"(r: Int, s: Int) => r + s")
+    //}
 
     // TODO doesn't "align", `extract` is too structural
     //ir"(a: Int, b: Int) => readInt + (a + b)" matches {
