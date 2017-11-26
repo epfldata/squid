@@ -303,12 +303,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
     post(pre(r) match {
       case lb: LetBinding => // Note: destructive modification of the let-binding!
-        //new LetBinding(
-        //  lb.name,
-        //  lb.bound,
-        //  transformDef(lb.value),
-        //  transformRepAndDef0(lb.body)
-        //)
         lb.value = lb.value |> transformDef
         lb.body = lb.body |> transformRepAndDef0
         lb
@@ -327,7 +321,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     println(s"Extract($xtor, $xtee)")
     for {
       es <- extractWithState(xtor, xtee)(State.forExtraction(xtor, xtee)).fold(_ => None, Some(_))
-      if es.mks.xtor.isEmpty && es.mks.xtee.isEmpty
+      if es.flags.xtor.isEmpty && es.flags.xtee.isEmpty
     } yield es.ex
   }
 
@@ -340,12 +334,12 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   type ExtractState = Either[State, State]
   implicit def rightBias[A, B](e: Either[A, B]): Either.RightProjection[A,B] = e.right
   
-  case class State(ex: Extract, ctx: Ctx, mks: Markers, matchedImpureBVs: Set[BoundVal], failedMatches: Map[BoundVal, Set[BoundVal]], makeUnreachable: Boolean) {
+  case class State(ex: Extract, ctx: Ctx, flags: Flags, matchedImpureBVs: Set[BoundVal], failedMatches: Map[BoundVal, Set[BoundVal]], makeUnreachable: Boolean) {
     def withNewExtract(newEx: Extract): State = copy(ex = newEx)
     def withCtx(newCtx: Ctx): State = copy(ctx = newCtx)
     def withCtx(p: (BoundVal, BoundVal)): State = copy(ctx = ctx + p)
-    def updateMarkers(newMks: Markers): State = copy(mks = newMks)
-    def withoutMarkers(xtorMk: BoundVal, xteeMk: BoundVal): State = copy(mks = Markers(mks.xtor - xtorMk, mks.xtee - xteeMk))
+    def updateFlags(newFlags: Flags): State = copy(flags = newFlags)
+    def withoutFlags(xtorFlag: BoundVal, xteeFlag: BoundVal): State = copy(flags = Flags(flags.xtor - xtorFlag, flags.xtee - xteeFlag))
     def withMatchedImpures(r: Rep): State = r match {
       case lb: LetBinding if isPure(lb.body) => copy(matchedImpureBVs = matchedImpureBVs + lb.bound) withMatchedImpures lb.body
       case lb: LetBinding => this withMatchedImpures lb.body
@@ -363,41 +357,49 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     def forExtraction(xtor: Rep, xtee: Rep): State = State(xtor, xtee, false)
     
     private def apply(xtor: Rep, xtee: Rep, makeUnreachable: Bool): State = 
-      State(EmptyExtract, ListMap.empty, Markers(xtor, xtee), Set.empty, Map.empty.withDefaultValue(Set.empty), makeUnreachable)
+      State(EmptyExtract, ListMap.empty, Flags(xtor, xtee), Set.empty, Map.empty.withDefaultValue(Set.empty), makeUnreachable)
   }
 
-  sealed trait Marker
-  case object EndPoint extends Marker
-  case object NonEndPoint extends Marker
+  sealed trait Flag
+  case object Start extends Flag
+  case object Skip extends Flag
 
-  case class Markers(xtor: ListSet[BoundVal], xtee: ListSet[BoundVal]) {
-    private def marker(ls: ListSet[BoundVal])(bv: BoundVal) = if (ls contains bv) EndPoint else NonEndPoint
-    def xtorMarker(bv: BoundVal): Marker = marker(xtor)(bv)
-    def xteeMarker(bv: BoundVal): Marker = marker(xtee)(bv)
+  case class Flags(xtor: Set[BoundVal], xtee: Set[BoundVal]) {
+    private def flags(ls: Set[BoundVal])(bv: BoundVal) = if (ls contains bv) Start else Skip
+    def xtorFlag(bv: BoundVal): Flag = flags(xtor)(bv)
+    def xteeFlag(bv: BoundVal): Flag = flags(xtee)(bv)
   }
-  object Markers {
-    def apply(xtor: Rep, xtee: Rep): Markers = Markers(extractionStarts(xtor), extractionStarts(xtee))
+  
+  object Flags {
+    def apply(xtor: Rep, xtee: Rep): Flags = Flags(genFlags(xtor), genFlags(xtee))
 
-    private def extractionStarts(r: Rep): ListSet[BoundVal] = {
-      def bvs(d: Def, acc: ListSet[BoundVal]): ListSet[BoundVal] = d match {
-        case _: Lambda => ListSet.empty // TODO The lambda may never be applied.
-        case ma: MethodApp => (ma.self :: ma.argss.argssList).foldLeft(acc) {
+    private def genFlags(r: Rep): Set[BoundVal] = {
+      def update(d: Def, unusedBVs: Set[BoundVal], impures: Set[BoundVal]): (Set[BoundVal], Set[BoundVal]) = d match {
+        case l: Lambda => genFlags0(l.body, unusedBVs, impures)
+        
+        case ma: MethodApp => ((ma.self :: ma.argss.argssList).foldLeft(unusedBVs) {
           case (acc, bv: BoundVal) => acc - bv
-          case (acc, _) => acc // Assuming no LBs in self or argument positions
-        }
-        case _ => ListSet.empty
+          case (acc, _) => acc
+        }, impures)
+          
+        case _ => (unusedBVs, impures)
       }
 
-      def extractionStarts0(r: Rep, acc: ListSet[BoundVal]): ListSet[BoundVal] = r match {
-        case lb: LetBinding => effect(lb) match {
-          case Pure => extractionStarts0(lb.body, bvs(lb.value, acc + lb.bound))
-          case Impure => extractionStarts0(lb.body, bvs(lb.value, acc))
+      def genFlags0(r: Rep, unusedBVs: Set[BoundVal], impures: Set[BoundVal]): (Set[BoundVal], Set[BoundVal]) = r match {
+        case lb: LetBinding => effect(lb.value) match {
+          case Pure =>
+            val updated = update(lb.value, unusedBVs + lb.bound, impures)
+            genFlags0(lb.body, updated._1, updated._2)
+          case Impure =>
+            val updated = update(lb.value, unusedBVs + lb.bound, impures + lb.bound)
+            genFlags0(lb.body, updated._1, updated._2)
         }
-        case bv: BoundVal => acc - bv
-        case _ => acc
+        case bv: BoundVal => (unusedBVs - bv, impures)
+        case _ => (unusedBVs, impures)
       }
 
-      extractionStarts0(r, ListSet.empty)
+      val flags = genFlags0(r, Set.empty, Set.empty)
+      flags._1 ++ flags._2
     }
   }
 
@@ -443,7 +445,9 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           body0 = transformations.foldLeft(fbody(f)) {
             case (body, (bv: BoundVal, hopArg)) =>
               val replace = es.ctx(bv)
-              bottomUpPartial(body){ case `replace` => hopArg }
+              bottomUpPartial(body){ 
+                case `replace` => hopArg 
+              }
 
             case (body, (lb: LetBinding, hopArg)) => extractWithState(lb, body) map { es =>
               val replace =  es.ctx(lb.last.bound)
@@ -471,40 +475,31 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       )
     }
 
-    def extractLBs(lb1: LetBinding, lb2: LetBinding)(implicit es: State): ExtractState = (effect(lb1.value), effect(lb2.value)) match {
-      case (Impure, Impure) =>
-        extractDefs(lb1.value, lb2.value) match {
-          case Right(es) =>
-            //if (es.makeUnreachable) lb2.isUnreachable = true
-            extractWithState(lb1.body, lb2.body)(es withCtx lb1.bound -> lb2.bound withMatchedImpures lb2.bound)
-          case Left(es) => Left(es withFailed lb1.bound -> lb2.bound)
-        }
-        
-      case (Pure, Pure) => (es.mks.xtorMarker(lb1.bound), es.mks.xteeMarker(lb2.bound)) match {
-        case (EndPoint, EndPoint) =>
-          extractWithState(lb1.bound, lb2.bound) match {
-            case Right(es) =>
-              extractWithState(lb1.body, lb2.body)(es withoutMarkers(lb1.bound, lb2.bound)) // withMatched lb2.bound)
-            case Left(es) => extractWithState(lb1, lb2.body)(es)
-          }
-        case (EndPoint, NonEndPoint) => extractWithState(lb1, lb2.body)
-        case (NonEndPoint, EndPoint) => extractWithState(lb1.body, lb2)
-        case (NonEndPoint, NonEndPoint) => extractWithState(lb1.body, lb2.body)
-      }
+    def extractLBs(lb1: LetBinding, lb2: LetBinding)(implicit es: State): ExtractState = {
+      def extractAndContinue(lb1: LetBinding, lb2: LetBinding)(implicit es: State): ExtractState = for {
+        es1 <- extractWithState(lb1.bound, lb2.bound)
+        es2 <- extractWithState(lb1.body, lb2.body)(es1)
+      } yield es2
+      
+      (es.flags.xtorFlag(lb1.bound), es.flags.xteeFlag(lb2.bound)) match {
+        case (Start, Start) => extractAndContinue(lb1, lb2)
 
-      case (Impure, Pure) => extractWithState(lb1, lb2.body)
-      case (Pure, Impure) => extractWithState(lb1.body, lb2)
+        case (Start, Skip) => for {
+          es1 <- extractAndContinue(lb1, lb2).left
+          es2 <- extractWithState(lb1, lb2.body)(es1).left
+        } yield es2
+
+        case (Skip, Start) => for {
+          es1 <- extractAndContinue(lb1, lb2).left
+          es2 <- extractWithState(lb1.body, lb2)(es1).left
+        } yield es2
+
+        case (Skip, Skip) => extractWithState(lb1.body, lb2.body)
+      }
     }
 
     def extractHole(h: Hole, r: Rep)(implicit es: State): ExtractState = {
       println(s"ExtractHole: $h --> $r")
-      
-      //def makeUnreachable(r: Rep): Rep = r match {
-      //  case lb: LetBinding => 
-      //    //lb.isUnreachable = true
-      //    makeUnreachable(lb.body)
-      //  case _ => r
-      //}
       
       (h, r) match {
         case (Hole(n, t), bv: BoundVal) =>
@@ -515,12 +510,9 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
         case (Hole(n, t), lb: LetBinding) =>
           es.updateExtractWith(
-            t extract (lb.typ, Covariant),
+            t extract(lb.typ, Covariant),
             Some(repExtract(n -> wrapConstruct(letbind(lb.value))))
-          ).map {
-            //makeUnreachable(lb)
-            _ withMatchedImpures lb 
-          }
+          ) map (_ withMatchedImpures lb)
 
         case (Hole(n, t), _) =>
           es.updateExtractWith(
@@ -544,7 +536,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           es1 <- acc.left
           es2 <- extractWithState(bv, bv2)(es1).left
         } yield es2
-      } alsoApply (s => println(s"FOO: $s"))
+      }
     }
 
     def contentsOf(h: Hole)(implicit es: State): Option[Rep] = es.ex._1 get h.name // TODO check in ex._3, return Option[List[Rep]]
@@ -581,7 +573,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       } yield es3
 
       case (_: Rep, lb: LetBinding) if es.matchedImpureBVs contains lb.bound => extractWithState(xtor, lb.body)
-      //case (_: Rep, lb: LetBinding) if es.matchedBVs contains lb.bound => extractWithState(xtor, lb.body)
 
       case (_, Ascribe(s, _)) => extractWithState(xtor, s)
 
@@ -593,15 +584,15 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case (HOPHole(name, typ, argss, visible), _) => extractHOPHole(name, typ, argss, visible)
 
       case (bv1: BoundVal, bv2: BoundVal) =>
-        println(s"EXTRACTIONSTATE IN BV: $es")
         println(s"OWNERS: ${bv1.owner} -- ${bv2.owner}")
         if (es.ctx.getOrElse(bv1, bv1) == bv2) Right(es)
         else if (es.failedMatches(bv1) contains bv2) Left(es)
         else (bv1.owner, bv2.owner) match {
           case (lb1: LetBinding, lb2: LetBinding) => extractDefs(lb1.value, lb2.value) match {
-            case Right(es) =>
-              //if (es.makeUnreachable) lb2.isUnreachable = true
-              Right(es withCtx lb1.bound -> lb2.bound withMatchedImpures lb2.bound)
+            case Right(es) => effect(lb2.value) match {
+              case Pure => Right(es withCtx lb1.bound -> lb2.bound withoutFlags(bv1, bv2))
+              case Impure => Right(es withCtx lb1.bound -> lb2.bound withMatchedImpures lb2.bound withoutFlags(bv1, bv2))
+            }
             case Left(es) => Left(es withFailed lb1.bound -> lb2.bound)
           }
           case (l1: Lambda, l2: Lambda) => extractDefs(l1, l2) map (_ withCtx l1.bound -> l2.bound) // TODO handle failed extract?
@@ -706,8 +697,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       println(s"rewriteRepWithState(\n\t$xtor\n\t$xtee)($es)")
 
       (xtor, xtee) match {
-        case (lb1: LetBinding, lb2: LetBinding) if !internalRec => ((effect(lb1.value), es.mks.xtorMarker(lb1.bound)), (effect(lb2.value), es.mks.xteeMarker(lb2.bound))) match {
-          case ((Pure, NonEndPoint), (Pure, NonEndPoint)) => Left(es)
+        case (lb1: LetBinding, lb2: LetBinding) if !internalRec => ((effect(lb1.value), es.flags.xtorFlag(lb1.bound)), (effect(lb2.value), es.flags.xteeFlag(lb2.bound))) match {
+          case ((Pure, Skip), (Pure, Skip)) => Left(es)
           case _ => extractWithState(lb1, lb2) // TODO With unreachable handling TODO why did I mean?
         }
         case _ => extractWithState(xtor, xtee)

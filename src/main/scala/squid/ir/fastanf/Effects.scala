@@ -65,6 +65,7 @@ trait Effects {
 
 trait StandardEffects extends Effects {
   addPureMtd(MethodSymbol(TypeSymbol("scala.Int"),"$plus"))
+  addPureMtd(MethodSymbol(TypeSymbol("scala.Double"),"$plus"))
   addPureMtd(MethodSymbol(TypeSymbol("scala.Int"),"$times"))
   addPureMtd(MethodSymbol(TypeSymbol("scala.Int"), "toDouble"))
   addPureMtd(MethodSymbol(TypeSymbol("scala.Int"), "toFloat"))
