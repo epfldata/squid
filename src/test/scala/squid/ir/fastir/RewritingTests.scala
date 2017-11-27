@@ -5,10 +5,6 @@ package fastir
 class RewritingTests extends MyFunSuiteBase(BasicTests.Embedding) {
   import RewritingTests.Embedding.Predef._
 
-  //object T extends SimpleRuleBasedTransformer with TopDownTransformer {
-  //  val base: DSL.type = DSL
-  //}
-
   test("Simple rewrites") {
     val a = ir"123" rewrite {
       case ir"123" => ir"666"
@@ -35,28 +31,28 @@ class RewritingTests extends MyFunSuiteBase(BasicTests.Embedding) {
   }
 
   test("Rewriting subpatterns") {
-    val a = ir"(readInt + 111) * .5" rewrite {
-      case ir"(($n: Int) + 111) * .5" => ir"$n * .25"
+    val a = ir"(10.toDouble + 111) * .5" match {
+      case ir"(($n: Double) + 111) * .5" => ir"$n * .25"
     }
-    assert(a =~= ir"readInt * .25")
+    assert(a =~= ir"10.toDouble * .25")
 
     val b = ir"Option(42).get" rewrite {
       case ir"Option(($n: Int)).get" => n
     }
-    assert(b =~= ir"42")
+    assert(b =~= ir"val t = Option(42).get; 42")
 
     val c = ir"val a = Option(42).get; a * 5" rewrite {
       case ir"Option(($n: Int)).get" => n
       case ir"($a: Int) * 5" => ir"$a * 2"
     }
-    assert(c =~= ir"val a = 42; a * 2")
+    assert(c =~= ir"val t1 = Option(42); val t2 = t1.get; val t3 = ${ir"42"} * 5; ${ir"42"} * 2")
   }
   
   test("Rewriting with dead-ends") {
     val b = ir"Option(42).get; 20" rewrite {
       case ir"Option(($n: Int)).get; 20" => n
     }
-    assert(b =~= ir"42")
+    assert(b =~= ir"val t = ${ir"Option(42)"}; 42")
   } 
   
   //test("Rewriting with impures") {
