@@ -318,7 +318,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     transformRepAndDef(r)(pre, post)(identity, identity)
 
   protected def extract(xtor: Rep, xtee: Rep): Option[Extract] = {
-    println(s"Extract($xtor, $xtee)")
+    println(s"Extract(\n$xtor, \n$xtee)")
     for {
       es <- extractWithState(xtor, xtee)(State.forExtraction(xtor, xtee)).fold(_ => None, Some(_))
       if es.flags.xtor.isEmpty && es.flags.xtee.isEmpty
@@ -340,11 +340,12 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     def withCtx(p: (BoundVal, BoundVal)): State = copy(ctx = ctx + p)
     def updateFlags(newFlags: Flags): State = copy(flags = newFlags)
     def withoutFlags(xtorFlag: BoundVal, xteeFlag: BoundVal): State = copy(flags = Flags(flags.xtor - xtorFlag, flags.xtee - xteeFlag))
+    //def withMatched
     def withMatchedImpures(r: Rep): State = r match {
-      case lb: LetBinding if isPure(lb.body) => copy(matchedImpureBVs = matchedImpureBVs + lb.bound) withMatchedImpures lb.body
+      case lb: LetBinding if !isPure(lb.value) => copy(matchedImpureBVs = matchedImpureBVs + lb.bound) withMatchedImpures lb.body
       case lb: LetBinding => this withMatchedImpures lb.body
-      case bv: BoundVal => copy(matchedImpureBVs = matchedImpureBVs + bv)
-      case _ => this
+      //case bv: BoundVal => copy(matchedImpureBVs = matchedImpureBVs + bv)
+      case _ => this // Everything else is pure so we ignore it
     } 
     def withFailed(p: (BoundVal, BoundVal)): State = copy(failedMatches = updateWith(failedMatches)(p))
 
@@ -445,9 +446,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           body0 = transformations.foldLeft(fbody(f)) {
             case (body, (bv: BoundVal, hopArg)) =>
               val replace = es.ctx(bv)
-              bottomUpPartial(body){ 
-                case `replace` => hopArg 
-              }
+              replace rebind hopArg
+              body
 
             case (body, (lb: LetBinding, hopArg)) => extractWithState(lb, body) map { es =>
               val replace =  es.ctx(lb.last.bound)
@@ -501,18 +501,18 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     def extractHole(h: Hole, r: Rep)(implicit es: State): ExtractState = {
       println(s"ExtractHole: $h --> $r")
       
-      (h, r) match {
+      val newEs = (h, r) match {
         case (Hole(n, t), bv: BoundVal) =>
           es.updateExtractWith(
-            t extract (xtee.typ, Covariant), 
+            t extract(xtee.typ, Covariant),
             Some(repExtract(n -> bv))
-          ).map(_ withMatchedImpures bv)
+          )
 
         case (Hole(n, t), lb: LetBinding) =>
           es.updateExtractWith(
             t extract(lb.typ, Covariant),
             Some(repExtract(n -> wrapConstruct(letbind(lb.value))))
-          ) map (_ withMatchedImpures lb)
+          )
 
         case (Hole(n, t), _) =>
           es.updateExtractWith(
@@ -520,6 +520,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
             Some(repExtract(n -> xtee))
           )
       }
+      
+      newEs map (_ withMatchedImpures r)
     }
 
     def extractInside(bv: BoundVal, d: Def)(implicit es: State): ExtractState = {
@@ -761,11 +763,11 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         }
       }
       
-      if (preCheck(es.ex) alsoApply println)
+      if (preCheck(es.ex))
         for {
           code <- code(es.ex)
           _ = println(code)
-          if check(Set.empty, es.matchedImpureBVs)(filterLBs(code)(es.matchedImpureBVs contains _.bound) alsoApply println) alsoApply println
+          if check(Set.empty, es.matchedImpureBVs)(filterLBs(code)(es.matchedImpureBVs contains _.bound))
         } yield code
       else None
     }

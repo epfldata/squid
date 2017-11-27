@@ -18,12 +18,12 @@ class RewritingTests extends MyFunSuiteBase(BasicTests.Embedding) {
     val b = ir"42.toFloat" rewrite {
       case ir"42.toFloat" => ir"42f"
     }
-    assert(b =~= ir"42f")
+    assert(b =~= ir"val t = ${ir"42"}.toFloat; 42f")
 
     val c = ir"42.toDouble" rewrite {
       case ir"(${Const(n)}: Int).toDouble" => ir"${Const(n.toDouble)}"
     }
-    assert(c =~= ir"42.0")
+    assert(c =~= ir"val t = ${ir"42"}.toDouble; 42.0")
 
     //assertDoesNotCompile("""
     //  T.rewrite { case ir"0.5" => ir"42" }
@@ -69,7 +69,7 @@ class RewritingTests extends MyFunSuiteBase(BasicTests.Embedding) {
   //test("Rewriting simple expressions only once") {
   //  val a = ir"println((50, 60))" rewrite {
   //    case ir"($x:Int,$y:Int)" => ir"($y:Int,$x:Int)"
-  //    case ir"(${Const(n)}:Int)" => Const(n+1)
+  //    //case ir"(${Const(n)}:Int)" => Const(n+1)
   //  }
   //  assert(a =~= ir"println((61,51))")
   //}

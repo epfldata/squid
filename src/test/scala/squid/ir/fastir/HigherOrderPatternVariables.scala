@@ -11,15 +11,15 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
     val id = ir"(z:Int) => z"
 
     ir"(a: Int) => a + 1" match {
-      case ir"(x: Int) => $body(x): Int" => assert(body == ir"(_:Int) + 1")
+      case ir"(x: Int) => $body(x): Int" => assert(body =~= ir"(_:Int) + 1")
     }
 
     ir"(a: Int) => a + 1" match {
-      case ir"(x: Int) => $body(x):$t" => assert(body == ir"(_:Int)+1")
+      case ir"(x: Int) => $body(x):$t" => assert(body =~= ir"(_:Int)+1")
     }
 
     ir"(a: Int) => a + 1" match {
-      case ir"(x: Int) => ($exp(x):Int)+1" => assert(exp == id)
+      case ir"(x: Int) => ($exp(x):Int)+1" => assert(exp =~= id)
     }
 
     assert(Try {
@@ -38,7 +38,7 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
 
 
     ir"(a: Int, b: Int) => a + b" match {
-      case ir"(x: Int, y: Int) => $body(x,y):Int" => assert(body == ir"(_:Int)+(_:Int)")
+      case ir"(x: Int, y: Int) => $body(x,y):Int" => assert(body =~= ir"(_:Int)+(_:Int)")
     }
 
     assert(Try {
@@ -49,8 +49,8 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
 
     ir"(a: Int, b: Int) => a + b" match {
       case ir"(x: Int, y: Int) => ($lhs(x):Int)+($rhs(y):Int)" =>
-        assert(lhs == id)
-        assert(rhs == id)
+        assert(lhs =~= id)
+        assert(rhs =~= id)
     }
 
     assert(Try {
@@ -81,36 +81,25 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
     //}
 
     ir"(a: Int, b: Int, c: Int) => a + b + c" match {
-      case ir"(x: Int, y: Int, z: Int) => $body(x + y + z): Int" => assert(body == id)
-    }
-
-    // TODO `extract` should see the different combinations of `x + y + z`
-    // case ir"(x: Int, y: Int, z: Int) => $body(x + z, y)" => println(body); assert(body == ir"(r: Int, s: Int) => r + s")
-
-    // TODO doesn't "align", `extract` is too structural
-    // case ir"(x: Int, y: Int, z: Int) => $body(x, y + z)" => assert(body == ir"(r: Int, s: Int) => r + s")
-
-    ir"(a: Int) => readInt + a" matches {
-      case ir"(x: Int) => $body(readInt, x): Int" => assert(body == ir"(r: Int, s: Int) => r + s")
+      case ir"(x: Int, y: Int, z: Int) => $body(x + y + z): Int" => assert(body =~= id)
     }
 
     ir"(a: Int) => readInt + a" matches {
-      case ir"(x: Int) => $body(x, readInt): Int" => assert(body == ir"(r: Int, s: Int) => s + r")
+      case ir"(x: Int) => $body(readInt, x): Int" => assert(body =~= ir"(r: Int, s: Int) => r + s")
+    }
+
+    ir"(a: Int) => readInt + a" matches {
+      case ir"(x: Int) => $body(x, readInt): Int" => assert(body =~= ir"(r: Int, s: Int) => s + r")
     }
 
     ir"(a: Int, b: Int) => readInt + (a + b)" matches {
-      case ir"(x: Int, y: Int) => $body(readInt, x + y): Int" => assert(body == ir"(r: Int, s: Int) => r + s")
+      case ir"(x: Int, y: Int) => $body(readInt, x + y): Int" => assert(body =~= ir"(r: Int, s: Int) => r + s")
     }
-
-    // TODO doesn't "align", `extract` is too structural
-    //ir"(a: Int, b: Int) => readInt + (a + b)" matches {
-    //  case ir"(x: Int, y: Int) => $body(x + y, readInt): Int" => assert(body == ir"(r: Int, s: Int) => s + r")
-    //}
   }
 
   test("Match letbindinds") {
     ir"val a = 10.toDouble; a + 1" match {
-      case ir"val x = 10.toDouble; $body(x)" => assert(body == ir"(_: Double) + 1")
+      case ir"val x = 10.toDouble; $body(x)" => assert(body =~= ir"(_: Double) + 1")
     }
     
     
