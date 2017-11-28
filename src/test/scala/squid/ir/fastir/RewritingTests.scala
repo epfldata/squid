@@ -2,7 +2,7 @@ package squid
 package ir
 package fastir
 
-class RewritingTests extends MyFunSuiteBase(BasicTests.Embedding) {
+class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
   import RewritingTests.Embedding.Predef._
 
   test("Simple rewrites") {
