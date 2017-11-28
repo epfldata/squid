@@ -101,7 +101,7 @@ which can be done by executing the script in `bin/publishLocal.sh`.
 In your project, add the following to your `build.sbt`:
 
 ```scala
-libraryDependencies += "ch.epfl.data" %% "squid" % "0.2-SNAPSHOT"
+libraryDependencies += "ch.epfl.data" %% "squid" % "0.2.0-SNAPSHOT"
 ```
 
 Some features related to [library-defined optimizations](#qsr) and [squid macros](#smacros), 

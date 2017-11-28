@@ -1,5 +1,5 @@
 val paradiseVersion = "2.1.0"
-val squidVersion = "0.2-SNAPSHOT"
+val squidVersion = "0.2.0-SNAPSHOT"
 val squidIsSnapshot: Boolean = squidVersion endsWith "-SNAPSHOT"
 
 lazy val commonSettings = Seq(
