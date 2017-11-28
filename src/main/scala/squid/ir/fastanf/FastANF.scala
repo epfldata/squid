@@ -516,7 +516,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         case (Hole(n, t), lb: LetBinding) =>
           es.updateExtractWith(
             t extract(lb.typ, Covariant),
-            Some(repExtract(n -> wrapConstruct(letbind(lb.value))))
+            Some(repExtract(n -> lb))
           ).map(updateFlags(lb, _))
 
         case (Hole(n, t), _) =>

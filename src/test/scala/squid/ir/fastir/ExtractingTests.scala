@@ -25,6 +25,10 @@ class ExtractingTests extends MyFunSuiteBase(ExtractingTests.Embedding) {
         assert(l =~= ir"42")
         assert(r =~= ir"1337")
     }
+
+    ir"val a = 10.toDouble; val b = 42.toDouble; a + b" match {
+      case ir"($body: Double)" => assert(body =~= ir"val a = 10.toDouble; val b = 42.toDouble; a + b")
+    }
   }
   
   test("Matching with impure statements") {
