@@ -319,10 +319,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
   protected def extract(xtor: Rep, xtee: Rep): Option[Extract] = {
     println(s"Extract(\n$xtor, \n$xtee)")
-    for {
-      es <- extractWithState(xtor, xtee)(_ => false)(State.forExtraction(xtor, xtee)).fold(_ => None, Some(_))
-      if es.flags.xtor.isEmpty && es.flags.xtee.isEmpty
-    } yield es.ex
+    extractWithState(xtor, xtee)(_ => false)(State.forExtraction(xtor, xtee)).fold(_ => None, Some(_)) map (_.ex)
   }
 
   type Ctx = Map[BoundVal, BoundVal]
@@ -338,9 +335,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     def withNewExtract(newEx: Extract): State = copy(ex = newEx)
     def withCtx(newCtx: Ctx): State = copy(ctx = newCtx)
     def withCtx(p: (BoundVal, BoundVal)): State = copy(ctx = ctx + p)
-    def updateFlags(newFlags: Flags): State = copy(flags = newFlags)
-    def withoutFlags(xtorFlag: BoundVal, xteeFlag: BoundVal): State = copy(flags = Flags(flags.xtor - xtorFlag, flags.xtee - xteeFlag))
-    def withoutXteeFlag(flag: BoundVal): State = copy(flags = flags.copy(xtee = flags.xtee - flag))
     def withMatchedImpures(r: Rep): State = r match {
       case lb: LetBinding if !isPure(lb.value) => copy(matchedImpureBVs = matchedImpureBVs + lb.bound) withMatchedImpures lb.body
       case lb: LetBinding => this withMatchedImpures lb.body
@@ -440,7 +434,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         val transformations = args zip hopArgs
         
         for {
-          (f, es) <- maybeFuncAndState
+          (f, es) <- maybeFuncAndState alsoApply println
 
           newBodyAndState = transformations.foldLeft(fbody(f) -> es) {
             case ((body, es), (bv: BoundVal, hopArg)) =>
@@ -501,23 +495,18 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     def extractHole(h: Hole, r: Rep)(implicit es: State): ExtractState = {
       println(s"ExtractHole: $h --> $r")
       
-      def updateFlags(r: Rep, es: State): State = r match {
-        case lb: LetBinding => updateFlags(lb.body, es withoutXteeFlag lb.bound)
-        case _ => es
-      } 
-      
       val newEs = (h, r) match {
         case (Hole(n, t), bv: BoundVal) =>
           es.updateExtractWith(
             t extract(xtee.typ, Covariant),
             Some(repExtract(n -> bv))
-          ) map (_ withoutXteeFlag bv)
+          )
 
         case (Hole(n, t), lb: LetBinding) =>
           es.updateExtractWith(
             t extract(lb.typ, Covariant),
             Some(repExtract(n -> lb))
-          ).map(updateFlags(lb, _))
+          )
 
         case (Hole(n, t), _) =>
           es.updateExtractWith(
@@ -595,8 +584,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           else (bv1.owner, bv2.owner) match {
             case (lb1: LetBinding, lb2: LetBinding) => extractDefs(lb1.value, lb2.value)(done) match {
               case Right(es) => effect(lb2.value) match {
-                case Pure => Right(es withCtx lb1.bound -> lb2.bound withoutFlags(bv1, bv2))
-                case Impure => Right(es withCtx lb1.bound -> lb2.bound withMatchedImpures lb2.bound withoutFlags(bv1, bv2))
+                case Pure => Right(es withCtx lb1.bound -> lb2.bound)
+                case Impure => Right(es withCtx lb1.bound -> lb2.bound withMatchedImpures lb2.bound)
               }
               case Left(es) => Left(es withFailed lb1.bound -> lb2.bound)
             }
