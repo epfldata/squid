@@ -584,18 +584,25 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
       case (bv1: BoundVal, bv2: BoundVal) =>
         println(s"OWNERS: ${bv1.owner} -- ${bv2.owner}")
-        if (es.ctx.getOrElse(bv1, bv1) == bv2) Right(es)
-        else if (es.failedMatches(bv1) contains bv2) Left(es)
-        else (bv1.owner, bv2.owner) match {
-          case (lb1: LetBinding, lb2: LetBinding) => extractDefs(lb1.value, lb2.value)(done) match {
-            case Right(es) => effect(lb2.value) match {
-              case Pure => Right(es withCtx lb1.bound -> lb2.bound withoutFlags(bv1, bv2))
-              case Impure => Right(es withCtx lb1.bound -> lb2.bound withMatchedImpures lb2.bound withoutFlags(bv1, bv2))
+        println(s"STATE: $es")
+        
+        es.ctx.get(bv1) map { bv =>
+          if (bv != bv2) Left(es)
+          else Right(es)
+        } getOrElse {
+          if (bv1 == bv2) Right(es)
+          else if (es.failedMatches(bv1) contains bv2) Left(es)
+          else (bv1.owner, bv2.owner) match {
+            case (lb1: LetBinding, lb2: LetBinding) => extractDefs(lb1.value, lb2.value)(done) match {
+              case Right(es) => effect(lb2.value) match {
+                case Pure => Right(es withCtx lb1.bound -> lb2.bound withoutFlags(bv1, bv2))
+                case Impure => Right(es withCtx lb1.bound -> lb2.bound withMatchedImpures lb2.bound withoutFlags(bv1, bv2))
+              }
+              case Left(es) => Left(es withFailed lb1.bound -> lb2.bound)
             }
-            case Left(es) => Left(es withFailed lb1.bound -> lb2.bound)
+            case (l1: Lambda, l2: Lambda) => extractDefs(l1, l2)(done) map (_ withCtx l1.bound -> l2.bound) // TODO handle failed extract?
+            case _ => Left(es withFailed bv1 -> bv2)
           }
-          case (l1: Lambda, l2: Lambda) => extractDefs(l1, l2)(done) map (_ withCtx l1.bound -> l2.bound) // TODO handle failed extract?
-          case _ => Left(es withFailed bv1 -> bv2)
         }
 
       case (Constant(v1), Constant(v2)) if v1 == v2 => es updateExtractWith (xtor.typ extract(xtee.typ, Covariant))
