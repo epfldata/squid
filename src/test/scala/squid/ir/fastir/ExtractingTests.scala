@@ -78,11 +78,9 @@ class ExtractingTests extends MyFunSuiteBase(ExtractingTests.Embedding) {
       }
     }.isFailure)
 
-    // TODO Holes in impure position and first position get removed :s
-    //ir"val a = readInt; val b = readInt; b" match {
-    //  //case ir"val t = (${ir"($h: Int)"}: Int); val bX = readInt; bX" => assert(h =~= ir"readInt")
-    //  //case ir"${ir"($h: Int)"}; val bX = readInt; bX" => assert(h =~= ir"readInt")
-    //}
+    ir"val a = readInt; val b = readInt; b" match {
+      case ir"val t = ($h: Int); val bX = readInt; bX" => assert(h =~= ir"readInt")
+    }
   }
 }
 

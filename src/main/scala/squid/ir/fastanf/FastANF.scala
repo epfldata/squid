@@ -164,7 +164,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
         // letin(x, Hole, Constant(20)) => `val tmp = defHole; 20;`
 
-        val dh = wrapConstruct(new LetBinding(bound.name, bound, DefHole(h), bound) alsoApply bound.rebind) // flag wrapConstruct?
+        val dh = DefHole(h) |> letbind
 
         //(dh |>? {
         //  case bv: BoundVal => bv.owner |>? {
