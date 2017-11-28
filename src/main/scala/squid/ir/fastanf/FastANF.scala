@@ -776,10 +776,28 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         }
       }
       
+      def appendRestOfXtee(code: Rep, xtor: Rep, ctx: Ctx): Rep = xtor match {
+        case lb: LetBinding =>
+          val xtorLast = lb.last
+          val lastXteeMatched = ctx(xtorLast.bound) 
+          lastXteeMatched.owner |>? {
+            case innerLB: LetBinding => code |>? {
+              case codeLB: LetBinding => 
+                val codeLast = codeLB.last
+                codeLast.body = innerLB.body
+                bottomUpPartial(code) { case `lastXteeMatched` => codeLast.bound }
+            }
+          }
+          code
+          
+        case _ => code
+      }
+      
       if (preCheck(es.ex))
         for {
           code <- code(es.ex)
-          if check(Set.empty, es.matchedImpureBVs)(filterLBs(code)(es.matchedImpureBVs contains _.bound))
+          codeWithRest = appendRestOfXtee(code, xtor, es.ctx)
+          if check(Set.empty, es.matchedImpureBVs)(filterLBs(codeWithRest)(es.matchedImpureBVs contains _.bound))
         } yield code
       else None
     }

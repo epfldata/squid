@@ -55,6 +55,13 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
     assert(b =~= ir"val t = ${ir"Option(42)"}; 42")
   } 
   
+  test("Rewriting sequences of bindings") {
+    val a = ir"val a = readInt; val b = readDouble.toInt; a + b" rewrite {
+      case ir"readDouble.toInt" => ir"readInt"
+    }
+    assert(a =~= ir"val a = readInt; val b = readInt; a + b")
+  }
+  
   //test("Rewriting with impures") {
   //  val a = ir"val a = readInt; val b = readInt; (a + b) * 0.5" rewrite {
   //    case ir"(($h1: Int) + ($h2: Int)) * 0.5" => dbg_ir"($h1 * $h2) + 42.0"
