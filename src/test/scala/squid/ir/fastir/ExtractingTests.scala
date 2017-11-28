@@ -46,6 +46,43 @@ class ExtractingTests extends MyFunSuiteBase(ExtractingTests.Embedding) {
         assert(h2 =~= ir"1")
         assert(h3 =~= ir"1337")
     }
+
+    ir"val a = 10.toDouble; val b = 20.toDouble; val c = 30.toDouble; a + b" match {
+      case ir"val aX = ($a: Int).toDouble; val bX= 20.toDouble; val cX = ($c: Int).toDouble; aX + bX" =>
+        assert(a =~= ir"10")
+        assert(c =~= ir"30")
+    }
+
+    ir"val a = 10.toDouble; val b = 20.toDouble; val c = 30.toDouble; a + b" match {
+      case ir"val bX= 20.toDouble; val aX = ($a: Int).toDouble; val cX = ($c: Int).toDouble; aX + bX" =>
+        assert(a =~= ir"10")
+        assert(c =~= ir"30")
+    }
+
+    // TODO better dead-end handling, should try to match dead-ends only with dead-ends?
+    //ir"val a = 10.toDouble; val b = 20.toDouble; val c = 30.toDouble; a + b" match {
+    //  case ir"val cX = ($c: Int).toDouble; val bX= 20.toDouble; val aX = ($a: Int).toDouble; aX + bX" =>
+    //    assert(a =~= ir"10")
+    //    assert(c =~= ir"30")
+    //}
+  }
+  
+  test("Extracting impure statements") {
+    ir"val a = readInt; val b = readInt; a + b" match {
+      case ir"val aX = readInt; val bX = readInt; aX + bX" => 
+    }
+
+    assert(Try {
+      ir"val a = readInt; val b = readInt; a + b" match {
+        case ir"val aX = readInt; val bX = readInt; bX + aX" => fail
+      }
+    }.isFailure)
+
+    // TODO Holes in impure position and first position get removed :s
+    //ir"val a = readInt; val b = readInt; b" match {
+    //  //case ir"val t = (${ir"($h: Int)"}: Int); val bX = readInt; bX" => assert(h =~= ir"readInt")
+    //  //case ir"${ir"($h: Int)"}; val bX = readInt; bX" => assert(h =~= ir"readInt")
+    //}
   }
 }
 
