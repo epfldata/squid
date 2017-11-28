@@ -11,11 +11,11 @@ class FoldTupleVarOptims extends MyFunSuite(NormDSL) {
   
   test("Foldleft to foreach to while") {
     
-    val ls = ir"$$ls: List[Int]"
-    val f = ir"$$f: ((Int, Int) => Int)"
+    val ls = code"$$ls: List[Int]"
+    val f = code"$$f: ((Int, Int) => Int)"
     
-    ir"$ls.foldLeft(0)($f)" transformWith Optim eqt
-    ir"""
+    code"$ls.foldLeft(0)($f)" transformWith Optim eqt
+    code"""
       var acc = 0;
       {
         var ite = $ls
@@ -31,8 +31,8 @@ class FoldTupleVarOptims extends MyFunSuite(NormDSL) {
   
   test("Tuple Variable Inlining") {
     
-    eqtBy(ir"var two = (1,0); while (two._1 + two._2 < 42) two = (two._1 + 1, two._2 + 2); two" transformWith Optim,
-    ir"""
+    eqtBy(code"var two = (1,0); while (two._1 + two._2 < 42) two = (two._1 + 1, two._2 + 2); two" transformWith Optim,
+    code"""
       var a = 1;
       var b = 0;
       while (a + b < 42) {

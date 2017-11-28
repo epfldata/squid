@@ -30,7 +30,7 @@ object Embedding
     import Strm._
     rewrite {
       //case ir"(if ($c) $thn else $els : Strm[$ta])"
-      case ir"identity[$xt]($x)" => x
+      case code"identity[$xt]($x)" => x
     }
   }
   def pipeline = Desug.pipeline andThen Norm.pipeline

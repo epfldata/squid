@@ -62,50 +62,50 @@ self: Base =>
   /* if (defs isEmpty) r else */  // <- This "optimization" is not welcome, as some IRs (ANF) may relie on `substitute` being called for all insertions
     substitute(r, defs.toMap)
   
-  protected def mkIR[T,C](r: Rep): IR[T,C] = new IR[T,C] {
+  protected def mkCode[T,C](r: Rep): Code[T,C] = new Code[T,C] {
     val rep = r
     override def equals(that: Any): Boolean = that match {
-      case that: IR[_,_] => rep =~= that.rep
+      case that: Code[_,_] => rep =~= that.rep
       case _ => false
     }
   }
   
-  abstract class Code[+T] protected () extends TypeErased with ContextErased {
+  abstract class AnyCode[+T] protected() extends TypeErased with ContextErased {
     type Typ <: T
     val rep: Rep
     
-    def asClosedIR: IR[T,Any] = `internal IR`(rep)
+    def asClosedCode: Code[T,Any] = `internal Code`(rep)
     
     // In the future: have a mehtod that actually checks contexts at runtime, once we have reified hygienic contexts...
     //def asIR[C:Ctx]: Option[IR[T,C]] = ???
     
-    def =~= (that: Code[_]): Boolean = rep =~= that.rep
+    def =~= (that: AnyCode[_]): Boolean = rep =~= that.rep
     
-    def transformWith(trans: ir.Transformer{val base: self.type}) = Code[T](trans.pipeline(rep))
+    def transformWith(trans: ir.Transformer{val base: self.type}) = AnyCode[T](trans.pipeline(rep))
     
     /** Useful when we have non-denotable types (e.g., extracted types) */
-    def withTypeOf[Typ >: T](x: Code[Typ]) = this: Code[Typ]
+    def withTypeOf[Typ >: T](x: AnyCode[Typ]) = this: AnyCode[Typ]
     
   }
-  object Code {
-    def apply[T](rep: Rep): Code[T] = mkIR(rep)
-    def unapply[T](c: Code[T]): Option[Rep] = Some(c.rep)
+  object AnyCode {
+    def apply[T](rep: Rep): AnyCode[T] = mkCode(rep)
+    def unapply[T](c: AnyCode[T]): Option[Rep] = Some(c.rep)
   }
   
-  object IR {
-    def apply[T,C](rep: Rep): IR[T,C] = mkIR(rep)
-    def unapply[T,C](ir: IR[T,C]): Option[Rep] = Some(ir.rep)
+  object Code {
+    def apply[T,C](rep: Rep): Code[T,C] = mkCode(rep)
+    def unapply[T,C](ir: Code[T,C]): Option[Rep] = Some(ir.rep)
   }
   
   // Unsealed to allow for abstract constructs to inherit from IR, for convenience.
-  abstract class IR[+T, -C] protected () extends Code[T] {
+  abstract class Code[+T, -C] protected() extends AnyCode[T] {
     
     // Note: cannot put this in `IntermediateIROps`, because of the path-dependent type
-    def Typ(implicit ev: self.type <:< (self.type with IntermediateBase)): IRType[Typ] = {
+    def Typ(implicit ev: self.type <:< (self.type with IntermediateBase)): CodeType[Typ] = {
       // Ninja path-dependent typing (relies on squid.utils.typing)
       val s: self.type with IntermediateBase = self
       val r: s.Rep = substBounded[Base,self.type,s.type,({type λ[X<:Base] = X#Rep})#λ](rep)
-      s.`internal IRType`(s.repType(r))
+      s.`internal CodeType`(s.repType(r))
     }
     
     // type Ctx >: C
@@ -128,35 +128,35 @@ self: Base =>
     //  case _ => false
     //}
     
-    def cast[S >: T]: IR[S, C] = this
-    def erase: IR[Any, C] = this
+    def cast[S >: T]: Code[S, C] = this
+    def erase: Code[Any, C] = this
     
-    override def transformWith(trans: ir.Transformer{val base: self.type}) = IR[T,C](trans.pipeline(rep))
+    override def transformWith(trans: ir.Transformer{val base: self.type}) = Code[T,C](trans.pipeline(rep))
     
     /** Useful when we have non-denotable types (e.g., extracted types) 
       * -- in fact, now that we have `Ctx = C @uncheckedVariance` it's not really useful anymore... */
-    override def withTypeOf[Typ >: T](x: Code[Typ]) = this: IR[Typ,C]
+    override def withTypeOf[Typ >: T](x: AnyCode[Typ]) = this: Code[Typ,C]
     
     /** Useful when we have non-denotable contexts (e.g., rewrite rule contexts) */
-    def withContextOf[Ctx <: C](x: IR[Any, Ctx]) = this: IR[T,Ctx]
+    def withContextOf[Ctx <: C](x: Code[Any, Ctx]) = this: Code[T,Ctx]
     //def unsafeWithContextOf[Ctx](x: IR[Any, Ctx]) = this.asInstanceOf[IR[T,Ctx]]  // does not seem to be too useful...
     
     override def toString: String = {
       val repStr = showRep(rep)
       val quote = if ((repStr contains '\n') || (repStr contains '"')) "\"" * 3 else "\""
-      s"ir$quote$repStr$quote"
+      s"code$quote$repStr$quote"
     }
   }
-  def `internal IR`[Typ,Ctx](rep: Rep) = IR[Typ,Ctx](rep) // mainly for macros
-  type SomeIR = Code[_] // shortcut; avoids showing messy existentials
+  def `internal Code`[Typ,Ctx](rep: Rep) = Code[Typ,Ctx](rep) // mainly for macros
+  type SomeCode = AnyCode[_] // shortcut; avoids showing messy existentials
   
   
-  sealed case class IRType[T] private[quasi] (rep: TypeRep) extends TypeErased {
+  sealed case class CodeType[T] private[quasi](rep: TypeRep) extends TypeErased {
     type Typ = T
-    def <:< (that: IRType[_]) = rep <:< that.rep
-    def =:= (that: IRType[_]) = rep =:= that.rep
+    def <:< (that: CodeType[_]) = rep <:< that.rep
+    def =:= (that: CodeType[_]) = rep =:= that.rep
   }
-  def `internal IRType`[Typ](trep: TypeRep) = IRType[Typ](trep) // mainly for macros
+  def `internal CodeType`[Typ](trep: TypeRep) = CodeType[Typ](trep) // mainly for macros
   
   trait TypeErased { type Typ }
   trait ContextErased { type Ctx }
@@ -168,33 +168,33 @@ self: Base =>
   type ContextOf[QT <: ContextErased] = QT#Ctx
   
   
-  def irTypeOf[T: IRType] = implicitly[IRType[T]]
-  def typeRepOf[T: IRType] = implicitly[IRType[T]].rep
+  def codeTypeOf[T: CodeType] = implicitly[CodeType[T]]
+  def typeRepOf[T: CodeType] = implicitly[CodeType[T]].rep
   
   
   val Predef  = new Predef[DefaultQuasiConfig]
   class Predef[QC <: QuasiConfig] {
     val base: self.type = self // macro expansions will make reference to it
     
-    type Code[+T] = self.Code[T]
-    type IR[+T,-C] = self.IR[T,C]
-    type CodeType[T] = self.IRType[T]
-    type IRType[T] = self.IRType[T]
+    type AnyCode[+T] = self.AnyCode[T]
+    type Code[+T,-C] = self.Code[T,C]
+    type CodeType[T] = self.CodeType[T]
+    
     type __* = self.__*
     
     val Const: self.Const.type = self.Const
-    def irTypeOf[T: IRType] = self.irTypeOf[T]
-    def typeRepOf[T: IRType] = self.typeRepOf[T]
+    def codeTypeOf[T: CodeType] = self.codeTypeOf[T]
+    def typeRepOf[T: CodeType] = self.typeRepOf[T]
     
-    def nullValue[T: IRType](implicit ev: base.type <:< (base.type with IntermediateBase)): IR[T,{}] = {
+    def nullValue[T: CodeType](implicit ev: base.type <:< (base.type with IntermediateBase)): Code[T,{}] = {
       val b: base.type with IntermediateBase = ev(base)
       //b.nullValue[T](irTypeOf[T]) // should work, but Scala doesn't like it
-      b.nullValue[T](irTypeOf[T].asInstanceOf[b.IRType[T]])
+      b.nullValue[T](codeTypeOf[T].asInstanceOf[b.CodeType[T]])
     }
     // Unsafe version:
-    //def nullValue[T: IRType]: IR[T,{}] = {
+    //def nullValue[T: CodeType]: IR[T,{}] = {
     //  val b = base.asInstanceOf[base.type with IntermediateBase]
-    //  b.nullValue[T](irTypeOf[T].asInstanceOf[b.IRType[T]]) }
+    //  b.nullValue[T](irTypeOf[T].asInstanceOf[b.CodeType[T]]) }
     
     // Could also use compileTimeOnly here:
     @deprecated("Abort(msg) should only be called from the body of a rewrite rule. " +
@@ -204,27 +204,27 @@ self: Base =>
     
     object Return {
       private def oops = System.err.println("Return was called outside a rewrite rule!")
-      def apply[T,C](x: IR[T,C]): IR[T,C] = {
+      def apply[T,C](x: Code[T,C]): Code[T,C] = {
         oops
         x
       }
-      def transforming[A,CA,T,C](a: IR[A,CA])(f: IR[A,CA] => IR[T,C]): IR[T,C] = {
+      def transforming[A,CA,T,C](a: Code[A,CA])(f: Code[A,CA] => Code[T,C]): Code[T,C] = {
         oops
         f(a)
       }
-      def transforming[A,CA,B,CB,T,C](a: IR[A,CA], b: IR[B,CB])(f: (IR[A,CA], IR[B,CB]) => IR[T,C]): IR[T,C] = {
+      def transforming[A,CA,B,CB,T,C](a: Code[A,CA], b: Code[B,CB])(f: (Code[A,CA], Code[B,CB]) => Code[T,C]): Code[T,C] = {
         oops
         f(a,b)
       }
-      def transforming[A,CA,B,CB,D,CD,T,C](a: IR[A,CA], b: IR[B,CB], d: IR[D,CD])(f: (IR[A,CA], IR[B,CB], IR[D,CD]) => IR[T,C]): IR[T,C] = {
+      def transforming[A,CA,B,CB,D,CD,T,C](a: Code[A,CA], b: Code[B,CB], d: Code[D,CD])(f: (Code[A,CA], Code[B,CB], Code[D,CD]) => Code[T,C]): Code[T,C] = {
         oops
         f(a,b,d)
       }
-      def transforming[A,CA,T,C](as: List[IR[A,CA]])(f: List[IR[A,CA]] => IR[T,C]): IR[T,C] = {
+      def transforming[A,CA,T,C](as: List[Code[A,CA]])(f: List[Code[A,CA]] => Code[T,C]): Code[T,C] = {
         oops
         f(as)
       }
-      def recursing[T,C](cont: Transformer{val base: self.type} => IR[T,C]): IR[T,C] = {
+      def recursing[T,C](cont: Transformer{val base: self.type} => Code[T,C]): Code[T,C] = {
         oops
         cont(new Transformer { // Dummy transformer that doesn't do anything
           override def transform(rep: base.Rep) = rep
@@ -243,14 +243,14 @@ self: Base =>
     
     implicit class QuasiContext(private val ctx: StringContext) extends self.Quasiquotes.QuasiContext(ctx)
     
-    implicit def implicitType[T]: IRType[T] = macro QuasiBlackboxMacros.implicitTypeImpl[QC, T]
+    implicit def implicitType[T]: CodeType[T] = macro QuasiBlackboxMacros.implicitTypeImpl[QC, T]
     
     object dbg {
       /** import this `implicitType` explicitly to shadow the non-debug one */ 
-      @MacroSetting(debug = true) implicit def implicitType[T]: IRType[T] = macro QuasiBlackboxMacros.implicitTypeImpl[QC, T]
+      @MacroSetting(debug = true) implicit def implicitType[T]: CodeType[T] = macro QuasiBlackboxMacros.implicitTypeImpl[QC, T]
     }
     
-    implicit def unliftFun[A,B:IRType,C](f: IR[A => B,C]): IR[A,C] => IR[B,C] = a => IR(tryInline(f.rep,a.rep)(typeRepOf[B]))
+    implicit def unliftFun[A,B:CodeType,C](f: Code[A => B,C]): Code[A,C] => Code[B,C] = a => Code(tryInline(f.rep,a.rep)(typeRepOf[B]))
   }
   
   def `internal abort`(msg: String): Nothing = throw RewriteAbort(msg)
@@ -307,18 +307,18 @@ self: Base =>
   // ^ TODO find a solution cf by-name params, which creates owner corruption in macros
 
   
-  type __* = Seq[IR[_,_]] // used in insertion holes, as in:  ${xs: __*}
+  type __* = Seq[Code[_,_]] // used in insertion holes, as in:  ${xs: __*}
   
   
   
   /** TODO make it more generic: use Liftable! */
   /* To support insertion syntax `$xs` (in ction) or `$$xs` (in xtion) */
-  def $[T,C](q: IR[T,C]*): T = ??? // TODO B/E  -- also, rename to 'unquote'?
+  def $[T,C](q: Code[T,C]*): T = ??? // TODO B/E  -- also, rename to 'unquote'?
   //def $[T,C](q: IR[T,C]): T = ??? // Actually unnecessary
-  def $[A,B,C](q: IR[A,C] => IR[B,C]): A => B = ??? // TODO rely on implicit liftFun instead?
+  def $[A,B,C](q: Code[A,C] => Code[B,C]): A => B = ??? // TODO rely on implicit liftFun instead?
   
-  def $Code[T](q: Code[T]): T = ??? // TODO B/E  -- also, rename to 'unquote'?
-  def $Code[A,B](q: Code[A] => Code[B]): A => B = ???
+  def $Code[T](q: AnyCode[T]): T = ??? // TODO B/E  -- also, rename to 'unquote'?
+  def $Code[A,B](q: AnyCode[A] => AnyCode[B]): A => B = ???
   
   /* To support hole syntax `xs?` (old syntax `$$xs`) (in ction) or `$xs` (in xtion)  */
   def $$[T](name: Symbol): T = ???
@@ -326,21 +326,21 @@ self: Base =>
   def $$_*[T](name: Symbol): Seq[T] = ???
   
   
-  implicit def liftFun[A:IRType,B,C](qf: IR[A,C] => IR[B,C]): IR[A => B,C] = {
-    val bv = bindVal("lifted", typeRepOf[A], Nil) // add TODO annotation recording the lifting?
-    val body = qf(IR(bv |> readVal)).rep
-    IR(lambda(bv::Nil, body))
-  }
-  implicit def liftCodeFun[A:IRType,B](qf: Code[A] => Code[B]): Code[A => B] = {
+  implicit def liftFun[A:CodeType,B,C](qf: Code[A,C] => Code[B,C]): Code[A => B,C] = {
     val bv = bindVal("lifted", typeRepOf[A], Nil) // add TODO annotation recording the lifting?
     val body = qf(Code(bv |> readVal)).rep
     Code(lambda(bv::Nil, body))
   }
-  implicit def unliftFun[A,B:IRType,C](qf: IR[A => B,C]): IR[A,C] => IR[B,C] = x => {
-    IR(app(qf.rep, x.rep)(typeRepOf[B]))
+  implicit def liftCodeFun[A:CodeType,B](qf: AnyCode[A] => AnyCode[B]): AnyCode[A => B] = {
+    val bv = bindVal("lifted", typeRepOf[A], Nil) // add TODO annotation recording the lifting?
+    val body = qf(AnyCode(bv |> readVal)).rep
+    AnyCode(lambda(bv::Nil, body))
   }
-  implicit def unliftCodeFun[A,B:IRType](qf: Code[A => B]): Code[A] => Code[B] = x => {
+  implicit def unliftFun[A,B:CodeType,C](qf: Code[A => B,C]): Code[A,C] => Code[B,C] = x => {
     Code(app(qf.rep, x.rep)(typeRepOf[B]))
+  }
+  implicit def unliftCodeFun[A,B:CodeType](qf: AnyCode[A => B]): AnyCode[A] => AnyCode[B] = x => {
+    AnyCode(app(qf.rep, x.rep)(typeRepOf[B]))
   }
   
   import scala.language.experimental.macros
@@ -350,13 +350,14 @@ self: Base =>
     
     implicit class QuasiContext(private val ctx: StringContext) {
       
+      // TODO deprecate in favor or IR
       object ir { // TODO try to refine the types..?
         //def apply(inserted: Any*): Any = macro QuasiMacros.applyImpl[QC]
         //def unapply(scrutinee: Any): Any = macro QuasiMacros.unapplyImpl[QC]
         // ^ versions above give less hints to macro-blind IDEs, but may be faster to compile 
         // as they involve an easier (trivial) subtype check: macro_result.tpe <: Any (performed by scalac)
-        def apply(inserted: Any*): SomeIR = macro QuasiMacros.applyImpl[QC]
-        def unapply(scrutinee: SomeIR): Any = macro QuasiMacros.unapplyImpl[QC]
+        def apply(inserted: Any*): SomeCode = macro QuasiMacros.applyImpl[QC]
+        def unapply(scrutinee: SomeCode): Any = macro QuasiMacros.unapplyImpl[QC]
       }
       
       object dbg_ir { // TODO try to refine the types..?
@@ -365,12 +366,16 @@ self: Base =>
       }
       
       object code {
-        def apply(inserted: Any*): SomeIR = macro QuasiMacros.applyImpl[QC]
-        def unapply(scrutinee: SomeIR): Any = macro QuasiMacros.unapplyImpl[QC]
+        def apply(inserted: Any*): SomeCode = macro QuasiMacros.applyImpl[QC]
+        def unapply(scrutinee: SomeCode): Any = macro QuasiMacros.unapplyImpl[QC]
+      }
+      object dbg_code { // TODO try to refine the types..?
+        @MacroSetting(debug = true) def apply(inserted: Any*): Any = macro QuasiMacros.applyImpl[QC]
+        @MacroSetting(debug = true) def unapply(scrutinee: Any): Any = macro QuasiMacros.unapplyImpl[QC]
       }
       object c {
-        def apply(inserted: Any*): SomeIR = macro QuasiMacros.applyImpl[QC]
-        def unapply(scrutinee: SomeIR): Any = macro QuasiMacros.unapplyImpl[QC]
+        def apply(inserted: Any*): SomeCode = macro QuasiMacros.applyImpl[QC]
+        def unapply(scrutinee: SomeCode): Any = macro QuasiMacros.unapplyImpl[QC]
       }
       
     }
@@ -379,14 +384,16 @@ self: Base =>
   class Quasicodes[QC <: QuasiConfig] {
     val qcbase: QuasiBase.this.type = QuasiBase.this // macro expansions will make reference to it
     
-    def ir[T](tree: T): IR[T, _] = macro QuasiMacros.quasicodeImpl[QC]
-    @MacroSetting(debug = true) def dbg_ir[T](tree: T): IR[T, _] = macro QuasiMacros.quasicodeImpl[QC]
+    @deprecated("use the `code` macro instead", "0.2")
+    def ir[T](tree: T): Code[T, _] = macro QuasiMacros.quasicodeImpl[QC]
+    @deprecated("use the `code` macro instead", "0.2")
+    @MacroSetting(debug = true) def dbg_ir[T](tree: T): Code[T, _] = macro QuasiMacros.quasicodeImpl[QC]
     
-    def code[T](tree: T): IR[T, _] = macro QuasiMacros.quasicodeImpl[QC]
-    @MacroSetting(debug = true) def dbg_code[T](tree: T): IR[T, _] = macro QuasiMacros.quasicodeImpl[QC]
+    def code[T](tree: T): Code[T, _] = macro QuasiMacros.quasicodeImpl[QC]
+    @MacroSetting(debug = true) def dbg_code[T](tree: T): Code[T, _] = macro QuasiMacros.quasicodeImpl[QC]
     
-    def $[T,C](q: IR[T,C]*): T = macro QuasiMacros.forward$ // to conserve the same method receiver as for QQ (the real `Base`)
-    def $[A,B,C](q: IR[A,C] => IR[B,C]): A => B = macro QuasiMacros.forward$2
+    def $[T,C](q: Code[T,C]*): T = macro QuasiMacros.forward$ // to conserve the same method receiver as for QQ (the real `Base`)
+    def $[A,B,C](q: Code[A,C] => Code[B,C]): A => B = macro QuasiMacros.forward$2
     //def $[T,C](q: IR[T,C]): T = macro QuasiMacros.forward$ // Actually unnecessary
     //def $[T,C](q: IR[T,C]*): T = macro QuasiMacros.forwardVararg$ // Actually unnecessary
     def $$[T](name: Symbol): T = macro QuasiMacros.forward$$
@@ -412,7 +419,7 @@ object QuasiBase {
     * and to have a self-documenting name when the type is widened because of scope extrusion.
     * Note: now that extracted type symbols are not generated from a local `trait` but instead from the `Typ` member of a local `object`, 
     *   scope extrusion does not neatly widen extruded types to just `<extruded type>` anymore, but often things like:
-    *   `Embedding.IRType[MyClass.s.Typ]]`.
+    *   `Embedding.CodeType[MyClass.s.Typ]]`.
     *   Still, this trait is useful as it is used in, e.g., `QuasiTypeEmbedded` to customize the error on implicit 
     *   type not found. It's also the inferred type for things like `case List($a:$ta,$b:$tb)`, which prompts 
     *   a QQ error -- this is not really necessary, just a nicety. 

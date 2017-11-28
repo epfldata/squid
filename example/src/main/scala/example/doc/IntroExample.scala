@@ -30,8 +30,8 @@ object IntroExample extends App {
   
   // Making a dedicated static optimizer –– see the usage example in test file `IntroExampleTest`:
   
-  class TestOptimizer extends Embedding.SelfIRTransformer {
-    def transform[T,C](pgrm0: IR[T,C]): IR[T,C] = {
+  class TestOptimizer extends Embedding.SelfCodeTransformer {
+    def transform[T,C](pgrm0: Code[T,C]): Code[T,C] = {
       // same transformation as above:
       val pgrm1 = pgrm0 transformWith (new Lowering('MyPhase) with BottomUpTransformer)
       val pgrm2 = pgrm1 fix_rewrite {

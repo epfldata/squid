@@ -12,7 +12,7 @@ import scala.reflect.macros.blackbox
 
 
 object QuasiMacros {
-  val dslInterpolators = Set("ir", "dbg_ir", "code", "c")
+  val dslInterpolators = Set("ir", "dbg_ir", "code", "dbg_code", "c")
 }
 class QuasiMacros(val c: whitebox.Context) {
   import c.universe._
@@ -123,18 +123,18 @@ class QuasiMacros(val c: whitebox.Context) {
   }
   
   
-  lazy val IRTSym = symbolOf[QuasiBase#IRType[_]]
-  lazy val IRSym = symbolOf[QuasiBase#IR[_,_]]
-  lazy val CodeSym = symbolOf[QuasiBase#Code[_]]
+  lazy val CodeTSym = symbolOf[QuasiBase#CodeType[_]]
+  lazy val CodeSym = symbolOf[QuasiBase#Code[_,_]]
+  lazy val AnyCodeSym = symbolOf[QuasiBase#AnyCode[_]]
   lazy val FunSym = symbolOf[_ => _]
   
-  def asIR(tp: Type, typeOfBase: Type) = tp.baseType(IRSym) |>? {
-    case TypeRef(typeOfBase0, IRSym, typ :: ctx :: Nil) if typeOfBase =:= typeOfBase0 => (typ, ctx)
+  def asIR(tp: Type, typeOfBase: Type) = tp.baseType(CodeSym) |>? {
+    case TypeRef(typeOfBase0, CodeSym, typ :: ctx :: Nil) if typeOfBase =:= typeOfBase0 => (typ, ctx)
   }
   class AsIR(typeOfBase: Type) { def unapply(x:Type) = asIR(x, typeOfBase) }
   
-  def asCode(tp: Type, typeOfBase: Type) = tp.baseType(CodeSym) |>? {
-    case TypeRef(typeOfBase0, CodeSym, typ :: Nil) if typeOfBase =:= typeOfBase0 => typ
+  def asCode(tp: Type, typeOfBase: Type) = tp.baseType(AnyCodeSym) |>? {
+    case TypeRef(typeOfBase0, AnyCodeSym, typ :: Nil) if typeOfBase =:= typeOfBase0 => typ
   }
   class AsCode(typeOfBase: Type) { def unapply(x:Type) = asCode(x, typeOfBase) }
   
@@ -166,7 +166,7 @@ class QuasiMacros(val c: whitebox.Context) {
     //  throw EmbeddingException(s"Cannot match type `${scrutinee.tpe}`, which is not a proper subtype of `$base.${IRSym.name}[_,_]`"
     //    +"\n\tTry matching { case x: IR[_,_] => ... } first.")
     if (asCode(scrutinee.tpe, base.tpe).isEmpty) {
-      throw EmbeddingException(s"Cannot match type `${scrutinee.tpe}`, which is not a proper subtype of `$base.${CodeSym.name}[_]`"
+      throw EmbeddingException(s"Cannot match type `${scrutinee.tpe}`, which is not a proper subtype of `$base.${AnyCodeSym.name}[_]`"
         +"\n\tTry matching { case x: Code[_] => ... } first.")
     }
     
@@ -208,18 +208,18 @@ class QuasiMacros(val c: whitebox.Context) {
     
     var unquotedTypes = List[(TypeName, Type, Tree)]() // fresh name; type; type rep tree
     
-    def unquoteType(name: TypeName, tp: Type, tree: Tree) = tp.baseType(IRTSym) match {
-      case TypeRef(tpbase,IRTSym,tp::Nil) if tpbase =:= base.tpe =>
+    def unquoteType(name: TypeName, tp: Type, tree: Tree) = tp.baseType(CodeTSym) match {
+      case TypeRef(tpbase,CodeTSym,tp::Nil) if tpbase =:= base.tpe =>
         unquotedTypes ::= ((name.toTypeName, tp, tree))
         tq"$tp"
       case TypeRef(_,_,_) => throw EmbeddingException(s"Cannot unquote type '$tp': it is not from base $base.")
-      case _ => throw EmbeddingException(s"Cannot unquote type '$tp': it is not an IRType[_].")
+      case _ => throw EmbeddingException(s"Cannot unquote type '$tp': it is not a CodeType[_].")
     }
     
     var hasStuckSemi = Option.empty[TermName]
     
-    object AsIR extends AsIR(base.tpe)
-    object AsCode extends AsCode(base.tpe)
+    object AsCode extends AsIR(base.tpe)
+    object AsAnyCode extends AsCode(base.tpe)
     
     def mkTermHole(name: TermName, followedBySplice: Boolean) = {
       val h = builder.holes(name)
@@ -265,10 +265,10 @@ class QuasiMacros(val c: whitebox.Context) {
             
             // TODO: also handle auto-lifted function types of greater arities...
             t.tpe match {
-              case AsIR(typ, ctx) => q"$base.$$[$typ,$ctx]($t)"
-              case AsFun(AsIR(t0,ctx0), AsIR(tr,ctxr)) => q"$base.$$[$t0,$tr,$ctx0 with $ctxr]($t)"
-              case AsCode(typ) => q"$base.$$Code[$typ]($t)"
-              case AsFun(AsCode(t0), AsCode(tr)) => q"$base.$$Code[$t0,$tr]($t)"
+              case AsCode(typ, ctx) => q"$base.$$[$typ,$ctx]($t)"
+              case AsFun(AsCode(t0,ctx0), AsCode(tr,ctxr)) => q"$base.$$[$t0,$tr,$ctx0 with $ctxr]($t)"
+              case AsAnyCode(typ) => q"$base.$$Code[$typ]($t)"
+              case AsFun(AsAnyCode(t0), AsAnyCode(tr)) => q"$base.$$Code[$t0,$tr]($t)"
               case _ => q"$base.$$($t)"
             }
             
@@ -444,7 +444,7 @@ class QuasiMacros(val c: whitebox.Context) {
       }
     })
     
-    val res = q"$myBaseTree.`internal IRType`[$T]($codeTree)"
+    val res = q"$myBaseTree.`internal CodeType`[$T]($codeTree)"
     
     debug("Generated: "+res)
     //if (debug.debugOptionEnabled) debug("Of Type: "+c.typecheck(res).tpe) // Makes a StackOverflow when type evidence macro stuff happen
@@ -461,8 +461,8 @@ class QuasiMacros(val c: whitebox.Context) {
     val C = weakTypeOf[C]
     
     val (base -> quoted, typ -> ctx) = c.macroApplication match {
-      case q"$b.IntermediateIROps[$t,$c]($q).subs[$_,$_]($_)" => (b -> q, t.tpe -> c.tpe)
-      case q"$b.IntermediateIROps[$t,$c]($q).dbg_subs[$_,$_]($_)" => (b -> q, t.tpe -> c.tpe)
+      case q"$b.IntermediateCodeOps[$t,$c]($q).subs[$_,$_]($_)" => (b -> q, t.tpe -> c.tpe)
+      case q"$b.IntermediateCodeOps[$t,$c]($q).dbg_subs[$_,$_]($_)" => (b -> q, t.tpe -> c.tpe)
     }
     
     val name -> term = s match {
@@ -491,7 +491,7 @@ class QuasiMacros(val c: whitebox.Context) {
       if (debug.debugOptionEnabled) term else untypeTreeShape(c.untypecheck(term))
       //term
       //c.untypecheck(term)
-    val res = q"$base.`internal IR`[$typ,$outputCtx]($base.substituteLazy($quoted.rep, Map($name -> (() => ($sanitizedTerm:$base.IR[_,_]).rep))))"
+    val res = q"$base.`internal Code`[$typ,$outputCtx]($base.substituteLazy($quoted.rep, Map($name -> (() => ($sanitizedTerm:$base.Code[_,_]).rep))))"
     
     debug("Generated: "+showCode(res))
     

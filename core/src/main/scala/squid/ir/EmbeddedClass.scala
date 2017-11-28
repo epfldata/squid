@@ -10,8 +10,8 @@ import squid.lang.Base
 abstract class EmbeddedClass[B <: Base](val base: B) {
   import base._
   
-  val defs: Map[Mtd, Lazy[SomeIR]]
-  val parametrizedDefs: Map[Mtd, List[TypeRep] => SomeIR]
+  val defs: Map[Mtd, Lazy[SomeCode]]
+  val parametrizedDefs: Map[Mtd, List[TypeRep] => SomeCode]
   
   def mtd(sym: Mtd) = defs get sym
   

@@ -25,23 +25,23 @@ class PardisIRExtractTests extends PardisTestSuite {
     val q = ir{42}
     
     q match {
-      case ir"${Const(x)}" =>
+      case code"${Const(x)}" =>
         x ofType[Int]()
     }
     
     q matches {
-      case ir"42" =>
+      case code"42" =>
     } and {
-      case ir"${Const(x)}:Double" => 
+      case code"${Const(x)}:Double" => 
         x ofType[Double]()
         fail
-      case ir"${Const(x)}:Int" =>
+      case code"${Const(x)}:Int" =>
         x ofType[Int]()
         assert(x == 42)
     } and {
-      case ir"$x:Double" => fail
-      case ir"$x:Nothing" => fail
-      case ir"$x:Int" =>
+      case code"$x:Double" => fail
+      case code"$x:Nothing" => fail
+      case code"$x:Int" =>
         assert(x == Const(42))
     }
     
@@ -68,15 +68,15 @@ class PardisIRExtractTests extends PardisTestSuite {
     // Specializes Seq constructions to ArrayBuffer
     object Tr extends SimpleRuleBasedTransformer with TopDownTransformer with Sqd.SelfTransformer {
       rewrite {
-        case ir"($arr: ArrayBuffer[Int]) append 42" => ir{ println("nope!") }
-        case ir"($arr: ArrayBuffer[$t]) append $x; (arr:ArrayBuffer[t]).clear" => ir{ $(arr).clear }
+        case code"($arr: ArrayBuffer[Int]) append 42" => ir{ println("nope!") }
+        case code"($arr: ArrayBuffer[$t]) append $x; (arr:ArrayBuffer[t]).clear" => ir{ $(arr).clear }
           
         //case ir"val s = ($arr: ArrayBuffer[$t]).size; (arr:ArrayBuffer[t]) append $x; s" => ir{ $(arr) append $(x); $(arr).size-1 }
         // ^ Note, as expected (because of $x):
         //     Error:(71, 95) Cannot rewrite a term of context <context @ 71:14> to a stricter context <context @ 71:14>{val s: Int}
           
-        case ir"val s = ($arr: ArrayBuffer[$t]).size; (arr:ArrayBuffer[t]) append $x; s" =>
-          val x2 = x subs 's -> ((throw new RewriteAbort): IR[Int,{}])
+        case code"val s = ($arr: ArrayBuffer[$t]).size; (arr:ArrayBuffer[t]) append $x; s" =>
+          val x2 = x subs 's -> ((throw new RewriteAbort): Code[Int,{}])
           ir{ $(arr) append $(x2); $(arr).size-1 }
           
       }}
@@ -161,7 +161,7 @@ class PardisIRExtractTests extends PardisTestSuite {
     
     object Tr2 extends SimpleRuleBasedTransformer with TopDownTransformer with Sqd.SelfTransformer {
       rewrite {
-        case ir"val s = Seq[$t]($xs*); s" =>
+        case code"val s = Seq[$t]($xs*); s" =>
           ir{ ArrayBuffer($(xs:_*)) }
           //ir"ArrayBuffer($xs*)"       // other way, with QQs
       }}
@@ -175,9 +175,9 @@ class PardisIRExtractTests extends PardisTestSuite {
     
     object Tr3 extends SimpleRuleBasedTransformer with TopDownTransformer with Sqd.SelfTransformer {
       rewrite {
-        case ir"val a = new Cont[Double]($n, null); new Cont[Double](n, a)" =>  // works as expected
+        case code"val a = new Cont[Double]($n, null); new Cont[Double](n, a)" =>  // works as expected
           ir{ new Cont($(n), null) }
-        case ir"val a = new Cont[Int]($n, null); val b = new Cont[Int](n, a); a" =>
+        case code"val a = new Cont[Int]($n, null); val b = new Cont[Int](n, a); a" =>
           ir{ new Cont($(n)+1, null) }
       }}
     
@@ -202,8 +202,8 @@ class PardisIRExtractTests extends PardisTestSuite {
     
     // Specializes Seq constructions to ArrayBuffer
     object Tr extends SimpleRuleBasedTransformer with TopDownTransformer with Sqd.SelfTransformer {
-      rewrite { case ir"val x = Seq[$t]($xs*); $body: $bt" =>  // println(s"Running rwr code!! body = $body")
-          ir"val x = ArrayBuffer($xs*); $body"
+      rewrite { case code"val x = Seq[$t]($xs*); $body: $bt" =>  // println(s"Running rwr code!! body = $body")
+          code"val x = ArrayBuffer($xs*); $body"
       }}
     
     
@@ -218,13 +218,13 @@ class PardisIRExtractTests extends PardisTestSuite {
       case (liftedSeqShit :: SC.Stm(s0,abap:SC.ArrayBufferApplyObject[_]) :: _ :: _ :: SC.Stm(s2,SC.ArrayBufferSize(s1)) :: Nil) -> (s3:Sqd.Sym) =>
         assert(s0 == s1)
         assert(s2 == s3)
-        assert(s0.tp == irTypeOf[ArrayBuffer[Int]].rep)
-        assert(abap.typeA == irTypeOf[Int].rep)
+        assert(s0.tp == codeTypeOf[ArrayBuffer[Int]].rep)
+        assert(abap.typeA == codeTypeOf[Int].rep)
     }
     
     
     // Another way to do the same thing (but note that it uses a FixedPointTransformer!):
-    sameDefs(a0 rewrite { case ir"val x = Seq[$t]($xs*); $body: $bt"  =>  ir"val x = ArrayBuffer($xs*); $body" }, ar)
+    sameDefs(a0 rewrite { case code"val x = Seq[$t]($xs*); $body: $bt"  =>  code"val x = ArrayBuffer($xs*); $body" }, ar)
     
     
     sameDefs(ir{         Seq(1,2,3).filter(_ > 0) } transformWith Tr,
@@ -245,8 +245,8 @@ class PardisIRExtractTests extends PardisTestSuite {
     
     object Tr2 extends SimpleRuleBasedTransformer with TopDownTransformer with Sqd.SelfTransformer {
       // Short-cuts anything that happens after println(666), if the final type is Unit:
-      rewrite { case ir"println(666); $body: Unit" =>  // println(s"Running rwr code!! body = $body")
-          ir"println(42)"
+      rewrite { case code"println(666); $body: Unit" =>  // println(s"Running rwr code!! body = $body")
+          code"println(42)"
       }}
     
     val b0 = ir{
@@ -288,9 +288,9 @@ class PardisIRExtractTests extends PardisTestSuite {
     
     object Tr extends FixPointRuleBasedTransformer with TopDownTransformer with Sqd.SelfTransformer {
       rewrite {
-        case ir"($arr: ArrayBuffer[$t]) append $x; (arr:ArrayBuffer[t]).clear" =>  // println(s"Running rwr code!! body = $body")
+        case code"($arr: ArrayBuffer[$t]) append $x; (arr:ArrayBuffer[t]).clear" =>  // println(s"Running rwr code!! body = $body")
           ir{ $(arr).clear }
-        case ir"val arr = new ArrayBuffer[$t](); arr.clear; $body: $bt" =>
+        case code"val arr = new ArrayBuffer[$t](); arr.clear; $body: $bt" =>
           ir{ val arr = new ArrayBuffer[t.Typ](); $(body) }
       }
     }
@@ -425,12 +425,12 @@ class PardisIRExtractTests extends PardisTestSuite {
   
   test("Hole in Statement Position") {
     
-    val pgrm = ir"ArrayBuffer[Int]().size"
+    val pgrm = code"ArrayBuffer[Int]().size"
     sameDefs( pgrm rewrite {
-      case ir"val hm: ArrayBuffer[Int] = $init; $body: Int"
+      case code"val hm: ArrayBuffer[Int] = $init; $body: Int"
       if stmts(body).headOption exists (_.rhs.nodeName != "ArrayBufferApply") =>  // prevents non-convergence of the RwR
-        ir"$init(0)"
-    }, ir"ArrayBuffer[Int]()(0)")
+        code"$init(0)"
+    }, code"ArrayBuffer[Int]()(0)")
     
   }
   
@@ -449,16 +449,16 @@ class PardisIRExtractTests extends PardisTestSuite {
     
     object Tr extends FixPointRuleBasedTransformer with TopDownTransformer with Sqd.SelfTransformer {
       rewrite {
-        case ir"val $arr: ArrayBuffer[$t] = $init; $body: $bt" =>
+        case code"val $arr: ArrayBuffer[$t] = $init; $body: $bt" =>
           //println(s"Running rwr code!\n\tarr = $arr\n\tinit = $init\n\tbody = $body")
           
           val newBody = body rewrite {
-            case ir"$$arr.size" => ir"42"
+            case code"$$arr.size" => code"42"
           }
           
           //println(s"New body: $newBody")
           
-          val closedBody = newBody subs 'arr -> ((throw new RewriteAbort):IR[arr.Typ,{}])
+          val closedBody = newBody subs 'arr -> ((throw new RewriteAbort):Code[arr.Typ,{}])
           
           //println(s"Closed body: $newBody")
           
@@ -493,7 +493,7 @@ class PardisIRExtractTests extends PardisTestSuite {
     
     object Tr extends SimpleRuleBasedTransformer with TopDownTransformer with Sqd.SelfTransformer {
       rewrite {
-        case block @ ir"val $arr: ArrayBuffer[Int] = $init; $body: $bt" =>
+        case block @ code"val $arr: ArrayBuffer[Int] = $init; $body: $bt" =>
           //println(s"Running rwr code!\n\tarr = $arr\n\tinit = $init\n\tbody = $body")
           
           block eqt body
@@ -503,15 +503,15 @@ class PardisIRExtractTests extends PardisTestSuite {
           
           // The `rewrite` macro expands to a `FixPointTransformer`
           val newBody = body rewrite {
-            case ir"$$arr append $v" if !rewritten(v.rep) =>
-              val newV = ir"$v + 1"
+            case code"$$arr append $v" if !rewritten(v.rep) =>
+              val newV = code"$v + 1"
               rewritten += newV.rep
-              ir"$arr append $newV"
+              code"$arr append $newV"
               
-            case s @ ir"$$arr.size" if !rewritten(s.rep) =>
-              val r = ir"$arr.size"
+            case s @ code"$$arr.size" if !rewritten(s.rep) =>
+              val r = code"$arr.size"
               rewritten += r.rep
-              ir"$r+1"
+              code"$r+1"
           }
           
           // Note that in the above rewriting, references to `arr` are converted on-the-fly to holes;
@@ -519,7 +519,7 @@ class PardisIRExtractTests extends PardisTestSuite {
           
           //println(s"New body: $newBody")
           
-          ir"val arr = $init; $newBody"
+          code"val arr = $init; $newBody"
       }
     }
     

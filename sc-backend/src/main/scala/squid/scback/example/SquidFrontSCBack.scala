@@ -26,7 +26,7 @@ object SquidFrontSCBack extends App {
   
   import Frontend.Predef._
   
-  val pgrm = ir"val a = ArrayBuffer(1,2,3); a append 1; a.size"
+  val pgrm = code"val a = ArrayBuffer(1,2,3); a append 1; a.size"
   
   println(pgrm)
   println(pgrm.run)

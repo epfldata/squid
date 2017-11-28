@@ -83,7 +83,7 @@ class PardisIRFeatureTests extends PardisTestSuite {
   
   
   test("Type Ascription") { // TODO
-    println(ir"42:Any")
+    println(code"42:Any")
   }
   
   

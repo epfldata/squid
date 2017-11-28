@@ -9,9 +9,9 @@ class OfflineTransformerTest extends MyFunSuite {
   test ("Basic Rewriting") {
     
     object Trans extends TestDSL.SelfTransformer with SimpleRuleBasedTransformer with BottomUpTransformer {
-      rewrite { case ir"666" => ir"42" }
+      rewrite { case code"666" => code"42" }
     }
-    eqt( ir"('answer, 666)" transformWith Trans, ir"('answer, 42)" )
+    eqt( code"('answer, 666)" transformWith Trans, code"('answer, 42)" )
     
   }
   
@@ -29,11 +29,11 @@ class OfflineTransformerTest extends MyFunSuite {
   test ("Bottom Up Rewriting") {
     
     object Trans extends TestDSL.SelfTransformer with SimpleRuleBasedTransformer with BottomUpTransformer { rewrite {
-      case ir"(1,0)" => ir"(0,1)"
-      case ir"(0,(0,1))" => ir"(1,(0,0))"
-      case ir"(0,(1,0))" => ir"(1,(1,1))"
+      case code"(1,0)" => code"(0,1)"
+      case code"(0,(0,1))" => code"(1,(0,0))"
+      case code"(0,(1,0))" => code"(1,(1,1))"
     }}
-    eqt( ir"(0,(1,0))" transformWith Trans, ir"(1,(0,0))" )
+    eqt( code"(0,(1,0))" transformWith Trans, code"(1,(0,0))" )
     
   }
   

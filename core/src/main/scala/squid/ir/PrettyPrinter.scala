@@ -190,7 +190,7 @@ class PrettyPrinter extends Base with TraceDebug {
   def constType(value: Any, underlying: TypeRep): TypeRep = ???
 
   object Const extends ConstAPI {
-    def unapply[T: sru.TypeTag](ir: IR[T, _]): Option[T] = ???
+    def unapply[T: sru.TypeTag](ir: Code[T, _]): Option[T] = ???
   }
 
   def hole(name: String, typ: TypeRep): Rep = offset => s"?$name"

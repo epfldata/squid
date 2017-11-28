@@ -14,11 +14,11 @@ object PowOptim extends App {
   import Code.Predef._
   import Code.Quasicodes._
   
-  def opt[T,C](pgrm: IR[T,C]) = pgrm rewrite {
-    case ir"Math.pow($x, ${Const(d)})"
+  def opt[T,C](pgrm: Code[T,C]) = pgrm rewrite {
+    case code"Math.pow($x, ${Const(d)})"
     if d.isValidInt && (0 to 16 contains d.toInt) =>
-      var acc = ir"1.0" withContextOf x
-      for (n <- 1 to d.toInt) acc = ir"$acc * $x"
+      var acc = code"1.0" withContextOf x
+      for (n <- 1 to d.toInt) acc = code"$acc * $x"
       acc
   }
   

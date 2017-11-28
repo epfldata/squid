@@ -11,7 +11,7 @@ import utils.GenHelper
 class MyFunSuite[DSL <: AST](override val DSL: DSL = TestDSL) extends MyFunSuiteBase[DSL](DSL) { funs =>
   import DSL._
   
-  def eqt(a: IRType[_], b: IRType[_]) = eqtBy(a,b)(_ =:= _)
+  def eqt(a: CodeType[_], b: CodeType[_]) = eqtBy(a,b)(_ =:= _)
   def eqt(a: TypeRep, b: TypeRep) = eqtBy(a,b)(_ =:= _)
   
 }
@@ -54,42 +54,42 @@ trait MyFunSuiteTrait extends FunSuite { funs =>
     }
   
   
-  def subt(a: IRType[_], b: IRType[_]) = eqtBy(a,b)(_ <:< _)
+  def subt(a: CodeType[_], b: CodeType[_]) = eqtBy(a,b)(_ <:< _)
   def subt(a: TypeRep, b: TypeRep) = eqtBy(a,b)(_ <:< _)
   
   def eqt(a: Rep, b: Rep) = eqtBy(a,b)(_ =~= _)
-  def eqt(a: Code[_], b: Code[_], truth: Boolean = true) = eqtBy(a,b,truth)(_ =~= _)
+  def eqt(a: AnyCode[_], b: AnyCode[_], truth: Boolean = true) = eqtBy(a,b,truth)(_ =~= _)
   
-  def matches(a: Code[_])(pfs: PartialFunction[Code[_],Unit]*) = {
+  def matches(a: AnyCode[_])(pfs: PartialFunction[AnyCode[_],Unit]*) = {
     for (pf <- pfs) pf(a)
     MatchesAnd(a)
   }
-  case class MatchesAnd[T](a: Code[T]) {
-    def and (pf: PartialFunction[Code[_],Unit]) = {
+  case class MatchesAnd[T](a: AnyCode[T]) {
+    def and (pf: PartialFunction[AnyCode[_],Unit]) = {
       pf(a)
       this
     }
   }
   
-  implicit class Matches(self: Code[_]) {
-    def matches(pfs: PartialFunction[Code[_],Unit]*) = funs.matches(self)(pfs: _*)
-    def eqt (that: Code[_]) = funs.eqt(self.rep, that.rep)
-    def dbg_eqt (that: Code[_]) = {
+  implicit class Matches(self: AnyCode[_]) {
+    def matches(pfs: PartialFunction[AnyCode[_],Unit]*) = funs.matches(self)(pfs: _*)
+    def eqt (that: AnyCode[_]) = funs.eqt(self.rep, that.rep)
+    def dbg_eqt (that: AnyCode[_]) = {
       DSL debugFor (self.rep extractRep that.rep)
       DSL debugFor (that.rep extractRep self.rep)
       funs.eqt(self.rep, that.rep)
     }
-    def neqt (that: IR[_,_]) = funs.eqt(self, that, false)
+    def neqt (that: Code[_,_]) = funs.eqt(self, that, false)
   }
   
-  def implicitTypeOf[A: IRType](x: IR[A,_]) = irTypeOf[A].rep
+  def implicitTypeOf[A: CodeType](x: Code[A,_]) = codeTypeOf[A].rep
   
   
-  type Q[+T,-C] = IR[T,C]
-  type TypeEv[T] = IRType[T]
-  type QuotedType[T] = IRType[T]
+  type Q[+T,-C] = Code[T,C]
+  type TypeEv[T] = CodeType[T]
+  type QuotedType[T] = CodeType[T]
   
-  def typeEv[T: TypeEv] = irTypeOf[T]
+  def typeEv[T: TypeEv] = codeTypeOf[T]
   
 }
 

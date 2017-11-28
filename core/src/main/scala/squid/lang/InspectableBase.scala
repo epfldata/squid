@@ -37,7 +37,7 @@ trait InspectableBase extends IntermediateBase with quasi.QuasiBase with TraceDe
   
   val Const: ConstAPI
   trait ConstAPI extends super.ConstAPI {
-    def unapply[T: IRType](ir: IR[T,_]): Option[T]
+    def unapply[T: CodeType](ir: Code[T,_]): Option[T]
   }
   
   
@@ -74,24 +74,24 @@ trait InspectableBase extends IntermediateBase with quasi.QuasiBase with TraceDe
   def extractType(xtor: TypeRep, xtee: TypeRep, va: Variance): Option[Extract]
   
   
-  implicit class InspectableCodeOps[T](private val self: Code[T]) extends InspectableIROps[T,Any](self.asClosedIR) // TODO make it the other way around? or just separate it
-  implicit class InspectableIROps[T,C](private val self: IR[T,C]) {
+  implicit class InspectableAnyCodeOps[T](private val self: AnyCode[T]) extends InspectableCodeOps[T,Any](self.asClosedCode) // TODO make it the other way around? or just separate it
+  implicit class InspectableCodeOps[T,C](private val self: Code[T,C]) {
     import scala.language.experimental.macros
     import squid.utils.MacroUtils.MacroSetting
     
     /** Note: this is only a top-level call to `base.extractRep`; not supposed to be called in implementations of `extract` itself */
-    def extractRep(that: IR[_,_]) = self.rep extractRep that.rep
+    def extractRep(that: Code[_,_]) = self.rep extractRep that.rep
     
     // TODO take the Transformer as an implicit (w/ default arg?) -- currently it arbitrarily uses a new SimpleRuleBasedTransformer with TopDownTransformer
-    def rewrite(tr: IR[Any,utils.UnknownContext] => IR[Any,_]): IR[T,_ <: C] = macro ir.RuleBasedTransformerMacros.termRewrite
-    @MacroSetting(debug = true) def dbg_rewrite(tr: IR[Any,utils.UnknownContext] => IR[Any,_]): IR[T,_ <: C] = macro ir.RuleBasedTransformerMacros.termRewrite
-    @RecRewrite def fix_rewrite(tr: IR[Any,utils.UnknownContext] => IR[Any,_]): IR[T,_ <: C] = macro ir.RuleBasedTransformerMacros.termRewrite
+    def rewrite(tr: Code[Any,utils.UnknownContext] => Code[Any,_]): Code[T,_ <: C] = macro ir.RuleBasedTransformerMacros.termRewrite
+    @MacroSetting(debug = true) def dbg_rewrite(tr: Code[Any,utils.UnknownContext] => Code[Any,_]): Code[T,_ <: C] = macro ir.RuleBasedTransformerMacros.termRewrite
+    @RecRewrite def fix_rewrite(tr: Code[Any,utils.UnknownContext] => Code[Any,_]): Code[T,_ <: C] = macro ir.RuleBasedTransformerMacros.termRewrite
     
-    @inline final def analyse(pf: PartialFunction[IR[T,_ <: C],Unit]): Unit = analyseTopDown(pf)
-    def analyseTopDown(pf: PartialFunction[IR[T,_ <: C],Unit]): Unit = 
-      traverseTopDown(r => pf.runWith(identity)(IR(r)) thenReturn Unit)(self.rep)
-    def analyseBottomUp(pf: PartialFunction[IR[T,_ <: C],Unit]): Unit = 
-      traverseBottomUp(r => pf.runWith(identity)(IR(r)) thenReturn Unit)(self.rep)
+    @inline final def analyse(pf: PartialFunction[Code[T,_ <: C],Unit]): Unit = analyseTopDown(pf)
+    def analyseTopDown(pf: PartialFunction[Code[T,_ <: C],Unit]): Unit = 
+      traverseTopDown(r => pf.runWith(identity)(Code(r)) thenReturn Unit)(self.rep)
+    def analyseBottomUp(pf: PartialFunction[Code[T,_ <: C],Unit]): Unit = 
+      traverseBottomUp(r => pf.runWith(identity)(Code(r)) thenReturn Unit)(self.rep)
     
   }
   protected implicit class ProtectedInspectableRepOps(private val self: Rep) {
@@ -147,33 +147,33 @@ trait InspectableBase extends IntermediateBase with quasi.QuasiBase with TraceDe
     }
   }
   object IdentityTransformer extends SelfTransformer with ir.IdentityTransformer
-  trait SelfIRTransformer extends SelfTransformer with ir.IRTransformer
+  trait SelfCodeTransformer extends SelfTransformer with ir.CodeTransformer
   
   private[squid] case class EarlyReturnAndContinueExc(cont: (Rep => Rep) => Rep) extends Exception
   
   private def earlyReturnDebug(x: => Any) = debug(s"${Console.RED}EARLY RETURN!${Console.RESET} -- $x")
   
-  def `internal return`[T,C](x: IR[T,C]): IR[T,C] = {
+  def `internal return`[T,C](x: Code[T,C]): Code[T,C] = {
     earlyReturnDebug(x)
     throw new EarlyReturnAndContinueExc(_ => x.rep)
   }
-  def `internal return transforming`[A,CA,T,C](a: IR[A,CA])(f: IR[A,CA] => IR[T,C]): Nothing = {
+  def `internal return transforming`[A,CA,T,C](a: Code[A,CA])(f: Code[A,CA] => Code[T,C]): Nothing = {
     earlyReturnDebug(a)
-    throw new EarlyReturnAndContinueExc(tr => f(IR(a.rep |> tr)).rep)
+    throw new EarlyReturnAndContinueExc(tr => f(Code(a.rep |> tr)).rep)
   }
-  def `internal return transforming`[A,CA,B,CB,T,C](a: IR[A,CA], b: IR[B,CB])(f: (IR[A,CA], IR[B,CB]) => IR[T,C]): Nothing = {
+  def `internal return transforming`[A,CA,B,CB,T,C](a: Code[A,CA], b: Code[B,CB])(f: (Code[A,CA], Code[B,CB]) => Code[T,C]): Nothing = {
     earlyReturnDebug(a,b)
-    throw new EarlyReturnAndContinueExc(tr => f(IR(a.rep |> tr),IR(b.rep |> tr)).rep)
+    throw new EarlyReturnAndContinueExc(tr => f(Code(a.rep |> tr),Code(b.rep |> tr)).rep)
   }
-  def `internal return transforming`[A,CA,B,CB,D,CD,T,C](a: IR[A,CA], b: IR[B,CB], d: IR[D,CD])(f: (IR[A,CA], IR[B,CB], IR[D,CD]) => IR[T,C]): Nothing = {
+  def `internal return transforming`[A,CA,B,CB,D,CD,T,C](a: Code[A,CA], b: Code[B,CB], d: Code[D,CD])(f: (Code[A,CA], Code[B,CB], Code[D,CD]) => Code[T,C]): Nothing = {
     earlyReturnDebug(a,b,d)
-    throw new EarlyReturnAndContinueExc(tr => f(IR(a.rep |> tr),IR(b.rep |> tr),IR(d.rep |> tr)).rep)
+    throw new EarlyReturnAndContinueExc(tr => f(Code(a.rep |> tr),Code(b.rep |> tr),Code(d.rep |> tr)).rep)
   }
-  def `internal return transforming`[A,CA,T,C](as: List[IR[A,CA]])(f: List[IR[A,CA]] => IR[T,C]): Nothing = {
+  def `internal return transforming`[A,CA,T,C](as: List[Code[A,CA]])(f: List[Code[A,CA]] => Code[T,C]): Nothing = {
     earlyReturnDebug(as)
-    throw new EarlyReturnAndContinueExc(tr => f(as map (_.rep |> tr |> IR.apply)).rep)
+    throw new EarlyReturnAndContinueExc(tr => f(as map (_.rep |> tr |> Code.apply)).rep)
   }
-  def `internal return recursing`[T,C](cont: Transformer{val base: baseSelf.type} => IR[T,C]): IR[T,C] = {
+  def `internal return recursing`[T,C](cont: Transformer{val base: baseSelf.type} => Code[T,C]): Code[T,C] = {
     earlyReturnDebug(cont)
     throw new EarlyReturnAndContinueExc(tr => cont(new SelfTransformer { def transform(rep: base.Rep) = tr(rep) }).rep)
   }

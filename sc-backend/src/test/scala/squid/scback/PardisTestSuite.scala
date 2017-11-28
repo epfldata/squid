@@ -17,23 +17,23 @@ class PardisTestSuite extends MyFunSuiteTrait with TestDSLBinding {
   
   // Helper Methods
   
-  def scBlock[A: SC.TypeRep](x: => SC.Rep[A]) = Sqd.`internal IR`(SC.reifyBlock(x))
+  def scBlock[A: SC.TypeRep](x: => SC.Rep[A]) = Sqd.`internal Code`(SC.reifyBlock(x))
   
-  def stmts_ret(x: IR[_,_]): List[Sqd.Stm] -> Sqd.Expr = x.rep match {
+  def stmts_ret(x: Code[_,_]): List[Sqd.Stm] -> Sqd.Expr = x.rep match {
     case SC.Block(sts, r) => sts -> r
-    case _ => stmts_ret(Sqd.`internal IR`(Sqd.typedBlock(x.rep)))
+    case _ => stmts_ret(Sqd.`internal Code`(Sqd.typedBlock(x.rep)))
   }
-  def stmts(x: IR[_,_]) = stmts_ret(x)._1
-  def ret(x: IR[_,_]) = stmts_ret(x)._2
+  def stmts(x: Code[_,_]) = stmts_ret(x)._1
+  def ret(x: Code[_,_]) = stmts_ret(x)._2
   
-  def dfn(x: IR[_,_]) = {
+  def dfn(x: Code[_,_]) = {
     val sts = stmts(x)
     assert(sts.size == 1)
     sts.head.rhs
   }
   
   /** Compares the contents of blocks, ignoring symbols */
-  def sameDefs(x: IR[_,_],y: IR[_,_], dbg: Bool = false): Unit = try {
+  def sameDefs(x: Code[_,_], y: Code[_,_], dbg: Bool = false): Unit = try {
     if (dbg) println(s"Comparing:\n->\t$x\n->\t$y")
     if (dbg) println(s"Which reps are:\n->\t${x.rep}\n->\t${y.rep}")
     val (s0,r0) = stmts_ret(x)
@@ -74,7 +74,7 @@ class PardisTestSuite extends MyFunSuiteTrait with TestDSLBinding {
       case _ => fail
     }
   }
-  def sameDefsAfter(x: IR[_,_], f: IR[_,_]=>IR[_,_], dbg: Bool = false): Unit = sameDefs(x, f(x), dbg)
+  def sameDefsAfter(x: Code[_,_], f: Code[_,_]=>Code[_,_], dbg: Bool = false): Unit = sameDefs(x, f(x), dbg)
   
   
   

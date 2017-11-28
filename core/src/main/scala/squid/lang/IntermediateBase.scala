@@ -11,7 +11,7 @@ import utils._
   * obtained from reinterpretation through `MetaBases.ScalaReflectionBase`  */
 trait IntermediateBase extends Base { ibase: IntermediateBase =>
   
-  // TODO IR and IRType, irTypeOf, typeRepOf, repType, etc.
+  // TODO IR and CodeType, irTypeOf, typeRepOf, repType, etc.
   
   
   def repType(r: Rep): TypeRep
@@ -21,7 +21,7 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
   
   def reinterpret(r: Rep, newBase: Base)(extrudedHandle: (BoundVal => newBase.Rep) = DefaultExtrudedHandler): newBase.Rep
   
-  def nullValue[T: IRType]: IR[T,{}]
+  def nullValue[T: CodeType]: Code[T,{}]
   
   
   //override def showRep(r: Rep) = showScala(r)
@@ -35,17 +35,17 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
     def typ = repType(self)
   }
   
-  implicit class IntermediateIROps[Typ,Ctx](private val self: IR[Typ,Ctx]) {
-    /* Note: making it `def typ: IRType[Typ]` woule probably be unsound! */
-    def typ: IRType[_ <: Typ] = `internal IRType`(trep)
+  implicit class IntermediateCodeOps[Typ,Ctx](private val self: Code[Typ,Ctx]) {
+    /* Note: making it `def typ: CodeType[Typ]` woule probably be unsound! */
+    def typ: CodeType[_ <: Typ] = `internal CodeType`(trep)
     def trep = repType(self.rep)
     
     import scala.language.experimental.macros
-    def subs[T1,C1](s: => (Symbol, IR[T1,C1])): IR[Typ,_ >: Ctx] = macro quasi.QuasiMacros.subsImpl[T1,C1]
-    @MacroSetting(debug = true) def dbg_subs[T1,C1](s: => (Symbol, IR[T1,C1])): IR[Typ,_ >: Ctx] = macro quasi.QuasiMacros.subsImpl[T1,C1]
+    def subs[T1,C1](s: => (Symbol, Code[T1,C1])): Code[Typ,_ >: Ctx] = macro quasi.QuasiMacros.subsImpl[T1,C1]
+    @MacroSetting(debug = true) def dbg_subs[T1,C1](s: => (Symbol, Code[T1,C1])): Code[Typ,_ >: Ctx] = macro quasi.QuasiMacros.subsImpl[T1,C1]
     
-    def reinterpretIn(newBase: Base): newBase.IR[Typ,Ctx] =
-      newBase.`internal IR`(newBase.wrapConstruct( reinterpret(self.rep, newBase)(DefaultExtrudedHandler) ))
+    def reinterpretIn(newBase: Base): newBase.Code[Typ,Ctx] =
+      newBase.`internal Code`(newBase.wrapConstruct( reinterpret(self.rep, newBase)(DefaultExtrudedHandler) ))
     
     /** Executes the code at runtime using Java reflection */
     def run(implicit ev: {} <:< Ctx): Typ = {

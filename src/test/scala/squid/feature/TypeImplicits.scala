@@ -8,26 +8,26 @@ class TypeImplicits extends MyFunSuite {
   
   test("Using Existential Type Representations") {
     
-    val typs = List[IRType[_]](irTypeOf[Int], irTypeOf[Double], irTypeOf[String])
+    val typs = List[CodeType[_]](codeTypeOf[Int], codeTypeOf[Double], codeTypeOf[String])
     
     assert((typs map {
-      case typ: IRType[t] =>
-        ir"Option.empty[($typ,t)]"
+      case typ: CodeType[t] =>
+        code"Option.empty[($typ,t)]"
     }, List(
-      ir"Option.empty[(Int,Int)]",
-      ir"Option.empty[(Double,Double)]",
-      ir"Option.empty[(String,String)]"
+      code"Option.empty[(Int,Int)]",
+      code"Option.empty[(Double,Double)]",
+      code"Option.empty[(String,String)]"
     )).zipped forall (_ =~= _))
     
     typs match {
-      case (t0:IRType[t1]) :: (t1:IRType[t0]) :: _ :: Nil =>  // makes sure resolution is no more based on names
-        ir"Map.empty[$t0,$t1]" eqt ir"Map.empty[Int,Double]"
-        ir"Map.empty[ t0, t1]" eqt ir"Map.empty[Double,Int]"
+      case (t0:CodeType[t1]) :: (t1:CodeType[t0]) :: _ :: Nil =>  // makes sure resolution is no more based on names
+        code"Map.empty[$t0,$t1]" eqt code"Map.empty[Int,Double]"
+        code"Map.empty[ t0, t1]" eqt code"Map.empty[Double,Int]"
       case _ => fail
     }
     
     // Note how here we get an existential type `_$1` inserted, but the QQ now keeps track of inserted types and finds the corresponding tree
-    ir"Map.empty[${typs.head},${typs.tail.head}]" eqt ir"Map.empty[Int,Double]"
+    code"Map.empty[${typs.head},${typs.tail.head}]" eqt code"Map.empty[Int,Double]"
     
   }
   

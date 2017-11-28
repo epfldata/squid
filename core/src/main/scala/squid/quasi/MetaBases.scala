@@ -191,7 +191,7 @@ trait MetaBases {
     override def ascribe(self: Rep, typ: TypeRep): Rep = q"$Base.ascribe($self, $typ)"
     
     object Const extends ConstAPI {
-      def unapply[T: sru.TypeTag](ir: IR[T,_]): Option[T] = ir match {
+      def unapply[T: sru.TypeTag](ir: Code[T,_]): Option[T] = ir match {
         case q"$b.const[$typ](${Literal(Constant(value))})" if sru.typeOf[T] <:< typ.tpe.asInstanceOf[sru.Type] => // TODO check base?
           Some(value.asInstanceOf[T])
         case _ => None
@@ -342,7 +342,7 @@ trait MetaBases {
     override def ascribe(self: Rep, typ: TypeRep): Rep = q"$self: $typ"
     
     object Const extends ConstAPI {
-      def unapply[T: sru.TypeTag](ir: IR[T,_]): Option[T] = ir match {
+      def unapply[T: sru.TypeTag](ir: Code[T,_]): Option[T] = ir match {
         case Literal(Constant(v)) => Some(v.asInstanceOf[T]) // TODO check type?
         case _ => None
       }

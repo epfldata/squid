@@ -22,12 +22,12 @@ class TupleVarTests extends MyFunSuite(Code) {
   
   test("Recursive Detupling") {
     
-    val c0 = ir"""
+    val c0 = code"""
       var a = (1,(2,()))
       println(a._1, a._2._1, a._2._2)
     """
     
-    c0 transformWith DeTupFix eqt ir"""
+    c0 transformWith DeTupFix eqt code"""
       var a = 1
       var b = 2
       var c = ()
@@ -38,13 +38,13 @@ class TupleVarTests extends MyFunSuite(Code) {
   
   test("Recursive Detupling with nulls and units") {
     
-    val c0 = ir"""
+    val c0 = code"""
       var a: (Int,(String,Unit)) = null
       a = (1,("ok",()))
       println(a._1, a._2._1, a._2._2)
     """
     
-    c0 transformWith DeTupNormFix eqt ir"""
+    c0 transformWith DeTupNormFix eqt code"""
       var isNull_0: Bool = true
       var a_1: Int = 0
       var isNull_2: Bool = true
@@ -85,8 +85,8 @@ class TupleVarTests extends MyFunSuite(Code) {
   
   test("Removal of Var[Unit]") {
     
-    val c0 = ir"var vu = (); println(vu); vu = (); vu"
-    c0 transformWith DeTupNormFix eqt ir"println(()); ()"
+    val c0 = code"var vu = (); println(vu); vu = (); vu"
+    c0 transformWith DeTupNormFix eqt code"println(()); ()"
     
   }
   

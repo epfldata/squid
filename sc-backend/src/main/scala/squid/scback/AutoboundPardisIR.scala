@@ -25,13 +25,13 @@ class AutoboundPardisIR[DSL <: ir.Base](val DSL: DSL) extends PardisIR(DSL) {
   var ab: AutoBinder[DSL.type, this.type] = _
   
   override object Predef extends Predef[DefaultQuasiConfig] {
-    implicit def conv[A](x: R[A]): IR[A,{}] = `internal IR`(x)
-    implicit def convVar[A](x: sc.Var[A]): IR[squid.lib.Var[A],{}] = `internal IR`(x)
-    def mkVar[T](init: IR[T,{}]): sc.Var[T] = sc.__newVar[Any](init.rep |> toExpr)(init.rep.typ).asInstanceOf[sc.Var[T]]
-    def mapLambda[T:IRType,C](x: IR[T,C])(f: R[T] => R[T]) = block(`internal IR`[T,C](f(x.toRep)))
+    implicit def conv[A](x: R[A]): Code[A,{}] = `internal Code`(x)
+    implicit def convVar[A](x: sc.Var[A]): Code[squid.lib.Var[A],{}] = `internal Code`(x)
+    def mkVar[T](init: Code[T,{}]): sc.Var[T] = sc.__newVar[Any](init.rep |> toExpr)(init.rep.typ).asInstanceOf[sc.Var[T]]
+    def mapLambda[T:CodeType,C](x: Code[T,C])(f: R[T] => R[T]) = block(`internal Code`[T,C](f(x.toRep)))
   }
   
-  implicit class PardisIROps[T](private val self: IR[T,_]) {
+  implicit class PardisIROps[T](private val self: Code[T,_]) {
     def toRep: sc.Rep[T] = toExpr(self.rep).asInstanceOf[sc.Rep[T]]
   }
   
@@ -199,7 +199,7 @@ class AutoboundPardisIR[DSL <: ir.Base](val DSL: DSL) extends PardisIR(DSL) {
     
   }
   
-  def nullValue[T: IRType]: IR[T,{}] = IR(const((implicitly[IRType[T]].rep:PardisType[_]) match {
+  def nullValue[T: CodeType]: Code[T,{}] = Code(const((implicitly[CodeType[T]].rep:PardisType[_]) match {
     case types.UnitType => ()
     case types.BooleanType => false
     case types.CharacterType => '\u0000'

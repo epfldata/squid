@@ -33,7 +33,7 @@ trait Transformer extends Optimizer { self =>
     def transform(rep: Rep): Rep = that transform self.transform(rep)
   }
   
-  final def apply[T,C](pgrm: IR[T,C]): IR[T,C] = `internal IR`[T,C](pipeline(pgrm.rep))
+  final def apply[T,C](pgrm: Code[T,C]): Code[T,C] = `internal Code`[T,C](pipeline(pgrm.rep))
   
 }
 
@@ -42,10 +42,10 @@ trait BottomUpTransformer extends Transformer { abstract override def transform(
 
 
 /** Used in high-level interfaces that require an IR node transformer that is generic over type and context. */
-trait IRTransformer extends Transformer { self =>
+trait CodeTransformer extends Transformer { self =>
   import base._
-  def transform[T,C](code: IR[T,C]): IR[T,C]
-  protected[squid] def transform(rep: Rep): Rep = transform(`internal IR`(rep)).rep // <- not very nice, may incur useless work to wrap/unwrap
+  def transform[T,C](code: Code[T,C]): Code[T,C]
+  protected[squid] def transform(rep: Rep): Rep = transform(`internal Code`(rep)).rep // <- not very nice, may incur useless work to wrap/unwrap
   // ^ not final to allow composition with things like TopDownTransformer
 }
 trait IdentityTransformer extends Transformer { def transform(rep: base.Rep): base.Rep = rep }

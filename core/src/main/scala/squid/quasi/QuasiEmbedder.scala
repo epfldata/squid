@@ -57,9 +57,9 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
     val (termHoles, typeHoles) = holes.mapSplit(identity) match {case (termHoles, typeHoles) => (termHoles toSet, typeHoles toSet)}
     
     /* We used to use local traits to generate local symbols for the type holes; for `case ir"foo[$t]" =>`, term `t` would 
-       appear as having type `IRType[t]`.
+       appear as having type `CodeType[t]`.
        Now, in order to be able to add arbitrary bounds to type holes, we generate a local object with a `Typ` type member,
-       so the type above appears as `IRType[t.Typ]`, which is nice because it's exactly the syntax the user has to use to 
+       so the type above appears as `CodeType[t.Typ]`, which is nice because it's exactly the syntax the user has to use to 
        refer to such an extracted type.
     */
     // val traits = typeHoles map { typ => q"trait $typ extends _root_.squid.quasi.QuasiBase.`<extruded type>`" }  // QuasiBase.HoleType
@@ -112,7 +112,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
                 //Some(q"_root_.scala.Predef.identity[$purged]($virtualizedTree)") // nope, this neither
             }
           } else None
-        t.tpe.baseType(symbolOf[QuasiBase#IR[_,_]]) match {
+        t.tpe.baseType(symbolOf[QuasiBase#Code[_,_]]) match {
           case tpe @ TypeRef(tpbase, _, tp::ctx::Nil) =>
             scrutineeType = Some(tp)
             if (!(tpbase =:= Base.tpe)) throw EmbeddingException(s"Could not verify that `$tpbase` is the same as `${Base.tpe}`")
@@ -129,7 +129,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
             termScope ::= newCtx
             mkTree(tp)
           case NoType =>
-            t.tpe.baseType(symbolOf[QuasiBase#Code[_]]) match {
+            t.tpe.baseType(symbolOf[QuasiBase#AnyCode[_]]) match {
               case tpe @ TypeRef(tpbase, _, tp::Nil) => // Note: cf. [INV:Quasi:reptyp] we know this type is of the form Code[_], as is ensured in Quasi.unapplyImpl
                 scrutineeType = Some(tp)
                 if (!(tpbase =:= Base.tpe)) throw EmbeddingException(s"Could not verify that `$tpbase` is the same as `${Base.tpe}`")
@@ -179,11 +179,11 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
             if (expanded == unapply.get.tpe) ""
             else s"\n|  which expands to: $expanded"
           }
-          |  seems incompatible with or is more specific than pattern type: IR[${typed.tpe}, _]${
+          |  seems incompatible with or is more specific than pattern type: Code[${typed.tpe}, _]${
             if (typeHoles.isEmpty) ""
             else s"\n|  perhaps one of the type holes (${typeHoles mkString ", "}) is unnecessary."
           }
-          |Ascribe the scrutinee with ': IR[_,_]' or call '.erase' on it to remove this warning.""".stripMargin)
+          |Ascribe the scrutinee with ': Code[_,_]' or call '.erase' on it to remove this warning.""".stripMargin)
           // ^ TODO
         }
         typed -> typed.tpe
@@ -369,7 +369,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               
             
             case q"$baseTree.$$Code[$tpt]($idt)" =>
-              val tree = q"$baseTree.$$[$tpt,$Any]($idt.asClosedIR)"
+              val tree = q"$baseTree.$$[$tpt,$Any]($idt.asClosedCode)"
               liftTerm(tree, parent, expectedType)
               
             /** Replaces insertion unquotes with whatever `insert` feels like inserting.
@@ -387,7 +387,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
                 case(n,t) => varsInScope get n match {
                   case Some((tpe,bv)) =>
                     tpe <:< t ||
-                      (throw EmbeddingException(s"Captured variable `$n: $tpe` has incompatible type with free variable `$n: $t` found in inserted IR $$(${idts mkString ","})"))
+                      (throw EmbeddingException(s"Captured variable `$n: $tpe` has incompatible type with free variable `$n: $t` found in inserted code $$(${idts mkString ","})"))
                     Left(n, bv)
                   case None => Right(n, t)
                 }
@@ -399,7 +399,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               def subs(ir: Tree) =
                 insert(ir, captured.iterator map {case(n,bv) => n.toString->bv} toMap) // TODO also pass liftType(tpt.tpe)
               
-              debug("Unquoting",s"$idts: IR[$tpt,$scp]", ";  env",varsInScope,";  capt",captured,";  free",free)
+              debug("Unquoting",s"$idts: Code[$tpt,$scp]", ";  env",varsInScope,";  capt",captured,";  free",free)
               
               // TODOmaybe: introduce a `splice` method in Base, get rid of SplicedHole, and make ArgsVararg smartly transform into ArgsVarargs when it sees a splice
               
@@ -623,7 +623,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
         
         val context = tq"$ctxBase { ..${ fv map { case (n,t) => q"val ${TermName(n)}: $t" } } }"
         
-        q"val $shortBaseName: $baseTree.type = $baseTree; $baseTree.`internal IR`[$retType, $context]($Base.wrapConstruct($res))"
+        q"val $shortBaseName: $baseTree.type = $baseTree; $baseTree.`internal Code`[$retType, $context]($Base.wrapConstruct($res))"
         //                                ^ not using $Base shortcut here or it will show in the type of the generated term
         
         
@@ -636,10 +636,10 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
         }
         val termTypesToExtract = termHoleInfoProcessed map {
           case (name, (scpTyp, tp)) => name -> (
-            if (splicedHoles(name)) tq"Seq[$baseTree.IR[$tp,$scpTyp]]"
-            else tq"$baseTree.IR[$tp,$scpTyp]"
+            if (splicedHoles(name)) tq"Seq[$baseTree.Code[$tp,$scpTyp]]"
+            else tq"$baseTree.Code[$tp,$scpTyp]"
           )}
-        val typeTypesToExtract = typeSymbols mapValues { sym => tq"$baseTree.IRType[$sym]" }
+        val typeTypesToExtract = typeSymbols mapValues { sym => tq"$baseTree.CodeType[$sym]" }
         
         val extrTyps = holes.map {
           case Left(vname) => termTypesToExtract(vname)
@@ -653,14 +653,14 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
         val tupleConv = holes.map {
           case Left(name) if splicedHoles(name) =>
             val (scp, tp) = termHoleInfoProcessed(name)
-            q"_maps_._3(${name.toString}) map (r => $Base.`internal IR`[$tp,$scp](r))"
+            q"_maps_._3(${name.toString}) map (r => $Base.`internal Code`[$tp,$scp](r))"
           case Left(name) =>
             //q"Quoted(_maps_._1(${name.toString})).asInstanceOf[${termTypesToExtract(name)}]"
             val (scp, tp) = termHoleInfoProcessed(name)
-            q"$Base.`internal IR`[$tp,$scp](_maps_._1(${name.toString}))"
+            q"$Base.`internal Code`[$tp,$scp](_maps_._1(${name.toString}))"
           case Right(name) =>
             //q"_maps_._2(${name.toString}).asInstanceOf[${typeTypesToExtract(name)}]"
-            q"$Base.`internal IRType`[${typeSymbols(name)}](_maps_._2(${name.toString}))"
+            q"$Base.`internal CodeType`[${typeSymbols(name)}](_maps_._2(${name.toString}))"
         }
         
         val valKeys = termHoles.filterNot(splicedHoles).map(_.toString)
@@ -668,9 +668,9 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
         val splicedValKeys = splicedHoles.map(_.toString)
         
         
-        //val termType = tq"$Base.IR[${typedTree.tpe}, ${termScope.last}]"
+        //val termType = tq"$Base.Code[${typedTree.tpe}, ${termScope.last}]"
         // ^ We can't use the type inferred for the pattern or we'll get type errors with things like 'x.erase match { case ir"..." => }'
-        val termType = tq"$Base.SomeIR"
+        val termType = tq"$Base.SomeCode"
         
         val typeInfo = q"type $$ExtractedType$$ = ${typedTree.tpe}" // Note: typedTreeType can be shadowed by a scrutinee type
         val contextInfo = q"type $$ExtractedContext$$ = ${termScope.last}" // Note: the last element of 'termScope' should be the scope of the scrutinee...

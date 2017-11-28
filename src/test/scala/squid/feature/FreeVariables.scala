@@ -7,30 +7,30 @@ class FreeVariables extends MyFunSuite {
   
   test("Explicit Free Variables") {
     
-    val x: Q[Int,{val x: Int}] = ir"$$x: Int"
+    val x: Q[Int,{val x: Int}] = code"$$x: Int"
     assert(x.rep match {
       case base.RepDef(base.Hole("x")) => true  // Note: no `base.Ascribe` node because ascriptions to the same type are removed
       case _ => false
     })
     
-    val d = ir"$x.toDouble" : Q[Double, {val x: Int}]
+    val d = code"$x.toDouble" : Q[Double, {val x: Int}]
     
-    val s = ir"($$str: String) + $d" : Q[String, {val x: Int; val str: String}]
+    val s = code"($$str: String) + $d" : Q[String, {val x: Int; val str: String}]
     
-    val closed = ir"(str: String) => (x: Int) => $s" : Q[String => Int => String, {}]
-    val closed2 = ir"(x: Int) => (str: String) => $s" : Q[Int => String => String, {}]
+    val closed = code"(str: String) => (x: Int) => $s" : Q[String => Int => String, {}]
+    val closed2 = code"(x: Int) => (str: String) => $s" : Q[Int => String => String, {}]
     
-    assert(closed =~= ir"(a: String) => (b: Int) => a + b.toDouble")
-    assert(closed2 =~= ir"(b: Int) => (a: String) => a + b.toDouble")
+    assert(closed =~= code"(a: String) => (b: Int) => a + b.toDouble")
+    assert(closed2 =~= code"(b: Int) => (a: String) => a + b.toDouble")
     
     
-    assertDoesNotCompile(""" ir"42: $$t" """) // scp.quasi.EmbeddingException: Free type variables are not supported: '$$t'
+    assertDoesNotCompile(""" code"42: $$t" """) // scp.quasi.EmbeddingException: Free type variables are not supported: '$$t'
     
   }
   
   test("Rep extraction") {
-    hopefully(ir"Some($$x:Int)".rep extractRep ir"Some(42)".rep isDefined)
-    hopefully(ir"Some(42)".rep extractRep ir"Some($$x:Int)".rep isEmpty)
+    hopefully(code"Some($$x:Int)".rep extractRep code"Some(42)".rep isDefined)
+    hopefully(code"Some(42)".rep extractRep code"Some($$x:Int)".rep isEmpty)
   }
   
   test("Term Equivalence") {
@@ -39,16 +39,16 @@ class FreeVariables extends MyFunSuite {
     //val b = ir"($$x: Int):Int"
     //println(a.rep extractRep b.rep, b.rep extractRep a.rep)
     
-    assert(ir"($$x: Int)" =~= ir"($$x: Int)")
-    assert(!(ir"($$x: Int)" =~= ir"($$y: Int)"))
+    assert(code"($$x: Int)" =~= code"($$x: Int)")
+    assert(!(code"($$x: Int)" =~= code"($$y: Int)"))
     
-    assert(ir"($$x: Int)" =~= ir"($$x: Int):Int")
-    assert(!(ir"($$x: Int)" =~= ir"($$y: Int)+1"))
-    assert(!(ir"($$x: Int)" =~= ir"($$y: String)"))
+    assert(code"($$x: Int)" =~= code"($$x: Int):Int")
+    assert(!(code"($$x: Int)" =~= code"($$y: Int)+1"))
+    assert(!(code"($$x: Int)" =~= code"($$y: String)"))
     
-    assert(ir"($$x: Int) + ($$y: Int)" =~= ir"($$x: Int) + ($$y: Int)")
+    assert(code"($$x: Int) + ($$y: Int)" =~= code"($$x: Int) + ($$y: Int)")
     
-    assert(!(ir"($$x: Int) + ($$y: Int)" =~= ir"($$y: Int) + ($$x: Int)"))
+    assert(!(code"($$x: Int) + ($$y: Int)" =~= code"($$y: Int) + ($$x: Int)"))
     
   }
   
@@ -57,8 +57,8 @@ class FreeVariables extends MyFunSuite {
     
     val N = typeRepOf[Nothing]
     
-    hopefullyNot(ir"$$str:String" =~=  ir"$$str:Any")
-    hopefullyNot(ir"$$str:String" =~= base.`internal IR`(hole("str", N)))
+    hopefullyNot(code"$$str:String" =~=  code"$$str:Any")
+    hopefullyNot(code"$$str:String" =~= base.`internal Code`(hole("str", N)))
     
     hopefully(hole("str", N) =~=  hole("str", N))
     eqt( (hole("str", typeRepOf[Any]) extractRep hole("str", N)).get._1("str"), hole("str", N) )

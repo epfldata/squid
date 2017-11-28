@@ -20,7 +20,7 @@ trait Lowering extends Transformer {
       val fullTargs = self.typ.tpe.typeArgs.map(new TypeRep(_)) ++ targs // FIXME should use `baseType`! the type of `self` could be a subtype with different type arguments...
       //println(s"Getting $sym in ${self.typ.tpe} fullTargs $fullTargs")
       methodDef(sym, fullTargs) match {
-        case Right(IR(r)) =>
+        case Right(Code(r)) =>
           //println(s"Lowering $ma with ${r|>showRep}")
           val res = fullArgss.foldLeft(r) {
             case (r, Args(reps @ _*)) =>

@@ -10,11 +10,11 @@ self: Base =>
   object SimplePredef {
     
     //type Rep[T] = IR[T,Any] // Note: used to be `IR[T,Nothing]`, but it interacted badly with implicit classes (scalac bug)
-    type Rep[T] = Code[T]
+    type Rep[T] = AnyCode[T]
     
     // For backward compat of some older programs:
-    implicit def unsound[T](r: Code[T]): IR[T,Any] = r.asInstanceOf[IR[T,Any]]
-    implicit def unsound2[T](r: IR[T,_]): Rep[T] = r.asInstanceOf[Rep[T]]
+    implicit def unsound[T](r: AnyCode[T]): Code[T,Any] = r.asInstanceOf[Code[T,Any]]
+    implicit def unsound2[T](r: Code[T,_]): Rep[T] = r.asInstanceOf[Rep[T]]
     
   }
   

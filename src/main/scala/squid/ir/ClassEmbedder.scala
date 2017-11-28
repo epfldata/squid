@@ -22,21 +22,21 @@ trait ClassEmbedder { baseSelf: InspectableBase =>
       paramMethods ++= ecls.parametrizedDefs mapValues (new ParamMethod(_))
     } finally isEmbedding = false
   }
-  protected var methods = Map.empty[sru.MethodSymbol, Lazy[SomeIR]]
+  protected var methods = Map.empty[sru.MethodSymbol, Lazy[SomeCode]]
   protected var paramMethods = Map.empty[sru.MethodSymbol, ParamMethod]
   
   import ClassEmbedder._
   import ClassEmbedder.Error._
   
-  def methodDef(mtd: sru.MethodSymbol, targs: List[TypeRep]): Either[Error, SomeIR] = {
+  def methodDef(mtd: sru.MethodSymbol, targs: List[TypeRep]): Either[Error, SomeCode] = {
     if (targs isEmpty) methods get mtd match { case Some(m) => if (m.isComputing) Left(Recursive) else Right(m.value)  case None => Left(Missing) }
     else paramMethods get mtd match { case Some(m) => m(targs)  case None => Left(Missing) }
   }
   
-  protected class ParamMethod(f: List[TypeRep] => SomeIR) {
+  protected class ParamMethod(f: List[TypeRep] => SomeCode) {
     private var computing = false
     def isComputing = computing
-    def apply(targs: List[TypeRep]): Either[Error, SomeIR] = {
+    def apply(targs: List[TypeRep]): Either[Error, SomeCode] = {
       if (computing) Left(Recursive)
       else {
         computing = true

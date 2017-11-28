@@ -74,7 +74,7 @@ class Compiler extends Optimizer {
       with transfo.LogicNormalizer 
       with FixPointRuleBasedTransformer 
       with BottomUpTransformer { rewrite {
-        case ir"squid.lib.uncheckedNullValue[$t]" => nullValue[t.Typ]
+        case code"squid.lib.uncheckedNullValue[$t]" => nullValue[t.Typ]
       }}
   ) with FixPointTransformer
   
@@ -84,30 +84,30 @@ class Compiler extends Optimizer {
       // TODO: Q: make Sequence's map transparencyPropagating for this to work in more cases?
       // FIXME this does not handle other functions like filter, take/drop etc... 
       
-      case ir"($s: Sequence[$ta]).map[$tb]($f).map[$tc]($g)" =>
-        ir"$s.map($f andThen $g)"
+      case code"($s: Sequence[$ta]).map[$tb]($f).map[$tc]($g)" =>
+        code"$s.map($f andThen $g)"
         
       //case ir"val $ms = ($s: Sequence[$ta]).map[$tb]($f); $body: $bt" =>
-      case ir"($s: Sequence[$ta]).map[$tb]($f).flatMap[$tc]($g)" =>
-        ir"$s.flatMap($f andThen $g)"
+      case code"($s: Sequence[$ta]).map[$tb]($f).flatMap[$tc]($g)" =>
+        code"$s.flatMap($f andThen $g)"
         
-      case ir"($s: Sequence[$ta]).flatMap[$tb]($f).flatMap[$tc]($g)" =>
-        ir"$s.flatMap($f(_) flatMap $g)"
+      case code"($s: Sequence[$ta]).flatMap[$tb]($f).flatMap[$tc]($g)" =>
+        code"$s.flatMap($f(_) flatMap $g)"
         
     }
   }
   
   val CtorInline = new Code.SelfTransformer with FixPointRuleBasedTransformer with TopDownTransformer {
     rewrite {
-      case ir"val $s = new Sequence[$ta]($under,$size); $body: $bt" =>
-        val underFV = ir"under? : (() => impl.Producer[$ta])"
-        val sizeFV = ir"size? : SizeInfo"
+      case code"val $s = new Sequence[$ta]($under,$size); $body: $bt" =>
+        val underFV = code"under? : (() => impl.Producer[$ta])"
+        val sizeFV = code"size? : SizeInfo"
         val body2 = body rewrite {
-          case ir"$$s.under" => underFV
-          case ir"$$s.size" => sizeFV
+          case code"$$s.under" => underFV
+          case code"$$s.size" => sizeFV
         }
         val body3 = body2 subs 's -> Abort()
-        ir"val under = $under; val size = $size; $body3"
+        code"val under = $under; val size = $size; $body3"
     }
   }
   
@@ -120,21 +120,21 @@ class Compiler extends Optimizer {
     /** Extracts the right-hand side of some string addition starting with free variable `acc?:String`.
       * This is useful because currently pattern `acc + $x` cannot match something like `(acc + a) + b`. */
     object StringAccAdd {
-      val Acc = ir"acc?:String"
+      val Acc = code"acc?:String"
       // ^ Note: inline `${ir"acc?:String"}` in the pattern is mistaken for an xtion hole (see github.com/LPTK/Squid/issues/11)
-      def unapply[C](x:IR[Any,C]): Option[IR[Any,C]] = x match {
-        case ir"($Acc:String) + $rest" => Some(rest)
-        case ir"($lhs:String) + $rhs" => unapply(lhs) map (x => ir"$x.toString + $rhs") orElse (unapply(rhs) map (x => ir"$lhs + $x"))
+      def unapply[C](x:Code[Any,C]): Option[Code[Any,C]] = x match {
+        case code"($Acc:String) + $rest" => Some(rest)
+        case code"($lhs:String) + $rhs" => unapply(lhs) map (x => code"$x.toString + $rhs") orElse (unapply(rhs) map (x => code"$lhs + $x"))
         case _ => None
       }
     }
     
     rewrite {
-      case ir"fold[String,String]($s)($z)((acc,s) => ${StringAccAdd(body)})" => // TODO generalize... (statements?!)
-        val strAcc = ir"strAcc? : StringBuilder"
-        val body2 = body subs 'acc -> ir"$strAcc.result"
-        val zadd = if (z =~= ir{""}) ir"()" else ir"$strAcc ++= $z" // FIXME does not compile when inserted in-line... why?
-        ir"val strAcc = new StringBuilder; $zadd; foreach($s){ s => strAcc ++= $body2.toString }; strAcc.result"
+      case code"fold[String,String]($s)($z)((acc,s) => ${StringAccAdd(body)})" => // TODO generalize... (statements?!)
+        val strAcc = code"strAcc? : StringBuilder"
+        val body2 = body subs 'acc -> code"$strAcc.result"
+        val zadd = if (z =~= ir{""}) code"()" else code"$strAcc ++= $z" // FIXME does not compile when inserted in-line... why?
+        code"val strAcc = new StringBuilder; $zadd; foreach($s){ s => strAcc ++= $body2.toString }; strAcc.result"
     }
     
     //object Linear {
@@ -159,7 +159,7 @@ class Compiler extends Optimizer {
     import Code.Closure
     
     rewrite {
-      case ir"flatMap[$ta,$tb]($s)(a => ${Closure(clos)})" =>
+      case code"flatMap[$ta,$tb]($s)(a => ${Closure(clos)})" =>
         //println("CLOS: "+clos)
         import clos._
         import squid.lib.Var
@@ -167,14 +167,14 @@ class Compiler extends Optimizer {
         println(fun)
         //val fun2 = fun subs 'a -> Abort()
         //val fun2 = fun subs 'a -> ???
-        val fun2 = fun subs 'a -> ir"(aVar? : Var[Option[$ta]]).!.get"
+        val fun2 = fun subs 'a -> code"(aVar? : Var[Option[$ta]]).!.get"
         // ^ TODO could save the 'a' along with the environment...
         // ... when more methods are pure/trivial, it may often happen (eg `stringWrapper` that makes String an IndexedSeq)
         
         // Reimplementation of flatMap but using a variable for the Producer state and _not_ for the Producer, so it can be inlined.
         // Note: would probably be simpler to implement it in shallow as syntax sugar to use from here.
         //  var aVar: Option[$ta] = None // FIXME allow this syntax...
-        val res = ir"""
+        val res = code"""
           val s = $s
           val aVar = Var[Option[$ta]](None)
           var envVar: Option[E] = None

@@ -159,8 +159,8 @@ abstract class PardisIR(val sc: pardis.ir.Base) extends Base with squid.ir.Runti
   def byName(arg: => Rep): Rep = typedBlock(arg)
   
   object Const extends ConstAPI {
-    def unapply[T: IRType](ir: IR[T, _]): Option[T] = ir.rep match {
-      case cst @ pir.Constant(v) if cst.typ <:< irTypeOf[T].rep => Some(v.asInstanceOf[T])
+    def unapply[T: CodeType](ir: Code[T, _]): Option[T] = ir.rep match {
+      case cst @ pir.Constant(v) if cst.typ <:< codeTypeOf[T].rep => Some(v.asInstanceOf[T])
       case _ => none
     }
   }
@@ -220,14 +220,14 @@ abstract class PardisIR(val sc: pardis.ir.Base) extends Base with squid.ir.Runti
   }
   protected def toAtom(r: sc.Def[_]) = sc.toAtom[Any](r)(r.tp.asInstanceOf[TR[Any]])
   
-  def inline[A,B,C](fun: IR[A => B,C], arg: IR[A,C]): IR[B,C] = {
+  def inline[A,B,C](fun: Code[A => B,C], arg: Code[A,C]): Code[B,C] = {
     val fr = fun.rep match {
       case PardisLambda(f,_,_) => f
       case sc.Block(sc.Stm(s0,PardisLambda(f,_,_))::Nil,s1) if s0 == s1 => f
       case Def(PardisLambda(f,_,_)) => f
       case _ => throw new IRException(s"Unable to inline $fun")
     }
-    ensureScoped(fr(arg.rep |> toExpr)) |> `internal IR`
+    ensureScoped(fr(arg.rep |> toExpr)) |> `internal Code`
   }
   protected def ensureScoped(x: => Rep) = if (sc._IRReifier.scopeDepth > 0) x else typedBlock(x)
   
@@ -873,11 +873,11 @@ abstract class PardisIR(val sc: pardis.ir.Base) extends Base with squid.ir.Runti
   
   protected def isHole(r: R[Any]) = r |>? { case Hole(_,_,_)|SplicedHole(_,_) => } isDefined
   
-  def block[T:IRType,C](q: => IR[T,C]) = `internal IR`[T,C](pardisBlock[T,C](q))
-  def pardisBlock[T:IRType,C](q: => IR[T,C]) = sc.reifyBlock[T] { toExpr(q.rep).asInstanceOf[R[T]] }
+  def block[T:CodeType,C](q: => Code[T,C]) = `internal Code`[T,C](pardisBlock[T,C](q))
+  def pardisBlock[T:CodeType,C](q: => Code[T,C]) = sc.reifyBlock[T] { toExpr(q.rep).asInstanceOf[R[T]] }
   
   
-  implicit def typeRepFromIRType[A:IRType]: sc.TypeRep[A] = implicitly[IRType[A]].rep.asInstanceOf[sc.TypeRep[A]]
+  implicit def typeRepFromCodeType[A:CodeType]: sc.TypeRep[A] = implicitly[CodeType[A]].rep.asInstanceOf[sc.TypeRep[A]]
   
   implicit def weakenTypeRep(tr: TR[_]): TypeRep = tr.asInstanceOf[TypeRep]
   

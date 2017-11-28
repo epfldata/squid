@@ -129,41 +129,41 @@ trait ASTReinterpreter { ast: AST =>
       
       override def apply(d: Def) = {
         
-        object BV { def unapply(x: IR[_,_]) = x match {
-          case IR(RepDef(bv: BoundVal)) => Some(bv)
+        object BV { def unapply(x: Code[_,_]) = x match {
+          case Code(RepDef(bv: BoundVal)) => Some(bv)
           case _ => None }}
         
-        object ScalaVar { def unapply(r: IR[lib.Var[_],_]): Option[Ident] = r match {
-          case IR(RepDef(h: Hole)) if h.originalSymbol exists (boundVars isDefinedAt _) =>
+        object ScalaVar { def unapply(r: Code[lib.Var[_],_]): Option[Ident] = r match {
+          case Code(RepDef(h: Hole)) if h.originalSymbol exists (boundVars isDefinedAt _) =>
             Some(Ident(boundVars(h.originalSymbol.get)))
           case _ => None }}
         
         //`internal IR`[Any,Nothing](ast.rep(d)) match {
-        `internal IR`[Any,Nothing](ast.simpleRep(d)) match {
+        `internal Code`[Any,Nothing](ast.simpleRep(d)) match {
     
           //case MethodApp(se, sy, ts, ArgList(effs @ _*) :: Args(res) :: Nil, tp) if sy === ImpSym =>
           //  lazy val r = apply(res)
           //  if (effs isEmpty) r
           //  else q"..${effs map apply}; $r"
-          case ir"squid.lib.Imperative(${effs @ __*})($res: $t)" =>
+          case code"squid.lib.Imperative(${effs @ __*})($res: $t)" =>
             lazy val r = apply(res.rep)
             if (effs isEmpty) r
             else q"..${effs map (e => apply(e.rep))}; $r"
     
-          case ir"if ($cond) $thn else $els : $t" => q"if (${apply(cond rep)}) ${apply(thn rep)} else ${apply(els rep)}"
+          case code"if ($cond) $thn else $els : $t" => q"if (${apply(cond rep)}) ${apply(thn rep)} else ${apply(els rep)}"
     
-          case ir"while ($cond) $body" => q"while(${apply(cond rep)}) ${apply(body rep)}"
+          case code"while ($cond) $body" => q"while(${apply(cond rep)}) ${apply(body rep)}"
             
-          case ir"($x:Any) equals $y" => q"${apply(x rep)} == ${apply(y rep)}"
+          case code"($x:Any) equals $y" => q"${apply(x rep)} == ${apply(y rep)}"
     
-          case ir"(${ScalaVar(id)}: squid.lib.Var[$tv]) := $value" => q"$id = ${apply(value.rep)}"
-          case ir"(${ScalaVar(id)}: squid.lib.Var[$tv]) !" => id
-          case ir"${ScalaVar(id)}: squid.lib.Var[$tv]" =>
+          case code"(${ScalaVar(id)}: squid.lib.Var[$tv]) := $value" => q"$id = ${apply(value.rep)}"
+          case code"(${ScalaVar(id)}: squid.lib.Var[$tv]) !" => id
+          case code"${ScalaVar(id)}: squid.lib.Var[$tv]" =>
             if (warnOnEscapingVars) System.err.println(s"Virtualized variable `${id}` of type `${tv}` escapes its defining scope!")
             q"new squid.lib.VarProxy[${rect(tv.rep)}]($id, a => $id = a)"
             
           //case ir"var $v: $tv = $init; $body: $tb" =>
-          case ir"var ${v @ BV(bv)}: $tv = $init; $body: $tb" =>
+          case code"var ${v @ BV(bv)}: $tv = $init; $body: $tb" =>
             val varName = newBase.freshName(bv.name optionUnless (_ startsWith "$") Else "v")
             
             //q"var $varName: ${rect(tv rep)} = ${apply(init.rep)}; ${body subs 'v -> q"$varName"}"
@@ -178,7 +178,7 @@ trait ASTReinterpreter { ast: AST =>
           // Note: currently having a Null lower bound would also work
           //   as in:  case ir"var ${v @ BV(bv)}: ($tv where (Null <:< tv)) = null; $body: $tb" =>
           //   but that's only because type type hole bounds are not yet checked; cf:
-          case IR(LetIn(bv, RepDef(MethodApp(_,Var.Apply.Symbol,tv::Nil,Args(RepDef(ast.Constant(null)))::Nil,rt)), body0)) =>
+          case Code(LetIn(bv, RepDef(MethodApp(_,Var.Apply.Symbol,tv::Nil,Args(RepDef(ast.Constant(null)))::Nil,rt)), body0)) =>
             assert(!(tv <:< AnyRef.rep))
             System.err.println(s"Warning: variable `${bv}` of type `${tv}` (not a subtype of `AnyRef`) is assigned `null`.")
             val varName = newBase.freshName(bv.name optionUnless (_ startsWith "$") Else "v")
@@ -189,7 +189,7 @@ trait ASTReinterpreter { ast: AST =>
             
           /** Converts redexes to value bindings, nicer to the eye.
             * Note: we don't do it for multi-parameter lambdas, assuming they are already normalized (cf: `BindingNormalizer`) */
-          case ir"((${p @ BV(bv)}: $ta) => $body: $tb)($arg)" =>
+          case code"((${p @ BV(bv)}: $ta) => $body: $tb)($arg)" =>
             val a = apply(arg rep)
             val av = if (ascribeBoundValsWhenNull && arg.rep.typ <:< ruh.Null) newBase.ascribe(a, rect(bv.typ)) else a
             newBase.letin(recv(bv), av, apply(body subs 'p -> p rep), rect(tb rep))
@@ -197,26 +197,26 @@ trait ASTReinterpreter { ast: AST =>
             
           /** We explicitly convert multi-parameter lambdas, as they may be encoded (cf: `CurryEncoding`): */
             
-          case ir"() => $body: $tb" =>
+          case code"() => $body: $tb" =>
             newBase.lambda(Nil, apply(body rep))
             
-          case ir"((${p @ BV(bp)}: $tp, ${q @ BV(bq)}: $tq) => $body: $tb)" =>
+          case code"((${p @ BV(bp)}: $tp, ${q @ BV(bq)}: $tq) => $body: $tb)" =>
             newBase.lambda(recv(bp) :: recv(bq) :: Nil, apply(body  subs 'p -> p subs 'q -> q rep))
             
-          case ir"((${p @ BV(bp)}: $tp, ${q @ BV(bq)}: $tq, ${r @ BV(br)}: $tr) => $body: $tb)" =>
+          case code"((${p @ BV(bp)}: $tp, ${q @ BV(bq)}: $tq, ${r @ BV(br)}: $tr) => $body: $tb)" =>
             newBase.lambda(recv(bp) :: recv(bq) :: recv(br) :: Nil, apply(body  subs 'p -> p subs 'q -> q subs 'r -> r rep))
             
-          case ir"((${p @ BV(bp)}: $tp, ${q @ BV(bq)}: $tq, ${r @ BV(br)}: $tr, ${s @ BV(bs)}: $ts) => $body: $tb)" =>
+          case code"((${p @ BV(bp)}: $tp, ${q @ BV(bq)}: $tq, ${r @ BV(br)}: $tr, ${s @ BV(bs)}: $ts) => $body: $tb)" =>
             newBase.lambda(recv(bp) :: recv(bq) :: recv(br) :: recv(bs) :: Nil, apply(body  subs 'p -> p subs 'q -> q subs 'q -> q subs 's -> s rep))
 
-          case ir"((${p @ BV(bp)}: $tp, ${q @ BV(bq)}: $tq, ${r @ BV(br)}: $tr, ${s @ BV(bs)}: $ts, ${t @ BV(bt)}: $tt) => $body: $tb)" =>
+          case code"((${p @ BV(bp)}: $tp, ${q @ BV(bq)}: $tq, ${r @ BV(br)}: $tr, ${s @ BV(bs)}: $ts, ${t @ BV(bt)}: $tt) => $body: $tb)" =>
             newBase.lambda(recv(bp) :: recv(bq) :: recv(br) :: recv(bs) :: recv(bt) :: Nil, apply(body  subs 'p -> p subs 'q -> q subs 'q -> q subs 's -> s subs 't -> t rep))
             
             
-          case ir"($f: $ta => $tb)($arg)" =>
+          case code"($f: $ta => $tb)($arg)" =>
             q"${apply(f rep)}(${apply(arg rep)})"
             
-          case IR(RepDef(RecordGet(RepDef(bv), name, tp))) =>
+          case Code(RepDef(RecordGet(RepDef(bv), name, tp))) =>
             Ident(TermName(s"<access to param $name>"))
             // ^ It can be useful to visualize these nodes when temporarily extruded from their context,
             // although in a full program we should never see them!

@@ -12,36 +12,36 @@ class NormalizationTests extends MyFunSuite(SimpleANFTests.DSLWithEffects) {
   
   test("Normalization of Tail Bindings") {
     
-    ir"readInt" eqt ir"val n = readInt; n"
+    code"readInt" eqt code"val n = readInt; n"
     
-    ir"print(0); val r = {println; readInt}; r" eqt ir"print(0); println; readInt"
+    code"print(0); val r = {println; readInt}; r" eqt code"print(0); println; readInt"
     
   }
   
   test("Normalization of Unit Values") {
     
-    ir"val a = (); a" eqt ir"()"
+    code"val a = (); a" eqt code"()"
     
-    ir"val a = identity(()); a" eqt ir"identity(())"
+    code"val a = identity(()); a" eqt code"identity(())"
     
-    ir"val a = println; print(a)" eqt ir"println; print(())"
+    code"val a = println; print(a)" eqt code"println; print(())"
     
-    ir"val a = ??? ; print(a)" |> (a => a eqt a)
+    code"val a = ??? ; print(a)" |> (a => a eqt a)
     
-    ir"println; ()" eqt ir"println"
+    code"println; ()" eqt code"println"
     
-    ir"val a = ??? ; ??? ; a" eqt ir"val a = ??? ; ???"  // Note: this happens because  ???.typ <:< Unit  and  ???.typ <:< a.typ  and  a.isPure
+    code"val a = ??? ; ??? ; a" eqt code"val a = ??? ; ???"  // Note: this happens because  ???.typ <:< Unit  and  ???.typ <:< a.typ  and  a.isPure
     
   }
   
   test("Normalization of Unit Values In Patterns") {
     
-    ir"val a = println; 123" match {
-      case ir"val $x = println; $body" =>
+    code"val a = println; 123" match {
+      case code"val $x = println; $body" =>
         fail // bindings of type Unit are currently removed; this test make sure that they are NOT removed in patterns 
         // if the binder is extracted (as above), which would raise a runtime assertion error (missing extracted term).
-      case ir"println; $body" =>
-        body eqt ir"123"
+      case code"println; $body" =>
+        body eqt code"123"
     }
     
   }
@@ -50,8 +50,8 @@ class NormalizationTests extends MyFunSuite(SimpleANFTests.DSLWithEffects) {
   
   test("Option Normalization") {
     
-    ir"Option.empty[Int] map (_+1)" transformWith ONorm eqt 
-      ir"if ((None:Option[Int]).isDefined) Some((None:Option[Int]).get+1) else None"
+    code"Option.empty[Int] map (_+1)" transformWith ONorm eqt 
+      code"if ((None:Option[Int]).isDefined) Some((None:Option[Int]).get+1) else None"
     
     // FIXME: assertion failed; at squid.ir.RuntimeSymbols$$anonfun$1.apply(RuntimeSymbols.scala:55)
     //ir"Option('ok)" transformWith ONorm eqt 
@@ -63,15 +63,15 @@ class NormalizationTests extends MyFunSuite(SimpleANFTests.DSLWithEffects) {
   
   test("Misc Normalizations") {
     
-    ir"42.toString.toString" transformWith INorm eqt ir"42.toString"
+    code"42.toString.toString" transformWith INorm eqt code"42.toString"
     
-    ir""" (("a":String)+"b").toString.toString |> println """ transformWith INorm eqt ir""" (("a":String)+"b").toString |> println """
+    code""" (("a":String)+"b").toString.toString |> println """ transformWith INorm eqt code""" (("a":String)+"b").toString |> println """
     
-    ir"42.asInstanceOf[Int]" transformWith INorm eqt ir"42" // Note: actually produces ir"42:Int" 
-    ir"(if (true) 42 else 43).asInstanceOf[Int]" transformWith INorm eqt ir"if (true) 42 else 43"
+    code"42.asInstanceOf[Int]" transformWith INorm eqt code"42" // Note: actually produces ir"42:Int" 
+    code"(if (true) 42 else 43).asInstanceOf[Int]" transformWith INorm eqt code"if (true) 42 else 43"
     
-    val x = ir"???.asInstanceOf[Int]" transformWith INorm
-    x eqt ir"???"
+    val x = code"???.asInstanceOf[Int]" transformWith INorm
+    x eqt code"???"
     x.rep.dfn.isInstanceOf[base.Ascribe]
     
     // Q: why ascription not removed? in:

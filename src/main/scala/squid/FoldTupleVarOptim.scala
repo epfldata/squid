@@ -10,8 +10,8 @@ trait FoldTupleVarOptim extends FixPointRuleBasedTransformer with TopDownTransfo
   import base.Predef._
   
   // weirdly, this is now needed:
-  import self.base.InspectableIROps
-  import self.base.IntermediateIROps
+  import self.base.InspectableCodeOps
+  import self.base.IntermediateCodeOps
   
   
   //rewrite {
@@ -37,9 +37,9 @@ trait FoldTupleVarOptim extends FixPointRuleBasedTransformer with TopDownTransfo
     
   rewrite {
     
-    case ir"($ls: List[$ta]).foldLeft[$tb]($init)($f)" =>
+    case code"($ls: List[$ta]).foldLeft[$tb]($init)($f)" =>
       
-      ir""" var cur = $init
+      code""" var cur = $init
             $ls foreach { x => cur = $f(cur, x) }
             cur """
       
@@ -49,18 +49,18 @@ trait FoldTupleVarOptim extends FixPointRuleBasedTransformer with TopDownTransfo
       //      cur! """
       
       
-    case ir"($ls: List[$t]) foreach ($f: t => Any)" =>
+    case code"($ls: List[$t]) foreach ($f: t => Any)" =>
     //case ir"($ls: List[$t]).foreach[$t2]($f)" => // also works
       
-      ir""" var iter = $ls
+      code""" var iter = $ls
             while (iter.nonEmpty)
             { $f(iter.head); iter = iter.tail } """
       
   }
   
   
-  def tuple2Components[A:IRType,B:IRType,C](ab: IR[(A,B),C]): Option[ IR[A,C]->IR[B,C] ] = ab match {
-    case ir"($a:A, $b:B)" => Some(a -> b)
+  def tuple2Components[A:CodeType,B:CodeType,C](ab: Code[(A,B),C]): Option[ Code[A,C]->Code[B,C] ] = ab match {
+    case code"($a:A, $b:B)" => Some(a -> b)
     //case dbg_ir"$ab" => // FIXME? purged type of scrutinee forgets type parameters!! -- can we do better?
     case _ => None
   }
@@ -71,10 +71,10 @@ trait FoldTupleVarOptim extends FixPointRuleBasedTransformer with TopDownTransfo
     
     //case ir"val $tup: Var[($ta, $tb)] = Var($init); $body: $t" => // FIXME: binding `x @ ir...`
     
-    case ir"val $tup = Var($init: ($ta, $tb)); $body: $t" =>
+    case code"val $tup = Var($init: ($ta, $tb)); $body: $t" =>
       
-      val a = ir"$$a: Var[$ta]"
-      val b = ir"$$b: Var[$tb]"
+      val a = code"$$a: Var[$ta]"
+      val b = code"$$b: Var[$tb]"
       
       //val (a,b) = (ir"$$a: Var[$ta]", ir"$$b: Var[$tb]") // FIXME rewrite brittleness
       
@@ -86,10 +86,10 @@ trait FoldTupleVarOptim extends FixPointRuleBasedTransformer with TopDownTransfo
       //show(initComps) // initComps =	Some((ir"1",ir"0")) : Option[scp.utils.->[FoldTupleVarOptim.this.base.Predef.IR[ta,<context @ 49:10>],FoldTupleVarOptim.this.base.Predef.IR[tb,<context @ 49:10>]]]
       
       val newBody = body rewrite {
-        case ir"($$tup !)._1" => ir"$a !"
-        case ir"($$tup !)._2" => ir"$b !"
-        case ir"$$tup := ($va: $$ta, $vb: $$tb)" => ir"$a := $va; $b := $vb"
-        case ir"$$tup !" => ir"($a.!, $b.!)"
+        case code"($$tup !)._1" => code"$a !"
+        case code"($$tup !)._2" => code"$b !"
+        case code"$$tup := ($va: $$ta, $vb: $$tb)" => code"$a := $va; $b := $vb"
+        case code"$$tup !" => code"($a.!, $b.!)"
       }
       
       //show(newBody)
@@ -147,8 +147,8 @@ trait FoldTupleVarOptim extends FixPointRuleBasedTransformer with TopDownTransfo
       */
       
       val res =
-      initComps map (ab => ir" val a = Var(${ab._1}); val b = Var(${ab._2}); $newwBody2 ") getOrElse
-         ir" val init = $init; val a = Var(init._1);  val b = Var(init._2);  $newwBody2 "
+      initComps map (ab => code" val a = Var(${ab._1}); val b = Var(${ab._2}); $newwBody2 ") getOrElse
+         code" val init = $init; val a = Var(init._1);  val b = Var(init._2);  $newwBody2 "
       
       //show(res rep)
       //show(res)

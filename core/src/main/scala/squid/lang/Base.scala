@@ -52,7 +52,7 @@ trait Base extends TypingBase with quasi.QuasiBase {
   
   /** High-level interface which implementation should specify how to construct (and potentially also deconstruct) constants */
   trait ConstAPI {
-    def apply[T: IRType](v: T): IR[T,Any] = `internal IR`(const(v))
+    def apply[T: CodeType](v: T): Code[T,Any] = `internal Code`(const(v))
   }
   val Const: ConstAPI
   
@@ -90,7 +90,7 @@ trait Base extends TypingBase with quasi.QuasiBase {
     def =~= (that: Rep) = repEq(self, that)
     
     /** Useful for inspection with quasiquotes; the Nothing context prevents it from being used as is (which would be unsafe). */
-    def asIR = `internal IR`[Any,Nothing](self)
+    def asCode = `internal Code`[Any,Nothing](self)
     
     def show = showRep(self)
   }

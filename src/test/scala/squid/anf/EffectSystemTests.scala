@@ -13,21 +13,21 @@ class EffectSystemTests extends MyFunSuite(SimpleANFTests.DSLWithEffects) {
   import EffectSystemTests._
   import SimpleEffect._
   
-  def stmts(q: IR[Any,Nothing]) = q.rep.asBlock._1
-  def stmtsNumIs(n: Int)(q: IR[Any,Nothing]) = assert(stmts(q).size == n)
+  def stmts(q: Code[Any,Nothing]) = q.rep.asBlock._1
+  def stmtsNumIs(n: Int)(q: Code[Any,Nothing]) = assert(stmts(q).size == n)
   
   test("Basics") {
     
-    assert(ir"42".rep.effect == Pure)
-    assert(ir"42.toDouble".rep.effect == Pure)
-    assert(ir"println".rep.effect == Impure)
+    assert(code"42".rep.effect == Pure)
+    assert(code"42.toDouble".rep.effect == Pure)
+    assert(code"println".rep.effect == Impure)
     
-    assert(ir"val n = 42; val m = n+1; println(m); 'ok".rep.asBlock._1.size == 1)
+    assert(code"val n = 42; val m = n+1; println(m); 'ok".rep.asBlock._1.size == 1)
     
-    ir"true && {identity(42.toDouble);true} && false" eqt ir"(true:Bool) && true && false"
-    eqt(ir"true && {println;true} && false".rep.asBlock._1.head.fold(_._2,identity), ir"true && {println;true}".rep)
+    code"true && {identity(42.toDouble);true} && false" eqt code"(true:Bool) && true && false"
+    eqt(code"true && {println;true} && false".rep.asBlock._1.head.fold(_._2,identity), code"true && {println;true}".rep)
     
-    assert(ir"IndexedSeq().size + Nil.size + Seq().size".rep.asBlock._1.size == 5) // used to be 3 because GenericCompanion.apply was handled wrongly
+    assert(code"IndexedSeq().size + Nil.size + Seq().size".rep.asBlock._1.size == 5) // used to be 3 because GenericCompanion.apply was handled wrongly
     // ^ currently, `.size` on immutable collections is not viewed as pure; this is more tricky because `size` is defined
     // in a generic class, and so should only be pure if the receiver is an immutable collection... not expressible withb current infra
     // very similarly, we now have Seq.apply and IndexedSeq.apply not pure because they're from GenericCompanion, 
@@ -37,40 +37,40 @@ class EffectSystemTests extends MyFunSuite(SimpleANFTests.DSLWithEffects) {
   
   test("Lambdas") {
     
-    assert(ir"(x:Any) => println".rep.effect == Latent)
-    assert(ir"(() => println):(() => Any)".rep.effect == Latent)
+    assert(code"(x:Any) => println".rep.effect == Latent)
+    assert(code"(() => println):(() => Any)".rep.effect == Latent)
     
-    assert(ir"applyOnce0(() => println)".rep.effect == Impure)
-    assert(ir"applyOnce1((x:Any) => println)".rep.effect == Impure)
-    assert(ir"applyTwice0(() => () => println)".rep.effect == Impure)
-    assert(ir"applyTwice1((x:Any) => (y:Any) => println)".rep.effect == Impure)
+    assert(code"applyOnce0(() => println)".rep.effect == Impure)
+    assert(code"applyOnce1((x:Any) => println)".rep.effect == Impure)
+    assert(code"applyTwice0(() => () => println)".rep.effect == Impure)
+    assert(code"applyTwice1((x:Any) => (y:Any) => println)".rep.effect == Impure)
     
-    assert(ir"(x:Any) => (x:Any) => println".rep.effect == Latent)
-    assert(ir"((x:Any) => (x:Any) => println)(1)".rep.effect == Latent) // that happens because this is a let-binding!! (otherwise, should be `Impure`)
-    assert(ir"((x:Any) => (x:Any) => println)(1)(2)".rep.effect == Impure)
+    assert(code"(x:Any) => (x:Any) => println".rep.effect == Latent)
+    assert(code"((x:Any) => (x:Any) => println)(1)".rep.effect == Latent) // that happens because this is a let-binding!! (otherwise, should be `Impure`)
+    assert(code"((x:Any) => (x:Any) => println)(1)(2)".rep.effect == Impure)
     
-    assert(ir"() => println".rep.effect == Latent)
-    assert(ir"() => () => println".rep.effect == Latent)
-    assert(ir"(() => () => println)()".rep.effect == Impure)
-    assert(ir"(() => () => println)()()".rep.effect == Impure)
+    assert(code"() => println".rep.effect == Latent)
+    assert(code"() => () => println".rep.effect == Latent)
+    assert(code"(() => () => println)()".rep.effect == Impure)
+    assert(code"(() => () => println)()()".rep.effect == Impure)
     
     // thanks to an add-hoc entry for `identity` in `transparencyPropagatingMtds`:
-    assert(ir"identity((x:Int)=>print(x))".rep.effect == Latent)
-    assert(ir"identity((x:Int)=>x)".rep.effect == Pure)
+    assert(code"identity((x:Int)=>print(x))".rep.effect == Latent)
+    assert(code"identity((x:Int)=>x)".rep.effect == Pure)
     
   }
   
   test("Options") {
     
-    assert(ir"Some(Some(42)).get.get".rep.asBlock._1.isEmpty)
+    assert(code"Some(Some(42)).get.get".rep.asBlock._1.isEmpty)
     
-    assert(ir"val a = Option; a.empty[Int]".rep.asBlock._1.isEmpty)
+    assert(code"val a = Option; a.empty[Int]".rep.asBlock._1.isEmpty)
     
-    assert(ir"Right(true)".rep.asBlock._1.isEmpty)
+    assert(code"Right(true)".rep.asBlock._1.isEmpty)
     // ^ both `scala.`package`.Right` and `scala.`package`.Right.apply(true)` successfully viewed as trivial by ANF
     
     // `???` scheduled before `s.map`, which makes transfos not straightforward! cf. RewritingTests
-    ir"var s: Option[Int] = None; s.map[Int](???)" eqt ir"""{
+    code"var s: Option[Int] = None; s.map[Int](???)" eqt code"""{
       var s_0: scala.Option[scala.Int] = scala.None;
       val x_1 = s_0;
       val x_2 = ((scala.Predef.???): Nothing);
@@ -78,29 +78,29 @@ class EffectSystemTests extends MyFunSuite(SimpleANFTests.DSLWithEffects) {
     }"""
     
     // Those are effectful and should not be elided!
-    assert(ir"Some(42).map(a => println(a)); ()".rep.asBlock._1.size == 1)
-    assert(ir"Some(()).getOrElse(println); 42".rep.asBlock._1.size == 1)
+    assert(code"Some(42).map(a => println(a)); ()".rep.asBlock._1.size == 1)
+    assert(code"Some(()).getOrElse(println); 42".rep.asBlock._1.size == 1)
     
   }
   
   test("Tuples") {
     
-    ir"(1,2).swap._1" |> stmtsNumIs(0)
-    ir"(1,(x:Int)=>print(x)).swap._1" |> stmtsNumIs(0)
-    ir"(1,(x:Int)=>print(x)).copy(_1 = readInt)._1" |> stmtsNumIs(1)
+    code"(1,2).swap._1" |> stmtsNumIs(0)
+    code"(1,(x:Int)=>print(x)).swap._1" |> stmtsNumIs(0)
+    code"(1,(x:Int)=>print(x)).copy(_1 = readInt)._1" |> stmtsNumIs(1)
     
   }
   
   test("From Annotations") {
     
-    ir"foo + foo" |> stmtsNumIs(0)
-    ir"myId((x:Int) => x+foo)" |> stmtsNumIs(0)
-    ir"myId((x:Int) => x+foo)(foo)" |> stmtsNumIs(0)
-    ir"myId((x:Int) => x+foo)(readInt)" |> stmtsNumIs(1)
-    ir"myId((x:Int) => {print(x);x})" |> stmtsNumIs(0) // returned expression is impure
-    ir"myId((x:Int) => {print(x);x}); 42" eqt ir"42"   // expr with latent effect is ignored
-    ir"val mid = myId((x:Int) => {print(x);x}); mid(42)" |> stmtsNumIs(0)
-    ir"val mid = myId((x:Int) => {print(x);x}); mid(readInt)" |> stmtsNumIs(1)
+    code"foo + foo" |> stmtsNumIs(0)
+    code"myId((x:Int) => x+foo)" |> stmtsNumIs(0)
+    code"myId((x:Int) => x+foo)(foo)" |> stmtsNumIs(0)
+    code"myId((x:Int) => x+foo)(readInt)" |> stmtsNumIs(1)
+    code"myId((x:Int) => {print(x);x})" |> stmtsNumIs(0) // returned expression is impure
+    code"myId((x:Int) => {print(x);x}); 42" eqt code"42"   // expr with latent effect is ignored
+    code"val mid = myId((x:Int) => {print(x);x}); mid(42)" |> stmtsNumIs(0)
+    code"val mid = myId((x:Int) => {print(x);x}); mid(readInt)" |> stmtsNumIs(1)
     
   }
   
@@ -108,11 +108,11 @@ class EffectSystemTests extends MyFunSuite(SimpleANFTests.DSLWithEffects) {
     import scala.collection.mutable.Set
     import scala.collection.mutable.Buffer
     
-    ir"Set(1,2,3).head" |> stmtsNumIs(1)
-    ir"Buffer(1,2,3)+=1" |> stmtsNumIs(1)
+    code"Set(1,2,3).head" |> stmtsNumIs(1)
+    code"Buffer(1,2,3)+=1" |> stmtsNumIs(1)
     
-    ir"List(1,2,3).head" |> stmtsNumIs(0)
-    ir"println(List.empty[Int])" |> stmtsNumIs(0)
+    code"List(1,2,3).head" |> stmtsNumIs(0)
+    code"println(List.empty[Int])" |> stmtsNumIs(0)
     
   }
   

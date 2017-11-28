@@ -36,19 +36,19 @@ Should ImplFlowOptimizer be bottom-up or top-down??
 //class ImplOptimizer { self: Compiler =>
 //  ImplOptim2
 //}
-trait ImplFlowOptimizer extends IRTransformer { self =>
+trait ImplFlowOptimizer extends CodeTransformer { self =>
   val base: anf.analysis.BlockHelpers
   import base.Predef._
-  import base.InspectableIROps
+  import base.InspectableCodeOps
   import base.{AsBlock,WithResult,MethodApplication}
   import base.Val
   
-  def transform[T,C](code: IR[T,C]): IR[T,C] = {
+  def transform[T,C](code: Code[T,C]): Code[T,C] = {
     //aux(code, Map())
     code
   }
   //case class Linear[A](xs: IR[Producer[A],?])
-  class Linear[A](xs: IR[Producer[A],?])
+  class Linear[A](xs: Code[Producer[A],?])
   //private def aux[T,C](code: IR[T,C], linear: Map[Val,]): IR[T,C] = { code }
   
   

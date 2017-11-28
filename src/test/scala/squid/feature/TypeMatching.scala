@@ -9,17 +9,17 @@ class TypeMatching extends MyFunSuite {
   import TestDSL.Predef._
   
   test("Trivial") {
-    ir"42" matches {
-      case ir"$x: Any" => eqt(x, ir"42")
+    code"42" matches {
+      case code"$x: Any" => eqt(x, code"42")
     } and {
-      case ir"$x: AnyVal" => eqt(x, ir"42")
+      case code"$x: AnyVal" => eqt(x, code"42")
     } and {
-      case ir"$x: $t" =>
+      case code"$x: $t" =>
         eqt(t.rep, base.constType(42))
         eqt(t.rep, x.trep)
         
-        val opt = ir"Option.empty[$t]"
-        eqt(opt, ir"Option.empty[Int]")
+        val opt = code"Option.empty[$t]"
+        eqt(opt, code"Option.empty[Int]")
         
         // Note that opt.typ is `Option[Int(42)]`, so:
         assert(!(typeRepOf[Option[Int]] <:< opt.trep))
@@ -28,102 +28,102 @@ class TypeMatching extends MyFunSuite {
   }
   
   test("Matching Nothing Explicitly") {
-    ir"Seq()".erase match {
+    code"Seq()".erase match {
       //case ir"Seq()" => // should generate a warning
-      case ir"Seq[Nothing]()" => // should NOT generate a warning
+      case code"Seq[Nothing]()" => // should NOT generate a warning
     }
   }
   
-  val f = ir"(x: Int) => x.toDouble".erase
+  val f = code"(x: Int) => x.toDouble".erase
   
   test("Lambda Parameter/Body Types") {
     f matches {
-      case ir"(_: $xt) => $body: $bt" =>
+      case code"(_: $xt) => $body: $bt" =>
         eqt(xt.rep, typeRepOf[Int])
         eqt(bt.rep, typeRepOf[Double])
         eqt(body.trep, typeRepOf[Double])
     } and {
-      case ir"(y: Nothing) => $body: Double" =>
-        assert(!(body =~= ir"(${base.`internal IR`(base.hole("y", typeRepOf[Nothing]))}: Int).toDouble"))
-        eqt(body, ir"${base.`internal IR`[Int,{}](base.hole("y", typeRepOf[Int]))}.toDouble")
-        eqt(body, ir"($$y: Int).toDouble")
+      case code"(y: Nothing) => $body: Double" =>
+        assert(!(body =~= code"(${base.`internal Code`(base.hole("y", typeRepOf[Nothing]))}: Int).toDouble"))
+        eqt(body, code"${base.`internal Code`[Int,{}](base.hole("y", typeRepOf[Int]))}.toDouble")
+        eqt(body, code"($$y: Int).toDouble")
         
         // Note: `body` has type `IR[Double,{val y: Nothing}]` but internally has a hole typed `Int`.
         // This is okay and sound, as the following shows:
-        ir"($$y:Int).toDouble" : IR[Double,{val y: Nothing}]
+        code"($$y:Int).toDouble" : Code[Double,{val y: Nothing}]
         
-        assertDoesNotCompile(""" ir"val y = 42; $body".run """) // Error:(48, 9) Embedding Error: Captured variable `y: Int` has incompatible type with free variable `y: Nothing` found in inserted IR $(body)
+        assertDoesNotCompile(""" code"val y = 42; $body".run """) // Error:(48, 9) Embedding Error: Captured variable `y: Int` has incompatible type with free variable `y: Nothing` found in inserted IR $(body)
     }
   }
   
   test("Function Types") {
     f match {
-      case ir"$_: (Double => Double)" => fail
-      case ir"$_: ($a => $b)" =>
+      case code"$_: (Double => Double)" => fail
+      case code"$_: ($a => $b)" =>
         assert(a.rep =:= typeRepOf[Int])
         assert(b.rep =:= typeRepOf[Double])
     }
     f match {
-      case ir"$_: (Int => $b)" =>
+      case code"$_: (Int => $b)" =>
         assert(b.rep =:= typeRepOf[Double])
     }
     f match {
-      case ir"$_: ($a => Double)" =>
+      case code"$_: ($a => Double)" =>
         assert(a.rep =:= typeRepOf[Int])
     }
     f match {
-      case ir"$_: (Any => Double)" => fail
-      case ir"$_: (AnyVal => Double)" => fail
-      case ir"$_: (Int => Any)" =>
-      case ir"$_: (Int => AnyVal)" => fail
+      case code"$_: (Any => Double)" => fail
+      case code"$_: (AnyVal => Double)" => fail
+      case code"$_: (Int => Any)" =>
+      case code"$_: (Int => AnyVal)" => fail
     }
     
-    ir"Some[Int=>Int](_+1)" matches {
-      case ir"Some($f: ($ta => $tb))" =>
+    code"Some[Int=>Int](_+1)" matches {
+      case code"Some($f: ($ta => $tb))" =>
         //println(ta,tb)
         eqt(ta.rep, typeRepOf[Int])
         eqt(tb.rep, typeRepOf[Int])
     }
-    ir"((x:Int)=>x+1,(x:Int)=>x-1)" matches {
-      case ir"($_: ($ta => $tb), $_: (ta => tb))" => eqt(ta.rep,tb.rep)
+    code"((x:Int)=>x+1,(x:Int)=>x-1)" matches {
+      case code"($_: ($ta => $tb), $_: (ta => tb))" => eqt(ta.rep,tb.rep)
     } and {
-      case ir"($_: ($ta => tb), $_: (ta => $tb))" => eqt(ta.rep,tb.rep)
+      case code"($_: ($ta => tb), $_: (ta => $tb))" => eqt(ta.rep,tb.rep)
     }
   }
   
   test("Extracting from Nothing") (
     
-    ir"Option.empty" matches {
-      case ir"$y: Option[Int]" =>
+    code"Option.empty" matches {
+      case code"$y: Option[Int]" =>
     } and {
-      case ir"$y: Option[$t]" => assert(t.rep =:= typeRepOf[Nothing])
+      case code"$y: Option[$t]" => assert(t.rep =:= typeRepOf[Nothing])
     } and {
-      case ir"$y: Option[Option[$t]]" => assert(t.rep =:= typeRepOf[Nothing])
+      case code"$y: Option[Option[$t]]" => assert(t.rep =:= typeRepOf[Nothing])
     }
-    and { case ir"Option.empty[$t]" => eqt(t.rep, typeRepOf[Nothing]) }
-    and { case ir"Option.empty[Any]" => } // cf: covariant method type argument matching
-    and { case ir"Option.empty[AnyVal]" => }
-    and { case ir"Option.empty[Nothing]" => }
+    and { case code"Option.empty[$t]" => eqt(t.rep, typeRepOf[Nothing]) }
+    and { case code"Option.empty[Any]" => } // cf: covariant method type argument matching
+    and { case code"Option.empty[AnyVal]" => }
+    and { case code"Option.empty[Nothing]" => }
     
   )
   
   
   test("Type Params & Variance") {
     
-    ir"List(42)" matches ({
-      case ir"$x: List[Any]" => eqt(x, ir"List(42)")
+    code"List(42)" matches ({
+      case code"$x: List[Any]" => eqt(x, code"List(42)")
     }, {
-      case ir"$x: List[AnyVal]" =>
+      case code"$x: List[AnyVal]" =>
     }, {
-      case ir"$_: List[$t]" => eqt(t.rep, typeRepOf[Int])
+      case code"$_: List[$t]" => eqt(t.rep, typeRepOf[Int])
     })
     
-    ir"List(List(42))" matches ({
-      case ir"$_: List[List[$t]]" => eqt(t.rep, typeRepOf[Int])
+    code"List(List(42))" matches ({
+      case code"$_: List[List[$t]]" => eqt(t.rep, typeRepOf[Int])
     }, {
-      case ir"$_: Seq[Seq[Any]]" =>
+      case code"$_: Seq[Seq[Any]]" =>
     }, {
-      case ir"$_: Seq[Seq[AnyVal]]" =>
+      case code"$_: Seq[Seq[AnyVal]]" =>
     })
     
     // TODO: test functions, contravariance and invariance...
@@ -131,7 +131,7 @@ class TypeMatching extends MyFunSuite {
   }
   
   
-  val AnyType = irTypeOf[Any]
+  val AnyType = codeTypeOf[Any]
   
   
   // Note: defining 'Expr' and 'Appl' here used to work; no more since symbols are now loaded dynamically from the owner chain
@@ -139,66 +139,66 @@ class TypeMatching extends MyFunSuite {
   test("GADT") {
     //lang.ScalaTyping.debugTypes(
     
-    val applid = ir"Appl[Int,Double]".erase
+    val applid = code"Appl[Int,Double]".erase
     applid match {
-      case ir"$a: Appl[$s,$t]" =>
+      case code"$a: Appl[$s,$t]" =>
         assert(s.rep =:= typeRepOf[Int])
         assert(t.rep =:= typeRepOf[Double])
       //case _ => fail
     }
     applid match {
-      case ir"$a: Appl[Any,Any]" =>
+      case code"$a: Appl[Any,Any]" =>
         assert(a =~= applid)
       //case _ => fail
     }
     applid match {
-      case ir"$a: Expr[$t]" =>
+      case code"$a: Expr[$t]" =>
         assert(t.rep =:= typeRepOf[Double])
     }
     
-    val abstis = ir"Abst[Int,String]".erase
-    abstis match { case ir"$_ : Expr[Int => String]" => }
-    abstis match { case ir"$_ : Expr[Nothing => Any]" => }
-    abstis match { case ir"$_ : Expr[Any]" => }
+    val abstis = code"Abst[Int,String]".erase
+    abstis match { case code"$_ : Expr[Int => String]" => }
+    abstis match { case code"$_ : Expr[Nothing => Any]" => }
+    abstis match { case code"$_ : Expr[Any]" => }
     
-    val abstabst = ir"Abst[Abst[Int,String], Abst[Int,String]]".erase
+    val abstabst = code"Abst[Abst[Int,String], Abst[Int,String]]".erase
     abstabst match {
-      case ir"$_ : Expr[Abst[Int,String] => Abst[Int,String]]" =>
-    }
-    abstabst match {
-      case ir"$_ : Expr[Abst[Int, String] => Expr[Int => String]]" =>
+      case code"$_ : Expr[Abst[Int,String] => Abst[Int,String]]" =>
     }
     abstabst match {
-      case ir"$_ : Expr[Abst[Any, Nothing] => Expr[Nothing => Any]]" =>
+      case code"$_ : Expr[Abst[Int, String] => Expr[Int => String]]" =>
+    }
+    abstabst match {
+      case code"$_ : Expr[Abst[Any, Nothing] => Expr[Nothing => Any]]" =>
     }
     
-    ir"(x: Appl[Int,Double]) => ()".cast[_ => Unit] match {
-      case ir"$_: (Appl[Int,Double] => Unit)" =>
+    code"(x: Appl[Int,Double]) => ()".cast[_ => Unit] match {
+      case code"$_: (Appl[Int,Double] => Unit)" =>
     }
     
-    ir"(x: Appl[Int,Int]) => Int".cast[_ => _] match {
-      case ir"$_: (Appl[Int,Nothing] => Any)" =>
+    code"(x: Appl[Int,Int]) => Int".cast[_ => _] match {
+      case code"$_: (Appl[Int,Nothing] => Any)" =>
     }
     
-    ir"(x: Appl[Int,Double]) => Appl[Double,Int]".cast[_ => _] match {
-      case ir"$_: (Expr[$t1] => $t2)" => fail
-      case ir"$_: (Appl[$a,$b] => Expr[$t])" =>
+    code"(x: Appl[Int,Double]) => Appl[Double,Int]".cast[_ => _] match {
+      case code"$_: (Expr[$t1] => $t2)" => fail
+      case code"$_: (Appl[$a,$b] => Expr[$t])" =>
         assert(a.rep =:= typeRepOf[Int])
         assert(b.rep =:= typeRepOf[Double])
         assert(t.rep =:= typeRepOf[Int])
     }
     
-    ir"(x: Expr[Int]) => ()".cast[_ => _] match {
-      case ir"$_: (Appl[String,Int] => Any)" =>
+    code"(x: Expr[Int]) => ()".cast[_ => _] match {
+      case code"$_: (Appl[String,Int] => Any)" =>
     }
     
-    ir"(x: Expr[Int]) => ()".cast[_ => _] match {
-      case ir"$_: (Appl[String,$t] => Unit)" =>
+    code"(x: Expr[Int]) => ()".cast[_ => _] match {
+      case code"$_: (Appl[String,$t] => Unit)" =>
         eqt(t.rep, typeRepOf[Int])
     }
     
-    ir"(x: Expr[Int]) => ()".cast[_ => _] match {
-      case ir"$_: (Appl[$t,Int] => Unit)" =>
+    code"(x: Expr[Int]) => ()".cast[_ => _] match {
+      case code"$_: (Appl[$t,Int] => Unit)" =>
         eqt(t, AnyType)
     }
     
@@ -207,37 +207,37 @@ class TypeMatching extends MyFunSuite {
   
   test("Extracted Type Variance & Unification") {
     
-    val a = ir"HPair(List(1,2,3),List('a','b'))"
-    eqt(a, ir"HPair[List[AnyVal]](List(1,2,3),List('a','b'))")
+    val a = code"HPair(List(1,2,3),List('a','b'))"
+    eqt(a, code"HPair[List[AnyVal]](List(1,2,3),List('a','b'))")
     
     a matches {
-      case ir"HPair[$t]($a,$b)" => eqt(t, irTypeOf[List[AnyVal]])
+      case code"HPair[$t]($a,$b)" => eqt(t, codeTypeOf[List[AnyVal]])
     } and {
-      case ir"HPair($a:$ta,$b)" => // What happens: the pattern is typed:  ir"HPair[ta]($a:$ta,$b)"  so 'ta' is also matched against b, thence is unified to +List[AnyVal]
-        assert(!(ta =:= irTypeOf[List[Int]]))
-        eqt(ta, irTypeOf[List[AnyVal]])
+      case code"HPair($a:$ta,$b)" => // What happens: the pattern is typed:  ir"HPair[ta]($a:$ta,$b)"  so 'ta' is also matched against b, thence is unified to +List[AnyVal]
+        assert(!(ta =:= codeTypeOf[List[Int]]))
+        eqt(ta, codeTypeOf[List[AnyVal]])
     }
     
-    assertDoesNotCompile(""" a match { case ir"HPair($a:$ta,$b:$tb)" => } """) // Error:(197, 12) Embedding Error: Precise extracted type was lost, possibly because extruded from defining scope, in: <extruded type>
+    assertDoesNotCompile(""" a match { case code"HPair($a:$ta,$b:$tb)" => } """) // Error:(197, 12) Embedding Error: Precise extracted type was lost, possibly because extruded from defining scope, in: <extruded type>
     
     
-    val f = ir"(x: List[Any]) => x.asInstanceOf[List[Int]]" : IR[List[Any] => List[Int], {}]
+    val f = code"(x: List[Any]) => x.asInstanceOf[List[Int]]" : Code[List[Any] => List[Int], {}]
     
     f matches {
-      case ir"$g: ($t => t)" => // Our matcher can assign to 't' anything between 'List[Int]' and 'List[Any]'. Currently, it arbitrarily picks the lower bound.
-        eqt(t, irTypeOf[List[Int]])
+      case code"$g: ($t => t)" => // Our matcher can assign to 't' anything between 'List[Int]' and 'List[Any]'. Currently, it arbitrarily picks the lower bound.
+        eqt(t, codeTypeOf[List[Int]])
     } and {
-      case ir"(_: $t) => $b: t" =>
-        eqt(t, irTypeOf[List[Int]])
+      case code"(_: $t) => $b: t" =>
+        eqt(t, codeTypeOf[List[Int]])
     } and {
-      case ir"$g: ($t0 => $t1)" =>
-        eqt(t0, irTypeOf[List[Any]])
-        eqt(t1, irTypeOf[List[Int]])
+      case code"$g: ($t0 => $t1)" =>
+        eqt(t0, codeTypeOf[List[Any]])
+        eqt(t1, codeTypeOf[List[Int]])
     } and {
-      case ir"$_: (List[List[$t0]] => Any)" =>
+      case code"$_: (List[List[$t0]] => Any)" =>
         //show(t0)
         subt(t0, AnyType)
-        subt(irTypeOf[Nothing], t0)
+        subt(codeTypeOf[Nothing], t0)
     }
     
     // FIXME: use interval types
@@ -246,18 +246,18 @@ class TypeMatching extends MyFunSuite {
     //    eqt(t0, irTypeOf[Int])
     //}
     
-    ir"(x: Any) => 'ok" matches {
-      case ir"$_: ((List[$t0] => Int) => t0)" =>
-        eqt(t0, irTypeOf[Symbol])
+    code"(x: Any) => 'ok" matches {
+      case code"$_: ((List[$t0] => Int) => t0)" =>
+        eqt(t0, codeTypeOf[Symbol])
     } and {
-      case ir"$_: ((List[$t0] => Int) => Symbol)" =>
+      case code"$_: ((List[$t0] => Int) => Symbol)" =>
         eqt(t0, AnyType)
     } and {
-      case ir"$_: (($t0 => Int) => Symbol)" =>
+      case code"$_: (($t0 => Int) => Symbol)" =>
         eqt(t0, AnyType)
     } and {
-      case ir"$_: (($t0 => Int) => t0)" =>
-        eqt(t0, irTypeOf[Symbol])
+      case code"$_: (($t0 => Int) => t0)" =>
+        eqt(t0, codeTypeOf[Symbol])
     }
     
   }
@@ -265,30 +265,30 @@ class TypeMatching extends MyFunSuite {
   
   test("Bounds") {
     
-    val q: IR[Any,Any] = ir"foo[List[Int]]"
+    val q: Code[Any,Any] = code"foo[List[Int]]"
     val t = q match {
-      case ir"foo[$s where (s <:< Seq[Int])]" =>
+      case code"foo[$s where (s <:< Seq[Int])]" =>
         s
     }
-    eqt(t, irTypeOf[List[Int]])
+    eqt(t, codeTypeOf[List[Int]])
     
-    ir"Some(Nil).orElse(Some(List(0)))" matches {
-      case ir"($lhs:Option[$t]).orElse($rhs:Option[t])" => eqt(t, irTypeOf[List[Int]])
+    code"Some(Nil).orElse(Some(List(0)))" matches {
+      case code"($lhs:Option[$t]).orElse($rhs:Option[t])" => eqt(t, codeTypeOf[List[Int]])
     } and {
-      case ir"($lhs:Option[$ta]).orElse($rhs:Option[$tb where (ta <:< tb)])" =>
-        eqt(ta, irTypeOf[Nil.type])
-        eqt(tb, irTypeOf[List[Int]])
+      case code"($lhs:Option[$ta]).orElse($rhs:Option[$tb where (ta <:< tb)])" =>
+        eqt(ta, codeTypeOf[Nil.type])
+        eqt(tb, codeTypeOf[List[Int]])
     } and {
-      case ir"($lhs:Option[$ta where (ta <:< tb)]).orElse($rhs:Option[$tb])" =>  // even works when we forward-refer to `tb`!
-        eqt(ta, irTypeOf[Nil.type])
-        eqt(tb, irTypeOf[List[Int]])
+      case code"($lhs:Option[$ta where (ta <:< tb)]).orElse($rhs:Option[$tb])" =>  // even works when we forward-refer to `tb`!
+        eqt(ta, codeTypeOf[Nil.type])
+        eqt(tb, codeTypeOf[List[Int]])
     }
     
-    ir"bar[Int,String,Abst[Int,AnyRef]]" matches {
-      case ir"bar[$a, $b, $t where (Abst[a,b] <:< t <:< Expr[Any])]" =>
-        eqt(a, irTypeOf[Int])
-        eqt(b, irTypeOf[String])
-        eqt(t, irTypeOf[Abst[Int,AnyRef]]) // Q: why does it show as Abst[Int,Any]?
+    code"bar[Int,String,Abst[Int,AnyRef]]" matches {
+      case code"bar[$a, $b, $t where (Abst[a,b] <:< t <:< Expr[Any])]" =>
+        eqt(a, codeTypeOf[Int])
+        eqt(b, codeTypeOf[String])
+        eqt(t, codeTypeOf[Abst[Int,AnyRef]]) // Q: why does it show as Abst[Int,Any]?
         //eqt(t, irTypeOf[Abst[Int,Any]])    // Q: and even compares equal to it?!
     }
     
@@ -298,9 +298,9 @@ class TypeMatching extends MyFunSuite {
     
     // cf. https://github.com/LPTK/Squid/issues/15
     
-    ir"List(0)" matches {
-      case ir"$ls:List[$t where (t <:< String)]" => // fail // FIXME
-      case ir"$ls:List[$t where (t <:< AnyVal)]" => eqt(t, irTypeOf[Int])
+    code"List(0)" matches {
+      case code"$ls:List[$t where (t <:< String)]" => // fail // FIXME
+      case code"$ls:List[$t where (t <:< AnyVal)]" => eqt(t, codeTypeOf[Int])
     }
     
   }

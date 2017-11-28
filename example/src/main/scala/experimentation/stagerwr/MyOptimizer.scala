@@ -23,10 +23,10 @@ class MyOptimizer extends stagerwr.Optimizer {
   
   Embedding.Norm.rewrite {
     //case ir"42" => ir"43"
-    case ir"Math.pow($base,$exp)" => ir"pow($base,$exp)"
-    case ir"Math.sqrt($x)" => ir"pow($x,0.5)"
-    case ir"pow(pow($x,${Const(a)}),${Const(b)})" if b.isWhole => ir"pow($x,${Const(a * b)})"
-    case ir"pow($x,1)" => x
+    case code"Math.pow($base,$exp)" => code"pow($base,$exp)"
+    case code"Math.sqrt($x)" => code"pow($x,0.5)"
+    case code"pow(pow($x,${Const(a)}),${Const(b)})" if b.isWhole => code"pow($x,${Const(a * b)})"
+    case code"pow($x,1)" => x
   }
   
 }

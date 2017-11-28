@@ -30,7 +30,7 @@ abstract class QuasiTypeEmbedder[C <: scala.reflect.macros.whitebox.Context, B <
       }
       
       
-      val irType = c.typecheck(tq"$baseTree.IRType[$tp]", c.TYPEmode) // TODO use internal.typeRef
+      val irType = c.typecheck(tq"$baseTree.CodeType[$tp]", c.TYPEmode) // TODO use internal.typeRef
       debug(s"Searching for an `$irType` implicit")
       c.inferImplicitValue(irType.tpe, withMacrosDisabled = true) match {
         case EmptyTree =>
@@ -51,17 +51,17 @@ abstract class QuasiTypeEmbedder[C <: scala.reflect.macros.whitebox.Context, B <
         }
       }.asInstanceOf[List[(TermSymbol, Type)]]
       
-      val QTSym = symbolOf[QuasiBase#IRType[_]]
+      val QTSym = symbolOf[QuasiBase#CodeType[_]]
       
-      //val PredefQTSym = symbolOf[QuasiBase#Predef[_ <: QuasiConfig]#IRType[_]]
-      //val PredefQTSym = typeOf[QuasiBase#Predef[_ <: QuasiConfig]#IRType[_]].typeSymbol
-      // ^ For some reson, these always return a symbol s where s.fullName == "squid.quasi.QuasiBase.IRType"
+      //val PredefQTSym = symbolOf[QuasiBase#Predef[_ <: QuasiConfig]#CodeType[_]]
+      //val PredefQTSym = typeOf[QuasiBase#Predef[_ <: QuasiConfig]#CodeType[_]].typeSymbol
+      // ^ For some reson, these always return a symbol s where s.fullName == "squid.quasi.QuasiBase.CodeType"
       
       vals foreach {
         case (sym, TypeRef(tpbase, QTSym /*| PredefQTSym*/, tp0::Nil)) 
           if tpbase =:= baseTree.tpe 
           && tp0 <:< tp && tp <:< tp0 // NOTE: for some godforsaken reason, sometimes in Scala this is not the same as `tp0 =:= tp`
-          // For example in  {{{ (typs:List[IRType[_]]) map { case typ: IRType[t] => dbg.implicitType[t] } }}}
+          // For example in  {{{ (typs:List[CodeType[_]]) map { case typ: CodeType[t] => dbg.implicitType[t] } }}}
         =>
           debug("FOUND QUOTED TYPE "+sym)
           return (q"$sym.rep".asInstanceOf[base.TypeRep] // FIXME

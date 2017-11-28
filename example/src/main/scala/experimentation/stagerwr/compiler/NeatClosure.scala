@@ -8,21 +8,22 @@ package compiler
 //}
 
 import squid.lib.{Var,uncheckedNullValue}
-import Embedding.Predef._
+//import Embedding.Predef._
+import Embedding.Predef.{Code=>IR,_}
 import Embedding.SimplePredef.{Rep=>Code,_}
 
 object NeatClosure {
   
-  def mkFun[S,T](body: IR[T,{val x:S}]) = (x: Code[S]) => body subs 'x -> x.asClosedIR
+  def mkFun[S,T](body: IR[T,{val x:S}]) = (x: Code[S]) => body subs 'x -> x.asClosedCode
   
-  //def rec[T:IRType](t: Code[T], reset: Code[() => Unit]): Code[T] = {
-  def rec[T:IRType,R:IRType](t: Code[T], reset: Code[() => Unit], term_reset: (Code[T], Code[() => Unit]) => Code[R]): Code[R] = {
-  //def rec[T:IRType,R:IRType,C](t: Code[T], reset: Code[() => Unit], term_reset: (Code[T], Code[() => Unit]) => IR[R,C]): IR[R,C] = {
+  //def rec[T:CodeType](t: Code[T], reset: Code[() => Unit]): Code[T] = {
+  def rec[T:CodeType,R:CodeType](t: Code[T], reset: Code[() => Unit], term_reset: (Code[T], Code[() => Unit]) => Code[R]): Code[R] = {
+  //def rec[T:CodeType,R:CodeType,C](t: Code[T], reset: Code[() => Unit], term_reset: (Code[T], Code[() => Unit]) => IR[R,C]): IR[R,C] = {
     println(s"REC $t $reset")
     t match {
-      //def rec[T:IRType](t: Code[T], reset: Code[Unit => Unit]): NeatClosure[T,Any] = t match {
+      //def rec[T:CodeType](t: Code[T], reset: Code[Unit => Unit]): NeatClosure[T,Any] = t match {
     
-      case ir"val x = Var[$xt]($init); $body: T" =>
+      case code"val x = Var[$xt]($init); $body: T" =>
       
         val bodyFun = mkFun(body)
         //println("BODY "+body)
@@ -30,14 +31,14 @@ object NeatClosure {
         
         //ir"val x = Var($init); ${(x:Code[Var[xt.Typ]]) =>
         //ir"val x = Var[$xt](uncheckedNullValue); ${(x:Code[Var[xt.Typ]]) =>
-        ir"val mut_env = Var(uncheckedNullValue[$xt]); ${(x:Code[Var[xt.Typ]]) =>
+        code"val mut_env = Var(uncheckedNullValue[$xt]); ${(x:Code[Var[xt.Typ]]) =>
           //val b = bodyFun(ir"$x")
           val b = bodyFun(x)
-          rec(b, ir"() => { $reset(); $x := $init }", term_reset)
+          rec(b, code"() => { $reset(); $x := $init }", term_reset)
         }(mut_env)"
         
         
-      case ir"val x: $xt = $init; $body: T" =>
+      case code"val x: $xt = $init; $body: T" =>
       
         val bodyFun = mkFun(body)
         //val bodyFun = (x: IR[xt.Typ,C]) => body subs 'x -> x
@@ -48,10 +49,10 @@ object NeatClosure {
         //}}(x)"
         //ir"val x = Var($init); ${(x:Code[Var[xt.Typ]]) =>
         //ir"val x = Var[$xt](uncheckedNullValue); ${(x:Code[Var[xt.Typ]]) =>
-        ir"val env = Var(uncheckedNullValue[$xt]); ${ (x:Code[Var[xt.Typ]]) =>
+        code"val env = Var(uncheckedNullValue[$xt]); ${ (x:Code[Var[xt.Typ]]) =>
           ///*
-          val b = bodyFun(ir"$x.!")  // UNSAFE: the var access is let-bound, and rec ends up in an infinite loop!
-          rec(b, ir"() => { $reset(); $x := $init }", term_reset)
+          val b = bodyFun(code"$x.!")  // UNSAFE: the var access is let-bound, and rec ends up in an infinite loop!
+          rec(b, code"() => { $reset(); $x := $init }", term_reset)
           //*/
           /*
           // Does not work: `acc` ends up being bound in the context, and is thus not up to date
@@ -82,15 +83,15 @@ object NeatClosure {
       //})
     }
   }
-  def unapply[T:IRType,C](x: IR[T,C]): Some[NeatClosure[T,C]] = {
+  def unapply[T:CodeType,C](x: IR[T,C]): Some[NeatClosure[T,C]] = {
     //Some(rec(x, ir"() => ()"))
     //???
     Some(new NeatClosure[T,C] {
-      //def make[R:IRType](term_reset: (Code[T], Code[() => Unit]) => Code[R]): Code[R] = rec(x, ir"() => ()", term_reset)
-      //def make[R:IRType,C](term_reset: (Code[T], Code[() => Unit]) => IR[R,C]): IR[R,C] = 
+      //def make[R:CodeType](term_reset: (Code[T], Code[() => Unit]) => Code[R]): Code[R] = rec(x, ir"() => ()", term_reset)
+      //def make[R:CodeType,C](term_reset: (Code[T], Code[() => Unit]) => IR[R,C]): IR[R,C] = 
       //  rec(x, ir"() => ()", term_reset.asInstanceOf[(Code[T], Code[() => Unit]) => Code[R]]).asInstanceOf[IR[R,C]]
-      def make[R:IRType,D](term_reset: (IR[T,C], IR[() => Unit,C]) => IR[R,D]): IR[R,D] = 
-        rec(x, ir"() => ()", term_reset.asInstanceOf[(Code[T], Code[() => Unit]) => Code[R]]).asInstanceOf[IR[R,D]]
+      def make[R:CodeType,D](term_reset: (IR[T,C], IR[() => Unit,C]) => IR[R,D]): IR[R,D] = 
+        rec(x, code"() => ()", term_reset.asInstanceOf[(Code[T], Code[() => Unit]) => Code[R]]).asInstanceOf[IR[R,D]]
     })
   }
 }
@@ -108,9 +109,9 @@ object NeatClosure {
 abstract class NeatClosure[T,C] {
   //def make[R](term: Code[T], reset: Code[() => Unit])
   //def make[R](term_reset: (Code[T], Code[() => Unit]) => R): R
-  //def make[R:IRType](term_reset: (Code[T], Code[() => Unit]) => Code[R]): Code[R]
-  //def make[R:IRType,C](term_reset: (Code[T], Code[() => Unit]) => IR[R,C]): IR[R,C]
-  def make[R:IRType,D](term_reset: (IR[T,C], IR[() => Unit,C]) => IR[R,D]): IR[R,D]
+  //def make[R:CodeType](term_reset: (Code[T], Code[() => Unit]) => Code[R]): Code[R]
+  //def make[R:CodeType,C](term_reset: (Code[T], Code[() => Unit]) => IR[R,C]): IR[R,C]
+  def make[R:CodeType,D](term_reset: (IR[T,C], IR[() => Unit,C]) => IR[R,D]): IR[R,D]
 }
 
 

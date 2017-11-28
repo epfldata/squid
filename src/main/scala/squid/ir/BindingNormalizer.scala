@@ -21,14 +21,14 @@ trait BindingNormalizer extends SimpleRuleBasedTransformer {
     // TODO separate these RW from the actual bond-norm (which ANF does not use -- it may even be harmful to it)
     // (cf: file CurryEncoding.ApplicationNormalizer.scala)
     /** Curries function applications, useful when inlining Scala methods with multiple parameters as lambdas. */
-    case ir"uncurried0($f: $t)()"                                                        => ir"$f"
-    case ir"uncurried2($f: ($ta => $tb => $t))($x, $y)"                                  => ir"$f($x)($y)"
-    case ir"uncurried3($f: ($ta => $tb => $tc => $t))($x, $y, $z)"                       => ir"$f($x)($y)($z)"
-    case ir"uncurried4($f: ($ta => $tb => $tc => $td => $t))($x, $y, $z, $u)"            => ir"$f($x)($y)($z)($u)"
-    case ir"uncurried5($f: ($ta => $tb => $tc => $td => $te => $t))($x, $y, $z, $u, $v)" => ir"$f($x)($y)($z)($u)($v)"
+    case code"uncurried0($f: $t)()"                                                        => code"$f"
+    case code"uncurried2($f: ($ta => $tb => $t))($x, $y)"                                  => code"$f($x)($y)"
+    case code"uncurried3($f: ($ta => $tb => $tc => $t))($x, $y, $z)"                       => code"$f($x)($y)($z)"
+    case code"uncurried4($f: ($ta => $tb => $tc => $td => $t))($x, $y, $z, $u)"            => code"$f($x)($y)($z)($u)"
+    case code"uncurried5($f: ($ta => $tb => $tc => $td => $te => $t))($x, $y, $z, $u, $v)" => code"$f($x)($y)($z)($u)($v)"
       
     /** Commutes bindings to make them normal. */
-    case ir"((a: $ta) => $f: $tb => $tc)($x)($y)" => ir"val a = $x; $f($y)"
+    case code"((a: $ta) => $f: $tb => $tc)($x)($y)" => code"val a = $x; $f($y)"
     
   }
   

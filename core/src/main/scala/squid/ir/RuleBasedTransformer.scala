@@ -30,8 +30,8 @@ case class RewriteAbort(msg: String = "") extends Exception
 trait RuleBasedTransformer extends Transformer {
   import base._
   
-  def rewrite(tr: IR[Any,UnknownContext] => IR[Any,_]): Unit = macro RuleBasedTransformerMacros.rewrite
-  @MacroSetting(debug = true) def dbg_rewrite(tr: IR[Any,UnknownContext] => IR[Any,_]): Unit = macro RuleBasedTransformerMacros.rewrite
+  def rewrite(tr: Code[Any,UnknownContext] => Code[Any,_]): Unit = macro RuleBasedTransformerMacros.rewrite
+  @MacroSetting(debug = true) def dbg_rewrite(tr: Code[Any,UnknownContext] => Code[Any,_]): Unit = macro RuleBasedTransformerMacros.rewrite
   
   /** Register a transformation where the pattern is enceded with an extractor ("xtor") Rep and an associated function
     * `code` that makes use of what is extracted. `code` may return None in case a condition for its application is not
@@ -52,9 +52,9 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
     import c.universe._
     
     val (baseTree,termTree,typ,ctx) = c.macroApplication match {
-      case q"$base.InspectableIROps[$t,$c]($term).$_($_)" =>
+      case q"$base.InspectableCodeOps[$t,$c]($term).$_($_)" =>
         (base, term, t.tpe, c.tpe)
-      case q"$base.InspectableCodeOps[$t]($term).$_($_)" =>
+      case q"$base.InspectableAnyCodeOps[$t]($term).$_($_)" =>
         (base, term, t.tpe, Any)
     }
     val base = baseTree
@@ -93,7 +93,7 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
       val base: ${base.tpe} = $base
     }
     ${rwTree}
-    $base.`internal IR`[$typ,$outputContext]($transName.optimizeRep($termTree.rep.asInstanceOf[$transName.base.Rep]).asInstanceOf[$base.Rep])
+    $base.`internal Code`[$typ,$outputContext]($transName.optimizeRep($termTree.rep.asInstanceOf[$transName.base.Rep]).asInstanceOf[$base.Rep])
     """
     
     debug("Generated: " + showCode(res))
@@ -181,7 +181,7 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
           case Block(_, r) => r.pos
           case _ => expr.pos
         }
-        var constructedCtx = expr.tpe.baseType(symbolOf[Base#IR[_, _]]) match {
+        var constructedCtx = expr.tpe.baseType(symbolOf[Base#Code[_, _]]) match {
           case tpe@TypeRef(tpbase, _, constructedType :: constructedCtx :: Nil) =>
             assert(tpbase =:= base.tpe, s"Base types `$tpbase` and `${base.tpe}` (type of ${showCode(base)}) are different.")
             
@@ -197,7 +197,7 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
             Any
             
           case NoType =>
-            c.abort(constructedPos, s"This rewriting does not produce a ${base.tpe}.IR[_,_] type as a return.")
+            c.abort(constructedPos, s"This rewriting does not produce a ${base.tpe}.Code[_,_] type as a return.")
             
         }
         
@@ -300,13 +300,13 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
         }
         
         val patAlias = alias match {
-          case Some(a) => q"""val ${a.toTermName} = __b__.`internal IR`[Any,_root_.squid.utils.UnknownContext](__extr__._1($SCRUTINEE_KEY))"""
+          case Some(a) => q"""val ${a.toTermName} = __b__.`internal Code`[Any,_root_.squid.utils.UnknownContext](__extr__._1($SCRUTINEE_KEY))"""
           case None => q""
         }
         
         debug(s"PATTERN ALIAS: ${showCode(patAlias)}")
         
-        val exprRep = q"($newExpr:__b__.IR[_,_]).rep"
+        val exprRep = q"($newExpr:__b__.Code[_,_]).rep"
         
         val r = q"$trans.registerRule($termTree.asInstanceOf[$trans.base.Rep], ((__extr__ : $base.Extract) => ${
         //val r = q"$baseBinding; $trans.registerRule($termTree.asInstanceOf[$trans.base.Rep], (__extr__ : $base.Extract) => ${
@@ -315,13 +315,13 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
               else q"..$patAlias; if ($cond) _root_.scala.Some($exprRep) else _root_.scala.None") ) {
             
             case ((pat, (mapName @ TermName("_1"), name)), acc) =>
-              patMat(q"__b__.`internal IR`(__extr__.$mapName($name))", pat, acc)
+              patMat(q"__b__.`internal Code`(__extr__.$mapName($name))", pat, acc)
               
             case ((pat, (mapName @ TermName("_2"), name)), acc) =>
-              patMat(q"__b__.`internal IRType`(__extr__.$mapName($name))", pat, acc)
+              patMat(q"__b__.`internal CodeType`(__extr__.$mapName($name))", pat, acc)
               
             case ((pat, (mapName @ TermName("_3"), name)), acc) =>
-              patMat(q"(__extr__.$mapName($name)) map ((__rep__ : __b__.Rep) => __b__.`internal IR`(__rep__))", pat, acc)
+              patMat(q"(__extr__.$mapName($name)) map ((__rep__ : __b__.Rep) => __b__.`internal Code`(__rep__))", pat, acc)
               
           }
         }).asInstanceOf[$trans.base.Extract => _root_.scala.Option[$trans.base.Rep]])"

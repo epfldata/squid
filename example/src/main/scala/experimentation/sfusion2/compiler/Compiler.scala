@@ -115,8 +115,8 @@ import Strm._
 import Embedding.Predef._
 
 object ConstantShape {
-  //def unapply[T:IRType,C](x: IR[Strm[Strm[T]],C]): Option[IR[Strm[T],C]] = x match {
-  def unapply[T:IRType,C](x: IR[Strm[T],C]): Option[IR[Strm[T],C]] = x match {
+  //def unapply[T:CodeType,C](x: IR[Strm[Strm[T]],C]): Option[IR[Strm[T],C]] = x match {
+  def unapply[T:CodeType,C](x: Code[Strm[T],C]): Option[Code[Strm[T],C]] = x match {
     //case GeneralClosure(clos) =>
     //  println(x)
     //  println(clos)
@@ -124,7 +124,7 @@ object ConstantShape {
     case AsBlock(bl) =>
       println(bl.res)
       bl.res match {
-        case ir"fromIndexed($fi)" => println("!! "+fi)
+        case code"fromIndexed($fi)" => println("!! "+fi)
         case _ => //return None
       }
       ???
@@ -133,12 +133,12 @@ object ConstantShape {
 //class ConstantShape[](val env: E)
 abstract class ConstantShape[A,-C] {
   type E
-  val env: IR[E,C]
-  val fun: IR[E => A,C]
-  implicit val typA: IRType[A]
-  implicit val typE: IRType[E]
+  val env: Code[E,C]
+  val fun: Code[E => A,C]
+  implicit val typA: CodeType[A]
+  implicit val typE: CodeType[E]
 }
-private case class ConstantShapeImpl[A,C,TE](env: IR[TE,C], fun: IR[TE => A,C])(implicit val typA: IRType[A], val typE: IRType[TE])
+private case class ConstantShapeImpl[A,C,TE](env: Code[TE,C], fun: Code[TE => A,C])(implicit val typA: CodeType[A], val typE: CodeType[TE])
   extends ConstantShape[A,C] { type E = TE }
 
 /*
@@ -182,26 +182,26 @@ case class IndexedProducer[+A,-C](xs: IR[IndexedSeq[A],C]) extends StagedProduce
 }
 */
 import squid.lib.Var
-abstract class StagedProducer[+A:IRType,C] { parent =>
+abstract class StagedProducer[+A:CodeType,C] { parent =>
   type Env[+R]
-  implicit def EnvType[R:IRType]: IRType[Env[R]]
-  def mapEnv[A:IRType,B:IRType](e: IR[Env[A],C], f: IR[A => B,C]): IR[Env[B],C] // TODO impl
-  //def mapEnv2[A:IRType,B:IRType](e: IR[Env[A],C])(f: IR[A => B,C]): IR[Env[B],C] = mapEnv(e,f) // TODO rm
-  def liftEnv[A](a: IR[A,C]): IR[Env[A],C]
+  implicit def EnvType[R:CodeType]: CodeType[Env[R]]
+  def mapEnv[A:CodeType,B:CodeType](e: Code[Env[A],C], f: Code[A => B,C]): Code[Env[B],C] // TODO impl
+  //def mapEnv2[A:CodeType,B:CodeType](e: IR[Env[A],C])(f: IR[A => B,C]): IR[Env[B],C] = mapEnv(e,f) // TODO rm
+  def liftEnv[A](a: Code[A,C]): Code[Env[A],C]
   //def flatMapEnv
-  //def flatMapEnv[A:IRType,B:IRType,R:IRType](lhs: IR[Env[A],C], rhs: IR[Env[B],C])(combine: IR[(A,B)=>R,C]): IR[Env[R],C]
-  def flatMapEnv[A:IRType,B:IRType,R:IRType](combine: IR[(A,B)=>R,C]): IR[(Env[A],Env[B])=>Env[R],C]
-  //def flatMapEnv[A:IRType,B:IRType](lhs: IR[Env[A],C], rhs: IR[Env[B],C]): IR[Env[A -> B],C]
+  //def flatMapEnv[A:CodeType,B:CodeType,R:CodeType](lhs: IR[Env[A],C], rhs: IR[Env[B],C])(combine: IR[(A,B)=>R,C]): IR[Env[R],C]
+  def flatMapEnv[A:CodeType,B:CodeType,R:CodeType](combine: Code[(A,B)=>R,C]): Code[(Env[A],Env[B])=>Env[R],C]
+  //def flatMapEnv[A:CodeType,B:CodeType](lhs: IR[Env[A],C], rhs: IR[Env[B],C]): IR[Env[A -> B],C]
   
   //val init: IR[Env => Unit,C]
   //val step: IR[Env => Option[A],C]
-  val init: IR[Env[Unit],C]
-  val step: IR[Env[Option[A]],C]
+  val init: Code[Env[Unit],C]
+  val step: Code[Env[Option[A]],C]
   //val init_step: IR[Env[Unit -> Option[A]],C]
   //val fail: IR[Env[None.type],C]
-  def make[R:IRType](code: IR[Env[R],C]): IR[R,C]
-  //def make2[R:IRType](code: IR[(() => Unit, () => Option[A]) => R,C]): IR[R,C] = ir{ val ab = $(flatMapEnv(init,step)); $(code)(ab._1,ab._2) }
-  def make2[R:IRType](code: IR[(() => Unit, () => Option[A]) => R,C]): IR[R,C] = 
+  def make[R:CodeType](code: Code[Env[R],C]): Code[R,C]
+  //def make2[R:CodeType](code: IR[(() => Unit, () => Option[A]) => R,C]): IR[R,C] = ir{ val ab = $(flatMapEnv(init,step)); $(code)(ab._1,ab._2) }
+  def make2[R:CodeType](code: Code[(() => Unit, () => Option[A]) => R,C]): Code[R,C] = 
     //flatMapEnv(init,step)(code)
     //flatMapEnv(mapEnv2(init)(ir{x => () => x}),???)(code)
     //make(flatMapEnv(mapEnv(init,ir{(x:Unit) => () => x}),mapEnv(step,ir{(x:Option[A]) => () => x}))(code))
@@ -212,19 +212,19 @@ abstract class StagedProducer[+A:IRType,C] { parent =>
     make(ir{$(flatMapEnv(code))($(in),$(st))})
   }
   
-  def take(n: IR[Int,C]): StagedProducer[A,C] = new StagedProducer[A,C] {
+  def take(n: Code[Int,C]): StagedProducer[A,C] = new StagedProducer[A,C] {
     import parent.{EnvType => parentEnvType}
-    //implicit def parentEnvType[R:IRType]: IRType[parent.Env[R]] = ??? // FIXME
+    //implicit def parentEnvType[R:CodeType]: CodeType[parent.Env[R]] = ??? // FIXME
     
     type Env[+R] = Var[Int] => parent.Env[R] // Q: what about parent.Env[Var[Int] => R] ?
-    //implicit def EnvType[R]: IRType[Env[R]] = ??? // FIXME
-    implicit def EnvType[R:IRType]: IRType[Env[R]] = ??? // FIXME
-    //def EnvType[R:IRType]: IRType[Env[R]] = ??? // FIXME
-    def mapEnv[A:IRType,B:IRType](e: IR[Env[A],C], f: IR[A => B,C]): IR[Env[B],C] = ???
-    def liftEnv[A](a: IR[A,C]): IR[Env[A],C] = ir[Env[A]]{ _ => $(parent.liftEnv(a)) }
-    //def flatMapEnv[A:IRType,B:IRType,R:IRType](lhs: IR[Env[A],C], rhs: IR[Env[B],C])(combine: IR[(A,B)=>R,C]): IR[Env[R],C] = 
+    //implicit def EnvType[R]: CodeType[Env[R]] = ??? // FIXME
+    implicit def EnvType[R:CodeType]: CodeType[Env[R]] = ??? // FIXME
+    //def EnvType[R:CodeType]: CodeType[Env[R]] = ??? // FIXME
+    def mapEnv[A:CodeType,B:CodeType](e: Code[Env[A],C], f: Code[A => B,C]): Code[Env[B],C] = ???
+    def liftEnv[A](a: Code[A,C]): Code[Env[A],C] = ir[Env[A]]{ _ => $(parent.liftEnv(a)) }
+    //def flatMapEnv[A:CodeType,B:CodeType,R:CodeType](lhs: IR[Env[A],C], rhs: IR[Env[B],C])(combine: IR[(A,B)=>R,C]): IR[Env[R],C] = 
     //  ir{(v:Var[Int]) => $(parent.flatMapEnv(lhs,rhs)())} ...
-    def flatMapEnv[A:IRType,B:IRType,R:IRType](combine: IR[(A,B)=>R,C]): IR[(Env[A],Env[B])=>Env[R],C] =
+    def flatMapEnv[A:CodeType,B:CodeType,R:CodeType](combine: Code[(A,B)=>R,C]): Code[(Env[A],Env[B])=>Env[R],C] =
       ir{(ea:Env[A],eb:Env[B]) => (v:Var[Int]) => $(parent.flatMapEnv(combine))(ea(v),eb(v))}
     
     implicit val WAT = parentEnvType[Unit]
@@ -234,54 +234,54 @@ abstract class StagedProducer[+A:IRType,C] { parent =>
     val init = ir[Env[Unit]]{ e => e := 0; $(parent.init) }
     //val step = ir"e => { val i = e.!; if (i < $xs.length) { val r = $xs(i); e := i+1; r } else None }"
     //val step = ir[Env[Option[A]]]{ e => val taken = e.!; if (taken < $(n)) { e := taken + 1; $(parent.step) } else $(parent.fail) }
-    val step = ir[Env[Option[A]]]{ e => val taken = e.!; if (taken < $(n)) { e := taken + 1; $(parent.step) } else $(parent.liftEnv(ir"None")) }
+    val step = ir[Env[Option[A]]]{ e => val taken = e.!; if (taken < $(n)) { e := taken + 1; $(parent.step) } else $(parent.liftEnv(code"None")) }
     //val init_step = ir[Env[Unit -> Option[A]]]{ e =>  }
     //val fail = ir[Env[None.type]]{ _ => $(parent.fail) }
     //def make[R](code: IR[Env[R],C]): IR[R,C] = parent.make(ir"$code(Var(0))")
-    def make[R:IRType](code: IR[Env[R],C]): IR[R,C] = parent.make(ir"val vtaken = Var(0); $code(vtaken)")
+    def make[R:CodeType](code: Code[Env[R],C]): Code[R,C] = parent.make(code"val vtaken = Var(0); $code(vtaken)")
   }
   
-  def map[B:IRType](f: IR[A => B,C]): StagedProducer[B,C] = new StagedProducer[B,C] {
+  def map[B:CodeType](f: Code[A => B,C]): StagedProducer[B,C] = new StagedProducer[B,C] {
     type Env[+R] = parent.Env[R]
-    implicit def EnvType[R:IRType]: IRType[Env[R]] = parent.EnvType[R]
-    def mapEnv[A:IRType,B:IRType](e: IR[Env[A],C], f: IR[A => B,C]): IR[Env[B],C] = parent.mapEnv(e,f)
-    def liftEnv[A](a: IR[A,C]): IR[Env[A],C] = parent.liftEnv(a)
-    def flatMapEnv[A:IRType,B:IRType,R:IRType](combine: IR[(A,B)=>R,C]): IR[(Env[A],Env[B])=>Env[R],C] = parent.flatMapEnv(combine)
+    implicit def EnvType[R:CodeType]: CodeType[Env[R]] = parent.EnvType[R]
+    def mapEnv[A:CodeType,B:CodeType](e: Code[Env[A],C], f: Code[A => B,C]): Code[Env[B],C] = parent.mapEnv(e,f)
+    def liftEnv[A](a: Code[A,C]): Code[Env[A],C] = parent.liftEnv(a)
+    def flatMapEnv[A:CodeType,B:CodeType,R:CodeType](combine: Code[(A,B)=>R,C]): Code[(Env[A],Env[B])=>Env[R],C] = parent.flatMapEnv(combine)
     
     val init = parent.init
     //val step = ir{ $(parent.step) map $f }
     //val step = mapEnv[Option[A],Option[B]](parent.step, ir{ _ map f })
     val step = mapEnv(parent.step, ir{ (_:Option[A]) map $(f) })
     //val fail = parent.fail
-    def make[R:IRType](code: IR[Env[R],C]): IR[R,C] = parent.make(code)
+    def make[R:CodeType](code: Code[Env[R],C]): Code[R,C] = parent.make(code)
   }
 }
-case class IndexedProducer[+A:IRType,C](xs: IR[IndexedSeq[A],C]) extends StagedProducer[A,C] {
+case class IndexedProducer[+A:CodeType,C](xs: Code[IndexedSeq[A],C]) extends StagedProducer[A,C] {
   type Env[+R] = Var[Int] => R
   //implicit def EnvType[R]: IRType[Env[R]] = { val EnvType = 0; implicitly }
   //implicit def EnvType[R]: IRType[Env[R]] = { import IndexedProducer.this.{EnvType => _}; implicitly }
   //def EnvType[R]: IRType[Env[R]] = ??? //implicitly // FIXME
-  def EnvType[R:IRType]: IRType[Env[R]] = implicitType[Env[R]]
-  def mapEnv[A:IRType,B:IRType](e: IR[Env[A],C], f: IR[A => B,C]): IR[Env[B],C] = ir[Env[B]]{ v => $(f)($(e)(v)) }
-  def liftEnv[A](a: IR[A,C]): IR[Env[A],C] = ir[Env[A]]{ _ => $(a) }
-  def flatMapEnv[A:IRType,B:IRType,R:IRType](combine: IR[(A,B)=>R,C]): IR[(Env[A],Env[B])=>Env[R],C] =
+  def EnvType[R:CodeType]: CodeType[Env[R]] = implicitType[Env[R]]
+  def mapEnv[A:CodeType,B:CodeType](e: Code[Env[A],C], f: Code[A => B,C]): Code[Env[B],C] = ir[Env[B]]{ v => $(f)($(e)(v)) }
+  def liftEnv[A](a: Code[A,C]): Code[Env[A],C] = ir[Env[A]]{ _ => $(a) }
+  def flatMapEnv[A:CodeType,B:CodeType,R:CodeType](combine: Code[(A,B)=>R,C]): Code[(Env[A],Env[B])=>Env[R],C] =
     ir{(ea:Env[A],eb:Env[B]) => (v:Var[Int]) => $(combine)(ea(v),eb(v))}
   
   val init = ir[Env[Unit]]{ e => e := 0 }
   val step = ir[Env[Option[A]]]{ e => { val i = e.!; if (i < $(xs).length) { val r = $(xs)(i); e := i+1; Some(r) } else None } }
   //val fail = ir[Env[None.type]]{ _ => None }
-  def make[R:IRType](code: IR[Env[R],C]): IR[R,C] = ir"val vi = Var(0); $code(vi)"
+  def make[R:CodeType](code: Code[Env[R],C]): Code[R,C] = code"val vi = Var(0); $code(vi)"
   
   //def map[B](f: IR[A => B,C]): IndexedProducer[B,C]
 }
 object StagedProducer {
-  def unapply[T:IRType,C](x: IR[Strm[T],C]): Option[StagedProducer[T,C]] = x match {
+  def unapply[T:CodeType,C](x: Code[Strm[T],C]): Option[StagedProducer[T,C]] = x match {
     //case AsBlock(bl) => // TODO use, need to aggregate local environment...
-    case ir"fromIndexed[T]($xs)" =>
+    case code"fromIndexed[T]($xs)" =>
       //println("!! "+fi)
       //???
       Some(IndexedProducer(xs))
-    case ir"($as:Strm[$ta]).map[T]($f)" =>
+    case code"($as:Strm[$ta]).map[T]($f)" =>
       unapply(as) map (_ map f)
     case _ => None
   }
@@ -324,13 +324,13 @@ object ImplFlowOptimizer extends Embedding.SelfTransformer with FixPointRuleBase
   object NotFlattened {
     //def unapply[T,C](x: Code[T,C]): Option[Code[T,C]] = x match {
     //def unapply[T,C](x: IR[Strm[T],C]): Option[IR[T,C]] = x match {
-    def unapply[T,C](x: IR[Strm[T],C]): Option[IR[Strm[T],C]] = x match {
-      case ir"flatten[$t]($strm)" => None
+    def unapply[T,C](x: Code[Strm[T],C]): Option[Code[Strm[T],C]] = x match {
+      case code"flatten[$t]($strm)" => None
       case _ => Some(x)
     }
   }
   object Resumable {
-    def unapply[T,C](x: IR[Strm[T],C]): Option[IR[Strm[T],C]] = x match {
+    def unapply[T,C](x: Code[Strm[T],C]): Option[Code[Strm[T],C]] = x match {
       case _ => ???
     }
   }
@@ -345,31 +345,31 @@ object ImplFlowOptimizer extends Embedding.SelfTransformer with FixPointRuleBase
   
   rewrite {
       
-    case ir"($as: Strm[$ta]).map[$tb]($f).take($n)" =>
-      ir"$as.take($n).map[$tb]($f)"
+    case code"($as: Strm[$ta]).map[$tb]($f).take($n)" =>
+      code"$as.take($n).map[$tb]($f)"
       
-    case ir"($as: Strm[$ta]).map[$tb]($f).drop($n)" =>
-      ir"$as.drop($n).map[$tb]($f)"
+    case code"($as: Strm[$ta]).map[$tb]($f).drop($n)" =>
+      code"$as.drop($n).map[$tb]($f)"
       
-    case ir"($as: Strm[$ta]).take($n).take($m)" =>
-      ir"$as.take($n max $m)"
+    case code"($as: Strm[$ta]).take($n).take($m)" =>
+      code"$as.take($n max $m)"
       
-    case ir"($as: Strm[$ta]).take($n).drop($m)" =>
-      ir"$as.drop($m).take($n - $m)" // FIXME careful with drop(-n) ... normally valid
+    case code"($as: Strm[$ta]).take($n).drop($m)" =>
+      code"$as.drop($m).take($n - $m)" // FIXME careful with drop(-n) ... normally valid
       
-    case ir"($as: Strm[$ta]).drop($n).drop($m)" =>
-      ir"$as.drop($n + $m)"
+    case code"($as: Strm[$ta]).drop($n).drop($m)" =>
+      code"$as.drop($n + $m)"
       
     // THIS should be on:
-    case ir"flatten(($as: Strm[Strm[$ta]])).map[$tb]($f)" =>
+    case code"flatten(($as: Strm[Strm[$ta]])).map[$tb]($f)" =>
       //ir"$as.map(_.map($f)).flatten"
-      ir"flatten($as.map(_.map($f)))"
+      code"flatten($as.map(_.map($f)))"
     //case ir"flatten(($as: Strm[Strm[$ta]]).map[Strm[$tb]](nope => nope.map[tb]($f)))" => // probably not a good idea
     //  ???
     //  ir"flatten($as).map[$tb](${f subs 'nope -> Abort()})"
       
-    case ir"($as: Strm[$ta]).map[$tb]($fb).map[$tc]($fc)" =>
-      ir"$as.map($fb andThen $fc)"
+    case code"($as: Strm[$ta]).map[$tb]($fb).map[$tc]($fc)" =>
+      code"$as.map($fb andThen $fc)"
       
       
       
@@ -384,26 +384,26 @@ object ImplFlowOptimizer extends Embedding.SelfTransformer with FixPointRuleBase
     //case ir"($as: Strm[$ta0]).map[$ta1]($fa).zipWith(($bs: Strm[$tb0]).map[$tb1]($fb))($f)" =>
     //  ir"$as.zipWith($bs)((a,b) => $f($fa(a),$fb(b)))"
     //case ir"($as: Strm[$ta0]).map[$ta1]($fa).zipWith($bs: Strm[$tb0])($f)" =>
-    case ir"($as: Strm[$ta0]).map[$ta1]($fa).zipWith[$tb0,$tc]($bs)($f)" =>
-      ir"$as.zipWith($bs)((a,b) => $f($fa(a),b))"
+    case code"($as: Strm[$ta0]).map[$ta1]($fa).zipWith[$tb0,$tc]($bs)($f)" =>
+      code"$as.zipWith($bs)((a,b) => $f($fa(a),b))"
     //case ir"($as: Strm[$ta0]).zipWith(($bs: Strm[$tb0]).map[$tb1]($fb))($f)" =>
     //case ir"($as: Strm[$ta0]).zipWith[$tb1,$tc](($bs: Strm[$tb0]).map[tb1]($fb))($f)" =>
-    case ir"($as: Strm[$ta0]).zipWith[$tb1,$tc](($bs: Strm[$tb0]).map[tb1]($fb))($f)" => // TODO warn that without `tb1` we infer Nothing...
+    case code"($as: Strm[$ta0]).zipWith[$tb1,$tc](($bs: Strm[$tb0]).map[tb1]($fb))($f)" => // TODO warn that without `tb1` we infer Nothing...
       //???
-      ir"$as.zipWith($bs)((a,b) => $f(a,$fb(b)))"
+      code"$as.zipWith($bs)((a,b) => $f(a,$fb(b)))"
       
     // ^ seems to make no difference with end code for simple pipeline, but at least should lessen the work of the normalizer
       
-    case ir"($as: Strm[$ta]).take($n).zipWith[$tb,$tc]($bs)($f)" =>
-      ir"($as: Strm[$ta]).zipWith[$tb,$tc]($bs)($f).take($n)"
+    case code"($as: Strm[$ta]).take($n).zipWith[$tb,$tc]($bs)($f)" =>
+      code"($as: Strm[$ta]).zipWith[$tb,$tc]($bs)($f).take($n)"
     // TODO do something for drop? also for bs
       
     
     
       
     //case ir"flatten($as: Strm[$ta]).zipWith[$tb,$tr]($bs)($f)" =>
-    case ir"flatten($as: Strm[Strm[$ta]]).zipWith[$tb,$tr](${NotFlattened(bs)})($f)" => // putting nested streams on the right
-      ir"$bs.zipWith(flatten($as))((b,a) => $f(a,b))"
+    case code"flatten($as: Strm[Strm[$ta]]).zipWith[$tb,$tr](${NotFlattened(bs)})($f)" => // putting nested streams on the right
+      code"$bs.zipWith(flatten($as))((b,a) => $f(a,b))"
     
       
     // wrong:
@@ -427,7 +427,7 @@ object ImplFold extends Embedding.SelfTransformer with FixPointRuleBasedTransfor
     //  body rewrite { case ir"$$st.producer" => pf } subs 'st -> {System.err.println("huh s");Abort()}
       
     //case ir"flatten(($ass: Strm[Strm[$ta]]).map[$tb]($fb)).doWhile($fw)" =>
-    case ir"flatten(($as: Strm[$ta]).map[Strm[$tb]]($fb)).doWhile($fw)" =>
+    case code"flatten(($as: Strm[$ta]).map[Strm[$tb]]($fb)).doWhile($fw)" =>
       //ir"""
       //  val p = producer()
       //  Strm.loopWhile {
@@ -442,31 +442,31 @@ object ImplFold extends Embedding.SelfTransformer with FixPointRuleBasedTransfor
       //    $fb(as) doWhile $fw
       //  }
       //"""
-      ir"""
+      code"""
         $as.doWhile { a =>
           $fb(a) doWhile $fw
         }
       """
       
-    case ir"($as: Strm[$ta]).map[$tb]($fb).doWhile($fw)" =>
-      ir"$as.doWhile($fb andThen $fw)"
+    case code"($as: Strm[$ta]).map[$tb]($fb).doWhile($fw)" =>
+      code"$as.doWhile($fb andThen $fw)"
       
-    case ir"($as: Strm[$ta]).take($n).doWhile($fw)" =>
-      ir"var taken = 0; $as.doWhile { x => taken += 1; taken <= $n && $fw(x) }; true"
+    case code"($as: Strm[$ta]).take($n).doWhile($fw)" =>
+      code"var taken = 0; $as.doWhile { x => taken += 1; taken <= $n && $fw(x) }; true"
       
-    case ir"($as: Strm[$ta]).drop($n).doWhile($fw)" =>
+    case code"($as: Strm[$ta]).drop($n).doWhile($fw)" =>
       //ir"val dropped = 0; $as.doWhile { x => if (dropped >= $n) $fw(x) else dropped += 1 }"
-      ir"var dropped = 0; $as.doWhile { x => if (dropped < $n) { dropped += 1; true } else $fw(x) }; true"
+      code"var dropped = 0; $as.doWhile { x => if (dropped < $n) { dropped += 1; true } else $fw(x) }; true"
       
-    case ir"fromIndexed($xs: IndexedSeq[$ta]).doWhile($fw)" =>
+    case code"fromIndexed($xs: IndexedSeq[$ta]).doWhile($fw)" =>
       //ir"val len = $xs.length; var i = 0; loopWhile { val inbound = i < len; i +=  && $fw() }"
       
       // pretty much similar, but the former puts more stuff in the if block:
-      ir"val len = $xs.length; var i = 0; loopWhile { i < len && { val x = $xs(i); i += 1; $fw(x) } }; true"
+      code"val len = $xs.length; var i = 0; loopWhile { i < len && { val x = $xs(i); i += 1; $fw(x) } }; true"
       //ir"val len = $xs.length; var i = -1; loopWhile { i += 1; i < len && $fw($xs(i)) }; true"
       
-    case ir"fromIterable($xs: Iterable[$ta]).doWhile($fw)" =>
-      ir"val it = $xs.iterator; loopWhile { it.hasNext && $fw(it.next) }; true"
+    case code"fromIterable($xs: Iterable[$ta]).doWhile($fw)" =>
+      code"val it = $xs.iterator; loopWhile { it.hasNext && $fw(it.next) }; true"
       
     // FIXME returning true in the above correct?!
     
@@ -485,9 +485,9 @@ object ImplFold extends Embedding.SelfTransformer with FixPointRuleBasedTransfor
     */
       
       
-    case ir"($as: Strm[$ta]).zipWith[$tb,$tc]($bs)($f).doWhile($fw)" =>
+    case code"($as: Strm[$ta]).zipWith[$tb,$tc]($bs)($f).doWhile($fw)" =>
       //ir"val p = $bs.producer(); $as.doWhile(a => p().fold(false){ b => $fw($f(a,b)) })"
-      ir"val p = $as.producer(); $bs.doWhile(b => p().fold(false){ a => $fw($f(a,b)) })"
+      code"val p = $as.producer(); $bs.doWhile(b => p().fold(false){ a => $fw($f(a,b)) })"
       
       
       
@@ -503,7 +503,7 @@ object ImplFold extends Embedding.SelfTransformer with FixPointRuleBasedTransfor
     
     
     //case ir"flatten[tb](($as: Strm[$ta]).map[Strm[$tb]]((a:ta) => ${ConstantShape(cs)} : Strm[tb]))" =>
-    case ir"flatten[tb](($as: Strm[$ta]).map[Strm[$tb]]((a:ta) => ${StagedProducer(cs)} : Strm[tb]))" =>
+    case code"flatten[tb](($as: Strm[$ta]).map[Strm[$tb]]((a:ta) => ${StagedProducer(cs)} : Strm[tb]))" =>
       import cs._
       
       //ir"flatConst[$ta,E,$tb]($as, a => $env, (a,e) => $fun(e))"
@@ -515,7 +515,7 @@ object ImplFold extends Embedding.SelfTransformer with FixPointRuleBasedTransfor
       //println(cs.make(cs.mapEnv2(cs.step)(ir{step => Left(step)})))
       //println(cs.make(cs.mapEnv2(cs.step)(ir"(step:Option[$tb]) => Left(step)")))
       
-      println(cs.make2(ir"{(init:()=>Unit,step:()=>Option[$tb]) => if (readInt>0) init(); step()}")) // FIXME
+      println(cs.make2(code"{(init:()=>Unit,step:()=>Option[$tb]) => if (readInt>0) init(); step()}")) // FIXME
       
       //??? // TODO
       
@@ -527,7 +527,7 @@ object ImplFold extends Embedding.SelfTransformer with FixPointRuleBasedTransfor
       //}""")
           //while(0.toDouble<0){init()}; step()
         //var a: Option[$ta] = None
-      cs.make2(ir"""{ (init: ()=>Unit, step: ()=>Option[$tb]) =>
+      cs.make2(code"""{ (init: ()=>Unit, step: ()=>Option[$tb]) =>
         val p = $as.producer()
         var curA: Option[$ta] = None
         () => {
@@ -550,7 +550,7 @@ object ImplFold extends Embedding.SelfTransformer with FixPointRuleBasedTransfor
         }
       }""")
       
-      val r = ir"Strm[$tb](() => $prod)"
+      val r = code"Strm[$tb](() => $prod)"
         
       println(r)
       
@@ -571,13 +571,13 @@ object FoldInlining extends Embedding.Lowering('Fold) with TopDownTransformer //
 
 //object ImplLowering extends Embedding.Lowering('Impl) with TopDownTransformer
 object ImplInlining extends Embedding.Lowering('Impl)
-object ImplCtorInline extends Embedding.SelfIRTransformer with IRTransformer with FixPointTransformer {
-  def transform[T,C](code: IR[T,C]): IR[T,C] = (code match {
-    case ir"Strm($pf).producer" => pf
-    case ir"val $st = Strm[$t]($pf); $body: $bt" =>
-      body rewrite { case ir"$$st.producer" => pf } subs 'st -> {System.err.println("huh s");return code}
+object ImplCtorInline extends Embedding.SelfCodeTransformer with CodeTransformer with FixPointTransformer {
+  def transform[T,C](code: Code[T,C]): Code[T,C] = (code match {
+    case code"Strm($pf).producer" => pf
+    case code"val $st = Strm[$t]($pf); $body: $bt" =>
+      body rewrite { case code"$$st.producer" => pf } subs 'st -> {System.err.println("huh s");return code}
     case _ => code
-  }).asInstanceOf[IR[T,C]]
+  }).asInstanceOf[Code[T,C]]
 }
 object ImplLowering extends Embedding.TransformerWrapper(ImplInlining, ImplCtorInline) with TopDownTransformer with FixPointTransformer
 //object ImplLowering extends Embedding.TransformerWrapper(ImplInlining, ImplCtorInline) with BottomUpTransformer with FixPointTransformer

@@ -13,14 +13,14 @@ import utils.Debug.show
   */
 trait DeadCodeElimination extends FixPointRuleBasedTransformer with BottomUpTransformer { self =>
   import base.Predef._
-  import self.base.InspectableIROps
-  import self.base.IntermediateIROps
+  import self.base.InspectableCodeOps
+  import self.base.IntermediateCodeOps
   
   def referentiallyTransparent(r: base.Rep): Bool = true // !!!
   
   rewrite {
     
-    case ir"val x: $xt = $init; $body: $bt" if referentiallyTransparent(init.rep) =>
+    case code"val x: $xt = $init; $body: $bt" if referentiallyTransparent(init.rep) =>
       body subs 'x -> Abort()
       
   }

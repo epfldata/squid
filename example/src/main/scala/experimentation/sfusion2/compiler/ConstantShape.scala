@@ -21,7 +21,7 @@
 //  */
 //
 //  object ConstantShape {
-//    def unapply[T:IRType,C](x: IR[Strm[Strm[T]],C]): Option[IR[Strm[T],C]] = x match {
+//    def unapply[T:CodeType,C](x: IR[Strm[Strm[T]],C]): Option[IR[Strm[T],C]] = x match {
 //      case GeneralClosure(clos) =>
 //        println(clos)
 //        ???

@@ -8,29 +8,29 @@ class OnlineTransfo extends MyFunSuite(OnlineTransfo.DSL) {
   
   test("Constructed Terms are Rewritten") {
     
-    eqt(ir"2 + (readInt+1) + 3",
-        ir"6 + readInt")
+    eqt(code"2 + (readInt+1) + 3",
+        code"6 + readInt")
     
-    eqt(ir"4 * ((readInt + 1) * 2 + 3)",
-        ir"20 + 8 * readInt")
+    eqt(code"4 * ((readInt + 1) * 2 + 3)",
+        code"20 + 8 * readInt")
     
-    eqt(ir"readInt * (readInt + 1)",
-        ir"readInt + readInt * readInt") // Note: that's why we need ANF
+    eqt(code"readInt * (readInt + 1)",
+        code"readInt + readInt * readInt") // Note: that's why we need ANF
     
   }
   
   test("Extractor Terms are Rewritten") {
     
-    ir"4" match {
-      case ir"2 + 2" =>
+    code"4" match {
+      case code"2 + 2" =>
     }
     
-    ir"1 + readInt" match {
-      case ir"readInt + 1" =>
+    code"1 + readInt" match {
+      case code"readInt + 1" =>
     }
     
-    ir"6 + readInt" match {
-      case ir"2 + (($n:Int)+1) + 3" => eqt(n, ir"readInt")
+    code"6 + readInt" match {
+      case code"2 + (($n:Int)+1) + 3" => eqt(n, code"readInt")
     }
     
   }
@@ -38,8 +38,8 @@ class OnlineTransfo extends MyFunSuite(OnlineTransfo.DSL) {
   test("Online Rewriting is Properly Recursive") {
     
     // Note: I verified that Scala does NOT P/E this, although it does things like '2+2'
-    eqt(ir"readInt + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1",
-        ir"10 + readInt")
+    eqt(code"readInt + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1",
+        code"10 + readInt")
     
   }
   
@@ -55,24 +55,24 @@ object OnlineTransfo {
       
       // Addition P/E
       
-      case ir"0 + ($x: Int)" => x
+      case code"0 + ($x: Int)" => x
         
-      case ir"(${Const(m)}: Int) + (${Const(n)}: Int)" => ir"${Const(n + m)}"
+      case code"(${Const(m)}: Int) + (${Const(n)}: Int)" => code"${Const(n + m)}"
         
-      case ir"($x: Int) + (${Const(n)}: Int)"             => ir"${Const(n)} + $x"
-      case ir"($x: Int) + (($y: Int) + ($z: Int))"           => ir"($x + $y) + $z"
+      case code"($x: Int) + (${Const(n)}: Int)"             => code"${Const(n)} + $x"
+      case code"($x: Int) + (($y: Int) + ($z: Int))"           => code"($x + $y) + $z"
         
         
       // Multiplication P/E
         
-      case ir"0 * ($x: Int)" => ir"0"
-      case ir"1 * ($x: Int)" => x
+      case code"0 * ($x: Int)" => code"0"
+      case code"1 * ($x: Int)" => x
         
-      case ir"(${Const(m)}: Int) * (${Const(n)}: Int)" => ir"${Const(n * m)}"
+      case code"(${Const(m)}: Int) * (${Const(n)}: Int)" => code"${Const(n * m)}"
         
-      case ir"($x: Int) * (${Const(n)}: Int)"             => ir"${Const(n)} * $x"
-      case ir"($x: Int) * (($y: Int) * ($z: Int))"           => ir"($x * $y) * $z"
-      case ir"($x: Int) * (($y: Int) + ($z: Int))"           => ir"$x * $y + $x * $z" // Note: duplication of 'x'
+      case code"($x: Int) * (${Const(n)}: Int)"             => code"${Const(n)} * $x"
+      case code"($x: Int) * (($y: Int) * ($z: Int))"           => code"($x * $y) * $z"
+      case code"($x: Int) * (($y: Int) + ($z: Int))"           => code"$x * $y + $x * $z" // Note: duplication of 'x'
       //case ir"($x: Int) * (($y: Int) + ($z: Int))"           => ir"val t = $x; t * $y + t * $z" // if not in ANF
       
     }

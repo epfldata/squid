@@ -6,10 +6,10 @@ class VirtualizedConstructs extends MyFunSuite {
   
   test("If-Then-Else") {
     
-    val ite = ir"if (1 > 2) 666 else 42"
+    val ite = code"if (1 > 2) 666 else 42"
     
     ite match {
-      case ir"if ($c) $t else $e" => // scrutinee type Int is propagated to the branch holes 
+      case code"if ($c) $t else $e" => // scrutinee type Int is propagated to the branch holes 
     }
     
     ite matches { // scrutinee type erased by `matches`
@@ -18,14 +18,14 @@ class VirtualizedConstructs extends MyFunSuite {
       //case ir"if ($c) $t: Nothing else $e: Nothing" => fail // still generates an annoying warning (because it's desugared to IfThenElse[Nothing](...)) ... so I commented
       
       //case ir"scp.lib.IfThenElse[Nothing]($c, $t, $e)" => fail // Warning:(14, 12) Type inferred for hole 't' was Nothing. Ascribe the hole explicitly to remove this warning.
-      case ir"squid.lib.IfThenElse[Nothing]($c, $t:Nothing, $e:Nothing)" => fail
+      case code"squid.lib.IfThenElse[Nothing]($c, $t:Nothing, $e:Nothing)" => fail
         
-      case ir"if ($c) $t else $e: Int" =>
-        c eqt ir"1 > 2"
-        t eqt ir"666"
-        e eqt ir"42"
+      case code"if ($c) $t else $e: Int" =>
+        c eqt code"1 > 2"
+        t eqt code"666"
+        e eqt code"42"
     } and {
-      case ir"if ($c) $t else $e: $tp" => eqt(tp.rep, typeRepOf[Int])
+      case code"if ($c) $t else $e: $tp" => eqt(tp.rep, typeRepOf[Int])
     }
     
     assert(ite.run == 42)
@@ -34,26 +34,26 @@ class VirtualizedConstructs extends MyFunSuite {
   
   test("While") {
     
-    ir"while (readInt > 0) println('ok)" match {
-      case ir"while ($cond) $loop" =>
-        cond eqt ir"readInt > 0"
-        loop eqt ir"println('ok)"
+    code"while (readInt > 0) println('ok)" match {
+      case code"while ($cond) $loop" =>
+        cond eqt code"readInt > 0"
+        loop eqt code"println('ok)"
     }
     
     import lib.While
-    eqt(ir"while(true) ()",
-        ir"While(true, ())")
-    eqt(ir"while(true) readInt",
-        ir"While(true, readInt)")
-    eqt(ir"(while(true) readInt): Unit",
-        ir"While(true,  readInt): Unit")
-    eqt(ir"(while(true) (readInt: Unit)): Unit",
-        ir"While(true,   readInt: Unit):  Unit")
+    eqt(code"while(true) ()",
+        code"While(true, ())")
+    eqt(code"while(true) readInt",
+        code"While(true, readInt)")
+    eqt(code"(while(true) readInt): Unit",
+        code"While(true,  readInt): Unit")
+    eqt(code"(while(true) (readInt: Unit)): Unit",
+        code"While(true,   readInt: Unit):  Unit")
     
-    ir"while (true) readInt" match {
-      case ir"while (true) $x" =>
-        x eqt ir"readInt; ()"
-        x eqt ir"readInt: Unit"
+    code"while (true) readInt" match {
+      case code"while (true) $x" =>
+        x eqt code"readInt; ()"
+        x eqt code"readInt: Unit"
     }
     
   }
@@ -63,48 +63,48 @@ class VirtualizedConstructs extends MyFunSuite {
     
     setEv(0)
     
-    val impure = ir"setEv(getEv+1); setEv(getEv+1); getEv"
+    val impure = code"setEv(getEv+1); setEv(getEv+1); getEv"
     
     impure match {
-      case ir"setEv(getEv+(${Const(n)}:Int)); setEv(getEv+1); getEv" => assert(n == 1)
+      case code"setEv(getEv+(${Const(n)}:Int)); setEv(getEv+1); getEv" => assert(n == 1)
     }
     impure matches {
     // Oddity: with 'matches', the 'ConstQ' extraction fails with: Error:(48, 31) No TypeTag available for A
     //case ir"setEv(getEv+(${ConstQ(n:Int)}:Int)); getEv" => assert(n == 1) // fixme ?!
-      case ir"setEv(getEv+1); setEv(getEv+1); getEv" =>
+      case code"setEv(getEv+1); setEv(getEv+1); getEv" =>
     } and {
-      case ir"lib.Imperative(setEv(getEv+1), setEv(getEv+1))(getEv)" =>
+      case code"lib.Imperative(setEv(getEv+1), setEv(getEv+1))(getEv)" =>
     }
     
     same(impure.run, 2)
     same(getEv, 2)
     
-    same(ir"ev = 0; ev".run, 0)
+    same(code"ev = 0; ev".run, 0)
     same(getEv, 0)
     
     
     // Support for translation done by Scala:  nonUnitValue ~> { nonUnitValue; () }
-    ir"getEv; getEv; getEv" matches {
-      case ir"lib.Imperative(getEv,getEv)(getEv)" =>
+    code"getEv; getEv; getEv" matches {
+      case code"lib.Imperative(getEv,getEv)(getEv)" =>
     }
     
     // Just checking virtualization also works here:
-    eqt( ir"val x = {println; 42}; x",  ir"val x = lib.Imperative(println)(42); x" )
+    eqt( code"val x = {println; 42}; x",  code"val x = lib.Imperative(println)(42); x" )
     
-    val q = ir"readInt; readInt"
-    q match { case ir"$eff; readInt" => eff eqt ir"readInt" }
+    val q = code"readInt; readInt"
+    q match { case code"$eff; readInt" => eff eqt code"readInt" }
     
-    ir"{ val x = 0; println }; 0" eqt ir"${ ir"val x = 0; println" }; 0"
+    code"{ val x = 0; println }; 0" eqt code"${ code"val x = 0; println" }; 0"
     
   }
   
   test("Variables") {
     
-    eqt( ir"var x = 0; x = 1; x",  ir"val x = lib.Var(0); x := 1; x!" )
+    eqt( code"var x = 0; x = 1; x",  code"val x = lib.Var(0); x := 1; x!" )
 
-    eqt( ir"var x = 0; x += 1",  ir"val x = lib.Var(0); x := x.! + 1" )
+    eqt( code"var x = 0; x += 1",  code"val x = lib.Var(0); x := x.! + 1" )
     
-    same(ir"val lol = 42; var v = lol-1; v += 1; v.toDouble".run, 42.0)
+    same(code"val lol = 42; var v = lol-1; v += 1; v.toDouble".run, 42.0)
     
   }
   

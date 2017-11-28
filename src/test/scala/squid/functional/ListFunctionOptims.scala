@@ -10,8 +10,8 @@ class ListFunctionOptims extends MyFunSuite(OptimTestDSL) {
   
   test ("Basics") {
     
-    eqt(ir"42".rep, base.const(42))
-    eqt(ir" 'unoptimized ", ir" 'optimized ")
+    eqt(code"42".rep, base.const(42))
+    eqt(code" 'unoptimized ", code" 'optimized ")
     
     // Note: the naive inliner in OptimTestDSL will mess up things like:
     //println(ir"var x = 0; x")
@@ -20,19 +20,19 @@ class ListFunctionOptims extends MyFunSuite(OptimTestDSL) {
   
   test ("Collapsing map & andThen chains") {
     
-    val ls = ir"$$ls: List[Int]"
-    val f = ir"$$f: (Int => Int)"
+    val ls = code"$$ls: List[Int]"
+    val f = code"$$f: (Int => Int)"
     
-    eqt( ir"$ls map $f map $f map (_ + 1)" , ir"$ls map { x => $f( $f( x ) ) +1    }" )
-    eqt( ir"$ls map $f map (_ + 1) map $f" , ir"$ls map { x => $f( $f( x )   +1 )  }" )
-    eqt( ir"$ls map (_ + 1) map $f map $f" , ir"$ls map { x => $f( $f( x     +1 ) )}" )
+    eqt( code"$ls map $f map $f map (_ + 1)" , code"$ls map { x => $f( $f( x ) ) +1    }" )
+    eqt( code"$ls map $f map (_ + 1) map $f" , code"$ls map { x => $f( $f( x )   +1 )  }" )
+    eqt( code"$ls map (_ + 1) map $f map $f" , code"$ls map { x => $f( $f( x     +1 ) )}" )
     
   }
   
   test ("Removing map & andThen chains") {
     
-    val one = ir"1"  // So Scala doesn't partially evaluate it in the second snippet
-    eqt( ir"List(1,2,3) map (_ + 1) map (_ toDouble)" , ir"List(1+$one toDouble, 2+$one toDouble, 3+$one toDouble)" )
+    val one = code"1"  // So Scala doesn't partially evaluate it in the second snippet
+    eqt( code"List(1,2,3) map (_ + 1) map (_ toDouble)" , code"List(1+$one toDouble, 2+$one toDouble, 3+$one toDouble)" )
     
   }
   

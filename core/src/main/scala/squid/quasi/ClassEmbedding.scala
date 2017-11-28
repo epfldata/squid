@@ -161,7 +161,7 @@ class ClassEmbedding(override val c: whitebox.Context) extends QuasiMacros(c) { 
     
     val allDefs = (objDef.impl.body map (false -> _)) ++ (clsDefOpt.toList flatMap (_.impl.body map (true -> _)))
     
-    def mkImplicits(tps: List[TypeDef], build: TypeName => Tree = tn => tq"__b__.IRType[$tn]") =
+    def mkImplicits(tps: List[TypeDef], build: TypeName => Tree = tn => tq"__b__.CodeType[$tn]") =
       tps map (tp => q"val ${tp.name.toTermName}: ${tp.name|>build}")
     
     def stripVariance(tp: TypeDef) = TypeDef(Modifiers(), tp.name, tp.tparams, tp.rhs) // TODO keep other flags
@@ -214,7 +214,7 @@ class ClassEmbedding(override val c: whitebox.Context) extends QuasiMacros(c) { 
         ) else { val implicits = mkImplicits(fullTparams); (
           inClass -> q"""def $mName[..$fullTparams](implicit ..$implicits) = $irBody""",
           inClass -> q"def $uniqueName[..$fullTparams](implicit ..$implicits) = $ref(..${implicits map (_.name)})",
-          Right(q"$symbol -> ((tps: Seq[__b__.TypeRep]) => $ref(..${fullTparams.indices map (i => q"__b__.`internal IRType`(tps($i))")}))")
+          Right(q"$symbol -> ((tps: Seq[__b__.TypeRep]) => $ref(..${fullTparams.indices map (i => q"__b__.`internal CodeType`(tps($i))")}))")
         )}
     } unzip3;
     
@@ -272,8 +272,8 @@ class ClassEmbedding(override val c: whitebox.Context) extends QuasiMacros(c) { 
         object __Defs__ {..$moduleDefs}
         object Defs { ..$moduleMirrorDefs }
       }
-      lazy val defs = $pred.Map[$sru.MethodSymbol, $squid.utils.Lazy[base.SomeIR]](..$defs)
-      lazy val parametrizedDefs = $pred.Map[$sru.MethodSymbol, $scal.Seq[__b__.TypeRep] => base.SomeIR](..$paramDefs)
+      lazy val defs = $pred.Map[$sru.MethodSymbol, $squid.utils.Lazy[base.SomeCode]](..$defs)
+      lazy val parametrizedDefs = $pred.Map[$sru.MethodSymbol, $scal.Seq[__b__.TypeRep] => base.SomeCode](..$paramDefs)
     }""" :: q"trait Lang extends $squid.lang.Base { $clsObjTree; $modObjTree }" :: Nil
     
     val newObjDef = ModuleDef(objDef.mods, objDef.name, Template(objDef.impl.parents :+ tq"squid.ir.EmbeddedableClass[$BaseType]", objDef.impl.self, objDef.impl.body ++ newModuleBody))

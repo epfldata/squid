@@ -15,11 +15,11 @@ class PardisIRTests extends PardisTestSuite {
   
   test("Folding of Simple Expressions") {
     
-    val a = ir"val x = 42; println(x); x"
+    val a = code"val x = 42; println(x); x"
     assert(stmts(a).size == 1)
     assert(ret(a) == base.const(42))
     
-    val b = ir"val x = 42; val y = x; val z = y; println(z); z"
+    val b = code"val x = 42; val y = x; val z = y; println(z); z"
     //println(b)
     assert(stmts(b) match {
       case s :: Nil =>
@@ -34,7 +34,7 @@ class PardisIRTests extends PardisTestSuite {
   
   test("Code Insertion") {
     
-    def f(a: IR[Int,{}], b: IR[Int,{}]) = ir{ $(a) + $(a) + $(b) }
+    def f(a: Code[Int,{}], b: Code[Int,{}]) = ir{ $(a) + $(a) + $(b) }
     
     val q = ir{ $( f(ir{1.5.toInt}, ir{666}) ) + 1 }
     //println(q)
@@ -49,31 +49,31 @@ class PardisIRTests extends PardisTestSuite {
     // construction of `outer` tree... so the statements will be directly generated and aggregated in the enclosing block,
     // unlike what happens if `inner` is built outside the quote (also tested here).
     
-    val a = ir"val x = 42; println(x); x"
+    val a = code"val x = 42; println(x); x"
     //println(a)  // ir"{ val x2 = println(42); 42 }"
     assert(stmts(a).size == 1)
     
-    val b0 = ir" ${ ir"val x = 42.toDouble; println(x); x" } + 1.0"
+    val b0 = code" ${ code"val x = 42.toDouble; println(x); x" } + 1.0"
     //println(b0)  // ir"{ val x1 = 42.toDouble; val x3 = println(x1); val x5 = x1.+(1.0); x5 }"
     assert(stmts(b0).size == 3)
     
-    val b1 = { val ins = ir"val x = 42.toDouble; println(x); x"; ir"$ins + 1.0" }
+    val b1 = { val ins = code"val x = 42.toDouble; println(x); x"; code"$ins + 1.0" }
     //println(b1)  // ir"{ val x1 = 42.toDouble; val x3 = println(x1); val x5 = x1.+(1.0); x5 }"
     assert(stmts(b1).size == 3)
     
-    val c0 = ir"println(0); ${ ir"println(1); println(2)" }; println(3); ()"
+    val c0 = code"println(0); ${ code"println(1); println(2)" }; println(3); ()"
     //println(c0)  // ir"{ val x6 = println(0); val x7 = println(1); val x8 = println(2); val x9 = println(3); () }"
     assert(stmts(c0).size == 4)
     
-    val c1 = { val ins = ir"println(1); println(2)"; ir"println(0); $ins; println(3); ()" }
+    val c1 = { val ins = code"println(1); println(2)"; code"println(0); $ins; println(3); ()" }
     //println(c1)  // ir"{ val x6 = println(0); val x7 = println(1); val x8 = println(2); val x9 = println(3); () }"
     assert(stmts(c1).size == 4)
     
-    val d0 = ir"println(0); ${ ir"println(1); println(2)" }"
+    val d0 = code"println(0); ${ code"println(1); println(2)" }"
     //println(d0)  // ir"{ val x12 = println(0); val x13 = println(1); val x14 = println(2); x14 }"
     assert(stmts(d0).size == 3)
     
-    val d1 = { val ins = ir"println(1); println(2)"; ir"println(0); $ins" }
+    val d1 = { val ins = code"println(1); println(2)"; code"println(0); $ins" }
     //println(d1)  // ir"{ val x12 = println(0); val x13 = println(1); val x14 = println(2); x14 }"
     assert(stmts(d1).size == 3)
     
@@ -114,14 +114,14 @@ class PardisIRTests extends PardisTestSuite {
   
   test("By-Name Parameters") {
     
-    val t0 = ir"Option(42) getOrElse {println(0); 666}"
+    val t0 = code"Option(42) getOrElse {println(0); 666}"
     assert(stmts(t0).size == 2)
     assert(stmts(t0)(1).rhs.funArgs(1).asInstanceOf[pardis.ir.PardisBlock[_]].stmts.size == 1)
     
-    val t1 = ir"Option(()) getOrElse {val r = println(0); r}"
+    val t1 = code"Option(()) getOrElse {val r = println(0); r}"
     assert(stmts(t1).size == 2)
     
-    val t2 = ir""" Option[String](null) getOrElse "42" """
+    val t2 = code""" Option[String](null) getOrElse "42" """
     assert(stmts(t2).size == 2)
     
     //println(ir"None") // There is no auto-binding for this (in fact, not even a mirror defined for it in SC's ScalaCore)
@@ -147,28 +147,28 @@ class PardisIRTests extends PardisTestSuite {
   
   test("Manual Inlining") {
     
-    val f = ir"(x: Int) => x+1"
-    val p = ir"$f(42)"
+    val f = code"(x: Int) => x+1"
+    val p = code"$f(42)"
     
     assert(stmts(p).size == 2)
     assert(stmts(p)(1).rhs.isInstanceOf[PardisApply[_,_]])
     
-    val p2 = Sqd.inline(f,ir"42")
+    val p2 = Sqd.inline(f,code"42")
     
-    sameDefs(p2, ir"val a = 42; a + 1")
+    sameDefs(p2, code"val a = 42; a + 1")
     
   }
   
   
   test("Function3") {
     
-    sameDefs(ir"(a:Int,b:Int,c:Double) => a * b + c", {
+    sameDefs(code"(a:Int,b:Int,c:Double) => a * b + c", {
       import SC._
       import SC.Predef.typeLambda3
       scBlock{ __lambda((a:Rep[Int],b:Rep[Int],c:Rep[Double]) => a * b + c) }
     })
     
-    sameDefs(ir"((a:Int,b:Int,c:Double) => a * b + c)(1,2,3)", {
+    sameDefs(code"((a:Int,b:Int,c:Double) => a * b + c)(1,2,3)", {
       import SC._
       import SC.Predef.typeLambda3
       scBlock{ __app(__lambda((a:Rep[Int],b:Rep[Int],c:Rep[Double]) => a * b + c)) apply (unit(1), unit(2), unit(3.0)) }
@@ -181,15 +181,15 @@ class PardisIRTests extends PardisTestSuite {
     import squid.lib.Var
     import SC._
     
-    sameDefs(ir"var a = 0; 1", scBlock {
+    sameDefs(code"var a = 0; 1", scBlock {
       val a = __newVar(unit(0))
       unit(1)
     })
-    sameDefs(ir"var a = 0; a + 1", scBlock {
+    sameDefs(code"var a = 0; a + 1", scBlock {
       val a = __newVar(unit(0))
       __readVar(a) + unit(1)
     })
-    sameDefs(ir"var a = 0; a = a + 1; a", scBlock {
+    sameDefs(code"var a = 0; a = a + 1; a", scBlock {
       val a = __newVar(unit(0))
       __assign(a,__readVar(a) + unit(1))
       __readVar(a)
@@ -203,7 +203,7 @@ class PardisIRTests extends PardisTestSuite {
     import SC.Predef._
     import SC.{ ArrayBufferRep, readVar }
     
-    sameDefs(ir"val ab = new ArrayBuffer[Int]; ab.append(1); var s = ab.size; s", scBlock {
+    sameDefs(code"val ab = new ArrayBuffer[Int]; ab.append(1); var s = ab.size; s", scBlock {
       val ab = SC.__newArrayBuffer[Int]()
       ab.append(unit(1))
       val s = SC.__newVar(ab.size)
@@ -216,25 +216,25 @@ class PardisIRTests extends PardisTestSuite {
   test("Inserting Variables") {
     import squid.lib.Var
     
-    sameDefs(ir"var a = 0; a; a = a + 1; a", block {
-      val v = ir"Var(0)"
-      ir"$v := $v.! + 1; $v.!"
+    sameDefs(code"var a = 0; a; a = a + 1; a", block {
+      val v = code"Var(0)"
+      code"$v := $v.! + 1; $v.!"
     })
     
-    sameDefs(ir"var a = 0; a = a + 1; a", {
-      val v = ir"Var(0)"
-      ir"$v := $v.! + 1; $v.!"
+    sameDefs(code"var a = 0; a = a + 1; a", {
+      val v = code"Var(0)"
+      code"$v := $v.! + 1; $v.!"
     })
     
-    sameDefs(ir"var a = 0; a = a + 1; a", block {
+    sameDefs(code"var a = 0; a = a + 1; a", block {
       import SC.typeInt
       val v = SC.__newVar(SC.unit(0))
-      ir"$v := $v.! + 1; $v.!"
+      code"$v := $v.! + 1; $v.!"
     })
     
-    sameDefs(ir"var a = 0; a = a + 1; a", block {
-      val v = mkVar(ir"0")
-      ir"$v := $v.! + 1; $v.!"
+    sameDefs(code"var a = 0; a = a + 1; a", block {
+      val v = mkVar(code"0")
+      code"$v := $v.! + 1; $v.!"
     })
     
   }
@@ -270,10 +270,10 @@ class PardisIRTests extends PardisTestSuite {
     
     val r = block {
       
-      val bg = ir"new ArrayBuffer[String]"
-      val ol_number = mkVar(ir"32")
+      val bg = code"new ArrayBuffer[String]"
+      val ol_number = mkVar(code"32")
       
-      ir"""
+      code"""
         if ("ok".length > 0 || 42.toDouble > 0.0 && 0.toDouble < 42.0)
           $bg($ol_number!) = "B"
         else
@@ -300,24 +300,24 @@ class PardisIRTests extends PardisTestSuite {
   test("SC.Rep[T] Conversion Helper") {
     
     assert(stmts(block{
-      ir"42.toDouble".toRep : SC.Rep[Double]
+      code"42.toDouble".toRep : SC.Rep[Double]
     }).head.rhs.isInstanceOf[SC.IntToDouble])
     
     assertDoesNotCompile("""
-      ir"42.toDouble".toRep : SC.Rep[Int]
+      code"42.toDouble".toRep : SC.Rep[Int]
     """)
     
   }
 
   test("Hole Substitution"){
-    def power[C](n: Int, x: IR[Double,C]): IR[Double,C] =
-      if (n > 0) ir"${power(n-1, x)} * $x"
-      else ir"1.0"
+    def power[C](n: Int, x: Code[Double,C]): Code[Double,C] =
+      if (n > 0) code"${power(n-1, x)} * $x"
+      else code"1.0"
 
     sameDefs(ir{
       val x = 5.0
-      val x_3 = ${power(3, ir"$$x : Double")}
-    }, ir"val x = 5.0; val x_3 = 1.0 * x * x * x")
+      val x_3 = ${power(3, code"$$x : Double")}
+    }, code"val x = 5.0; val x_3 = 1.0 * x * x * x")
   }
   
   test("SC.Rep[T] Function Helper") {
@@ -325,7 +325,7 @@ class PardisIRTests extends PardisTestSuite {
     
     sameDefs(ir{
       val n = ArrayBuffer(1)(0)
-      val r = $(mapLambda(ir"$$n:Int")(x => SC.IntRep(x)+SC.unit(42)))
+      val r = $(mapLambda(code"$$n:Int")(x => SC.IntRep(x)+SC.unit(42)))
       r/2
     }, ir{
       val m = ArrayBuffer(1)(0)

@@ -243,8 +243,8 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
   
   object Const extends ConstAPI {
     import meta.RuntimeUniverseHelpers.sru
-    def unapply[T: IRType](ir: IR[T,_]): Option[T] = dfn(ir.rep) match {
-      case cst @ Constant(v) if typLeq(cst.typ, irTypeOf[T].rep) => Some(v.asInstanceOf[T])
+    def unapply[T: CodeType](ir: Code[T,_]): Option[T] = dfn(ir.rep) match {
+      case cst @ Constant(v) if typLeq(cst.typ, codeTypeOf[T].rep) => Some(v.asInstanceOf[T])
       case _ => None
     }
   }

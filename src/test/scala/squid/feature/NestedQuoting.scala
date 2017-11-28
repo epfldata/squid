@@ -8,27 +8,27 @@ class NestedQuoting extends MyFunSuite {
   
   test("Simple Nesting") {
     
-    assert(ir"42.toString * 2" =~= ir"42.toString * 2")
+    assert(code"42.toString * 2" =~= code"42.toString * 2")
     
-    assert(ir"42.toString * 2" =~= ir"${ ir"42.toString" } * 2")
+    assert(code"42.toString * 2" =~= code"${ code"42.toString" } * 2")
     
   }
   
   
   test("Block Nesting") {
     
-    assert(ir"42.toString * 2" =~= ir"${ val n = ir"42"; ir"$n.toString" } * 2")
+    assert(code"42.toString * 2" =~= code"${ val n = code"42"; code"$n.toString" } * 2")
     
-    assert(ir"42.toDouble.toString * 2" =~= ir"${ val n = ir"42.toDouble"; ir"$n.toString" } * 2")
+    assert(code"42.toDouble.toString * 2" =~= code"${ val n = code"42.toDouble"; code"$n.toString" } * 2")
     
   }
   
   
   test("Double Nesting") {
     
-    assert(ir"42.toDouble.toString * 2" =~= ir"${ val str = ir"${ val n = ir"42"; ir"$n.toDouble" }.toString"; str } * 2")
+    assert(code"42.toDouble.toString * 2" =~= code"${ val str = code"${ val n = code"42"; code"$n.toDouble" }.toString"; str } * 2")
     
-    assert(ir"42.toDouble.toString * 2" =~= ir"${ val n = ir"42"; val str = ir"${ ir"$n.toDouble" }.toString"; str } * 2")
+    assert(code"42.toDouble.toString * 2" =~= code"${ val n = code"42"; val str = code"${ code"$n.toDouble" }.toString"; str } * 2")
     
   }
   

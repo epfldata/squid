@@ -18,15 +18,15 @@ class ClassEmbeddingTests extends MyFunSuite {
   
   test("Basics") {
     
-    Emb.Object.Defs.foo.value eqt ir"(arg: Int) => MyClass.foo(arg.toLong).toInt"
+    Emb.Object.Defs.foo.value eqt code"(arg: Int) => MyClass.foo(arg.toLong).toInt"
     
-    Emb.Object.Defs.swap[Int] eqt ir"(arg: (Int,Int)) => (n: Symbol) => n -> arg.swap"
+    Emb.Object.Defs.swap[Int] eqt code"(arg: (Int,Int)) => (n: Symbol) => n -> arg.swap"
     
     Emb.Class.Defs.foo.value eqt Emb.Class.Defs.foz.value
     
-    Emb.Class.Defs.foo.value eqt ir"(mc: MyClass) => (arg: Int) => mc.baz + arg"
+    Emb.Class.Defs.foo.value eqt code"(mc: MyClass) => (arg: Int) => mc.baz + arg"
     
-    OrphanObject.embedIn(TestDSL).Object.Defs.test[Int] eqt ir"(n:Int) => (n,n)"
+    OrphanObject.embedIn(TestDSL).Object.Defs.test[Int] eqt code"(n:Int) => (n,n)"
     
   }
   
@@ -37,23 +37,23 @@ class ClassEmbeddingTests extends MyFunSuite {
     
     import MyClass._
     
-    ir"foo(42) * 2" transformWith Desugaring eqt
-      ir"{val arg = 42; foo(arg.toLong).toInt} * 2"
+    code"foo(42) * 2" transformWith Desugaring eqt
+      code"{val arg = 42; foo(arg.toLong).toInt} * 2"
     
-    ir"foobar(42, .5) -> 666" transformWith Desugaring eqt
+    code"foobar(42, .5) -> 666" transformWith Desugaring eqt
       //(ir"((a: Int, b: Double) => bar(foo(a))(b))(42, .5) -> 666" transformWith Desugaring) // FIXME (names of multi-param lambda...)
-      (ir"((x: Int, y: Double) => bar(foo(x))(y))(42, .5) -> 666" transformWith Desugaring)
+      (code"((x: Int, y: Double) => bar(foo(x))(y))(42, .5) -> 666" transformWith Desugaring)
     
-    ir"swap(foobar(42,.5),11)('ok)" transformWith Desugaring eqt
-      ir"((x: (AnyVal,AnyVal)) => (name: Symbol) => name -> x.swap)(${
-        ir"${Emb.Object.Defs.foobar.value}(42,.5)" transformWith Desugaring
+    code"swap(foobar(42,.5),11)('ok)" transformWith Desugaring eqt
+      code"((x: (AnyVal,AnyVal)) => (name: Symbol) => name -> x.swap)(${
+        code"${Emb.Object.Defs.foobar.value}(42,.5)" transformWith Desugaring
       }, 11)('ok)"
     
     
     
-    val desugared = ir"val mc = new MyClass; mc foz 42" transformWith Desugaring
+    val desugared = code"val mc = new MyClass; mc foz 42" transformWith Desugaring
     
-    desugared eqt ir"""{
+    desugared eqt code"""{
       val mc_0: squid.classembed.MyClass = new squid.classembed.MyClass();
       ({
         ( (__self_1: squid.classembed.MyClass) =>
@@ -61,7 +61,7 @@ class ClassEmbeddingTests extends MyFunSuite {
       })(42)
     }"""
     /* ^ Note: the printed transformed tree is of the form below, but it needs binding normalization to compare equivalent: */
-    val result = ir"""{
+    val result = code"""{
       val mc_0: squid.classembed.MyClass = new squid.classembed.MyClass();
       ({
         val __self_1: squid.classembed.MyClass = mc_0;
@@ -73,7 +73,7 @@ class ClassEmbeddingTests extends MyFunSuite {
     
     desugaredNormalized eqt result
     
-    desugaredNormalized eqt ir"""{
+    desugaredNormalized eqt code"""{
       val mc_0: squid.classembed.MyClass = new squid.classembed.MyClass();
       val a_1: squid.classembed.MyClass = mc_0;
       val b_2: Int = 42;
@@ -90,10 +90,10 @@ class ClassEmbeddingTests extends MyFunSuite {
     import DSLBase.Predef._
     import MyClass._
     
-    eqtBy(ir"foo(42) * 2",
-      ir"{val arg = 42; foo(arg.toLong).toInt} * 2")(_ =~= _)
-    assert(ir"foo(42.toLong) * 2" =~=
-      ir"foo(42.toLong) * 2")
+    eqtBy(code"foo(42) * 2",
+      code"{val arg = 42; foo(arg.toLong).toInt} * 2")(_ =~= _)
+    assert(code"foo(42.toLong) * 2" =~=
+      code"foo(42.toLong) * 2")
     
     // FIXME now (that StaticOptimizer uses calls to postProcess) this makes a StackOverflow; TODO properly detect it...
     /*
@@ -113,8 +113,8 @@ class ClassEmbeddingTests extends MyFunSuite {
       }+1)(42)")(_ =~= _)
     */
     
-    ir"recLolParam(42)('ko)" match {
-      case ir"((x: Int) => (r: Symbol) => if (x <= 0) $a else $b : Symbol)(42)('ko)" =>
+    code"recLolParam(42)('ko)" match {
+      case code"((x: Int) => (r: Symbol) => if (x <= 0) $a else $b : Symbol)(42)('ko)" =>
     }
     
   }
@@ -130,7 +130,7 @@ class ClassEmbeddingTests extends MyFunSuite {
     import DSLBase.Predef._
     import MyClass._
     
-    eqtBy(ir"swap(foobarCurried(42)(.5),11)('ok)", ir"""{
+    eqtBy(code"swap(foobarCurried(42)(.5),11)('ok)", code"""{
       val a_0: scala.Tuple2[scala.Double, scala.Int] = scala.Tuple2.apply[scala.Double, scala.Int]({
         val a_1: Int = 42;
         val b_2: Double = 0.5;
@@ -152,7 +152,7 @@ class ClassEmbeddingTests extends MyFunSuite {
     }
     import DSLBase.Predef._
     
-    eqtBy(ir"Vector.origin(3).arity", ir"val v = Vector.origin(3); v.coords.length")(_ =~= _)
+    eqtBy(code"Vector.origin(3).arity", code"val v = Vector.origin(3); v.coords.length")(_ =~= _)
     
     // TODO (vararg)
     //println(ir"Vector.apply(1,2,3)")
@@ -164,8 +164,8 @@ class ClassEmbeddingTests extends MyFunSuite {
     
     val Emb = MyGenClass.embedIn(TestDSL)
     
-    Emb.Class.Defs.foo[Int] eqt ir"(_:MyGenClass[Int]).a"
-    Emb.Class.Defs.bar[Int,String] eqt ir"(s:MyGenClass[Int]) => (_:Int=>String)(s.foo)"
+    Emb.Class.Defs.foo[Int] eqt code"(_:MyGenClass[Int]).a"
+    Emb.Class.Defs.bar[Int,String] eqt code"(s:MyGenClass[Int]) => (_:Int=>String)(s.foo)"
     
     //println(Emb.Class.Defs.ugh[Int]) // FIXME "object Class is not a type" because it tries to load toString from the type param symbol!!
     
@@ -176,7 +176,7 @@ class ClassEmbeddingTests extends MyFunSuite {
     val Desugaring = new TestDSL.Desugaring with TopDownTransformer
     val BindNorm = new TestDSL.SelfTransformer with BindingNormalizer with TopDownTransformer
     
-    ir"(new MyGenClass(42)).bar(_ + 1 toDouble)" transformWith Desugaring transformWith BindNorm eqt ir"""
+    code"(new MyGenClass(42)).bar(_ + 1 toDouble)" transformWith Desugaring transformWith BindNorm eqt code"""
       val s = new MyGenClass(42)
       val f = (_:Int) + 1 toDouble;
       f { val t = s; t.a }
@@ -189,7 +189,7 @@ class ClassEmbeddingTests extends MyFunSuite {
     
     val Desugaring = new TestDSL.Desugaring with TopDownTransformer
     
-    ir"(mc:MyClass) => mc.lol(42,142.toString)" transformWith Desugaring eqt
+    code"(mc:MyClass) => mc.lol(42,142.toString)" transformWith Desugaring eqt
       ir{ (mc:MyClass) => {
           val __self_1 = mc;
           ((b_2: scala.Int, c_3: java.lang.String) => {

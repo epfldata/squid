@@ -10,21 +10,21 @@ class TransformerTest extends MyFunSuite/*(new SimpleAST)*/ {
   
   test ("Simple Rewritings") {
     T.rewrite {
-      case ir"666" => ir"999"
-      case ir"42.toFloat" => ir"42f" 
-      case ir"(${Const(n)}: Int).toDouble" => ir"${Const(n.toDouble)}"
+      case code"666" => code"999"
+      case code"42.toFloat" => code"42f" 
+      case code"(${Const(n)}: Int).toDouble" => code"${Const(n.toDouble)}"
     }
-    eqt(T.transform(ir"666".rep), ir"999".rep)
-    eqt(T.transform(ir"42.toFloat".rep), ir"42f".rep)
-    eqt(T.transform(ir"22.toDouble".rep), ir"22.0".rep)
+    eqt(T.transform(code"666".rep), code"999".rep)
+    eqt(T.transform(code"42.toFloat".rep), code"42f".rep)
+    eqt(T.transform(code"22.toDouble".rep), code"22.0".rep)
     
     
     assertDoesNotCompile("""
-      T.rewrite { case ir"0.5" => ir"42" }
+      T.rewrite { case code"0.5" => code"42" }
     """) // Error:(25, 34) Cannot rewrite a term of type Double to a different type Int
     
     assertDoesNotCompile("""
-      T.rewrite { case ir"123" => ir"($$n:Int)" }
+      T.rewrite { case code"123" => code"($$n:Int)" }
     """) // Error:(26, 34) Cannot rewrite a term of context [Unknown Context] to an unrelated context Any{val n: Int}
     
   }
@@ -32,16 +32,16 @@ class TransformerTest extends MyFunSuite/*(new SimpleAST)*/ {
   test ("Rewritings With Subpatterns") {
     
     T.rewrite {
-      case ir"(${ ir"($n: Int)+111" }: Int) * .5" => ir"$n * .25"
+      case code"(${ code"($n: Int)+111" }: Int) * .5" => code"$n * .25"
     }
-    eqt(T.transform(ir"(readInt + 111) * .5".rep), ir"readInt * .25".rep)
+    eqt(T.transform(code"(readInt + 111) * .5".rep), code"readInt * .25".rep)
     
   }
   
   test ("No Additional Free Variables") {
     
     assertDoesNotCompile("""
-      T.rewrite { case ir"123" => ir"($$n:Int)" }
+      T.rewrite { case code"123" => code"($$n:Int)" }
     """) // Error:(26, 34) Cannot rewrite a term of context [Unknown Context] to an unrelated context Any{val n: Int}
     
   }
@@ -49,16 +49,16 @@ class TransformerTest extends MyFunSuite/*(new SimpleAST)*/ {
   test ("Function Rewritings") {
     
     assertDoesNotCompile("""
-      T.rewrite { case ir"(x: Int) => $b: Int" => b }
+      T.rewrite { case code"(x: Int) => $b: Int" => b }
     """) // Error:(26, 50) Cannot rewrite a term of type Int => Int to a different type Int
     
     assertDoesNotCompile("""
-      T.rewrite { case ir"(x: Int) => $b: Int" => ir"(y: Int) => $b" }
+      T.rewrite { case code"(x: Int) => $b: Int" => code"(y: Int) => $b" }
     """) // Error:(30, 50) Cannot rewrite a term of context [Unknown Context] to a stricter context [Unknown Context]{val x: Int}
     
-    T.rewrite { case ir"(x: Int) => ($b: Int) * 32" => ir"val x = 42; (y: Int) => $b + y" }
+    T.rewrite { case code"(x: Int) => ($b: Int) * 32" => code"val x = 42; (y: Int) => $b + y" }
     
-    eqt(T.transform(ir"(x: Int) => (x-5) * 32".rep), ir"val u = 42; (v: Int) => (u - 5) + v".rep)
+    eqt(T.transform(code"(x: Int) => (x-5) * 32".rep), code"val u = 42; (v: Int) => (u - 5) + v".rep)
     
   }
   
@@ -66,35 +66,35 @@ class TransformerTest extends MyFunSuite/*(new SimpleAST)*/ {
   test ("Polymorphic Rewritings") {
     
     T.rewrite {
-      case ir"List[$t]($xs*).size" => ir"${Const(xs.size)}"
-      case ir"($ls: List[$t0]).map($f: t0 => $t1).map($g: t1 => $t2)" =>
-        ir"$ls.map($f andThen $g)"
+      case code"List[$t]($xs*).size" => code"${Const(xs.size)}"
+      case code"($ls: List[$t0]).map($f: t0 => $t1).map($g: t1 => $t2)" =>
+        code"$ls.map($f andThen $g)"
     }
     
-    eqt(T.transform(ir"List(1,2,3).size".rep), ir"3".rep)
-    eqt(T.transform(ir"List(1,2,3) map (_ + 1) map (_.toDouble)".rep),
-                    ir"List(1,2,3) map { ((_:Int) + 1) andThen ((_:Int).toDouble) }".rep)
+    eqt(T.transform(code"List(1,2,3).size".rep), code"3".rep)
+    eqt(T.transform(code"List(1,2,3) map (_ + 1) map (_.toDouble)".rep),
+                    code"List(1,2,3) map { ((_:Int) + 1) andThen ((_:Int).toDouble) }".rep)
     
   }
   
   
   test ("With Top-Level Pattern Alias") {
     
-    var saved = Option.empty[IR[Any,_]]
+    var saved = Option.empty[Code[Any,_]]
     
     T.rewrite {
       
       // Note that we cannot get a precise type for `x` here,
       // because the patmat has to be typed before it goes through the `rewrite` macro
-      case x @ ir"Option[Int]($v).get" =>
+      case x @ code"Option[Int]($v).get" =>
         saved = Some(x)
-        ir"$v"
+        code"$v"
       
     }
     
-    ir"println(Option(42).get)" transformWith T eqt ir"println(42)"
+    code"println(Option(42).get)" transformWith T eqt code"println(42)"
     
-    saved.get eqt ir"Option(42).get"
+    saved.get eqt code"Option(42).get"
     
   }
   

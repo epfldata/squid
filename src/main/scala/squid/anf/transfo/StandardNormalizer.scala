@@ -27,52 +27,52 @@ trait StandardNormalizer extends SimpleRuleBasedTransformer
 trait OptionNormalizer extends SimpleRuleBasedTransformer { self =>
   val base: InspectableBase with ScalaCore
   import base.Predef._
-  import self.base.InspectableIROps
-  import self.base.IntermediateIROps
+  import self.base.InspectableCodeOps
+  import self.base.IntermediateCodeOps
   
    // To generate on cases statically-known to be failures;
    // will help remove dead code under the assumption this is an undefiend behavior:
-  lazy val NoneGet = ir"""assert(false, "None.get").asInstanceOf[Nothing]"""
+  lazy val NoneGet = code"""assert(false, "None.get").asInstanceOf[Nothing]"""
   
   rewrite {
       
     // Simplifications
     
-    case ir"Some[$t]($v).get" => ir"$v"
-    case ir"None.get" => NoneGet
-    case ir"Some[$t]($v).getOrElse($d)" => ir"$v"
-    case ir"None.getOrElse[$t]($d)" => ir"$d"
+    case code"Some[$t]($v).get" => code"$v"
+    case code"None.get" => NoneGet
+    case code"Some[$t]($v).getOrElse($d)" => code"$v"
+    case code"None.getOrElse[$t]($d)" => code"$d"
     //case ir"Some[$t]($_).isDefined" => ir"true" // FIXME allow `_` in patterns...
-    case ir"Some[$t]($v).isDefined" => ir"true"
-    case ir"None.isDefined" => ir"false"
+    case code"Some[$t]($v).isDefined" => code"true"
+    case code"None.isDefined" => code"false"
       
     // Methods `isEmpty` and `get` are redefined in `Some` and `None` (ie Some.get is not the same symbol as Option.get),
     // so we need to handle the separate Option symbols here:
-    case ir"(Some[$t]($v):Option[t]).isEmpty" => ir"false"
-    case ir"(Some[$t]($v):Option[t]).get" => ir"$v"
-    case ir"(None:Option[$t]).isEmpty" => ir"true"
-    case ir"(None:Option[$t]).get" => NoneGet
+    case code"(Some[$t]($v):Option[t]).isEmpty" => code"false"
+    case code"(Some[$t]($v):Option[t]).get" => code"$v"
+    case code"(None:Option[$t]).isEmpty" => code"true"
+    case code"(None:Option[$t]).get" => NoneGet
       
       
     // Feature Streamlining
     
-    case ir"Option.empty[$t]" => ir"None"
-    case ir"Option[$t]($v)" => ir"if ($v == null) None else Some($v)"
-    case ir"($opt:Option[$t]).nonEmpty" => ir"$opt.isDefined"
-    case ir"($opt:Option[$t]).isEmpty" => ir"!$opt.isDefined"
-    case ir"($opt:Option[$t]).fold[$s]($dflt)($thn)" => ir"if ($opt.isDefined) $thn($opt.get) else $dflt"
-    case ir"($opt:Option[$t]).filter($f)" => ir"if ($opt.isDefined && $f($opt.get)) $opt else None"
-    case ir"($opt:Option[$t]).map[$mt]($f)" => ir"if ($opt.isDefined) Some($f($opt.get)) else None"
-    case ir"($opt:Option[$t]).flatMap[$mt]($f)" => ir"if ($opt.isDefined) $f($opt.get) else None"
-    case ir"($opt:Option[$t]).orElse[t]($other)" => ir"if ($opt.isDefined) $opt else $other" // TODO test with different type params
-    case ir"($opt:Option[$t]).foreach[$r]($f)" => ir"if ($opt.isDefined) {$f($opt.get);()} else ()"
+    case code"Option.empty[$t]" => code"None"
+    case code"Option[$t]($v)" => code"if ($v == null) None else Some($v)"
+    case code"($opt:Option[$t]).nonEmpty" => code"$opt.isDefined"
+    case code"($opt:Option[$t]).isEmpty" => code"!$opt.isDefined"
+    case code"($opt:Option[$t]).fold[$s]($dflt)($thn)" => code"if ($opt.isDefined) $thn($opt.get) else $dflt"
+    case code"($opt:Option[$t]).filter($f)" => code"if ($opt.isDefined && $f($opt.get)) $opt else None"
+    case code"($opt:Option[$t]).map[$mt]($f)" => code"if ($opt.isDefined) Some($f($opt.get)) else None"
+    case code"($opt:Option[$t]).flatMap[$mt]($f)" => code"if ($opt.isDefined) $f($opt.get) else None"
+    case code"($opt:Option[$t]).orElse[t]($other)" => code"if ($opt.isDefined) $opt else $other" // TODO test with different type params
+    case code"($opt:Option[$t]).foreach[$r]($f)" => code"if ($opt.isDefined) {$f($opt.get);()} else ()"
     // TODO handle other features...
     
     // Commuting with IF
     
-    case ir"(if ($c) $th else $el : Option[$t]).get" => ir"if ($c) $th.get else $el.get"
-    case ir"(if ($c) $th else $el : Option[$t]).getOrElse($d)" => ir"if ($c) $th.getOrElse($d) else $el.getOrElse($d)"
-    case ir"(if ($c) $th else $el : Option[$t]).isDefined" => ir"if ($c) $th.isDefined else $el.isDefined"
+    case code"(if ($c) $th else $el : Option[$t]).get" => code"if ($c) $th.get else $el.get"
+    case code"(if ($c) $th else $el : Option[$t]).getOrElse($d)" => code"if ($c) $th.getOrElse($d) else $el.getOrElse($d)"
+    case code"(if ($c) $th else $el : Option[$t]).isDefined" => code"if ($c) $th.isDefined else $el.isDefined"
     
   }
   
@@ -81,16 +81,16 @@ trait OptionNormalizer extends SimpleRuleBasedTransformer { self =>
 trait TupleNormalizer extends SimpleRuleBasedTransformer { self =>
   val base: InspectableBase with ScalaCore
   import base.Predef._
-  import self.base.InspectableIROps
-  import self.base.IntermediateIROps
+  import self.base.InspectableCodeOps
+  import self.base.IntermediateCodeOps
   
   rewrite {
       
-    case ir"($a:$ta) -> ($b:$tb)" => ir"($a,$b)"
-    case ir"($a:$ta,$b:$tb)._1" => ir"$a"
-    case ir"($a:$ta,$b:$tb)._2" => ir"$b"
-    case ir"($a:$ta,$b:$tb).swap" => ir"($b,$a)"
-    case ir"($a:$ta,$b:$tb).copy($va:$tc,$vb:$td)" => ir"($va,$vb)"
+    case code"($a:$ta) -> ($b:$tb)" => code"($a,$b)"
+    case code"($a:$ta,$b:$tb)._1" => code"$a"
+    case code"($a:$ta,$b:$tb)._2" => code"$b"
+    case code"($a:$ta,$b:$tb).swap" => code"($b,$a)"
+    case code"($a:$ta,$b:$tb).copy($va:$tc,$vb:$td)" => code"($va,$vb)"
       
   }
   
@@ -99,12 +99,12 @@ trait TupleNormalizer extends SimpleRuleBasedTransformer { self =>
 trait FunctionNormalizer extends SimpleRuleBasedTransformer { self =>
   val base: InspectableBase with ScalaCore
   import base.Predef._
-  import self.base.InspectableIROps
-  import self.base.IntermediateIROps
+  import self.base.InspectableCodeOps
+  import self.base.IntermediateCodeOps
   
   rewrite {
       
-    case ir"($f:$ta=>$tb).andThen[$tc]($g)" => ir"(x:$ta) => $g($f(x))"
+    case code"($f:$ta=>$tb).andThen[$tc]($g)" => code"(x:$ta) => $g($f(x))"
       
   }
   
@@ -113,16 +113,16 @@ trait FunctionNormalizer extends SimpleRuleBasedTransformer { self =>
 trait IdiomsNormalizer extends SimpleRuleBasedTransformer { self =>
   val base: InspectableBase with ScalaCore
   import base.Predef._
-  import self.base.InspectableIROps
-  import self.base.IntermediateIROps
+  import self.base.InspectableCodeOps
+  import self.base.IntermediateCodeOps
   
   rewrite {
       
-    case ir"($str:String).toString" => ir"$str"
+    case code"($str:String).toString" => code"$str"
       
-    case ir"($x:$t).asInstanceOf[t]" => ir"$x:$t"
+    case code"($x:$t).asInstanceOf[t]" => code"$x:$t"
       
-    case ir"identity[$t]($x)" => x
+    case code"identity[$t]($x)" => x
       
   }
   

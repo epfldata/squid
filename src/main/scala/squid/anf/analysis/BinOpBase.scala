@@ -17,12 +17,12 @@ import utils._
 trait BinOpBase extends InspectableBase {
   import Predef.QuasiContext
   
-  type Rebuild[T,C] = (IR[T,C],IR[T,C]) => IR[T,C]
+  type Rebuild[T,C] = (Code[T,C],Code[T,C]) => Code[T,C]
   
-  abstract class BinOp[T,C](val original: IR[T,C]) {
+  abstract class BinOp[T,C](val original: Code[T,C]) {
     
-    def lhs: IR[T,C]
-    def rhs: IR[T,C]
+    def lhs: Code[T,C]
+    def rhs: Code[T,C]
     def rebuild: Rebuild[T,C]
     
     def commutes: Bool = false
@@ -34,7 +34,7 @@ trait BinOpBase extends InspectableBase {
     
   }
   
-  class Addition[T,C](original: IR[T,C], val lhs: IR[T,C], val rhs: IR[T,C])(val rebuild: Rebuild[T,C]) extends BinOp[T,C](original) {
+  class Addition[T,C](original: Code[T,C], val lhs: Code[T,C], val rhs: Code[T,C])(val rebuild: Rebuild[T,C]) extends BinOp[T,C](original) {
     //println(s"New addition $lhs $rhs")
     override def commutes: Bool = true
     // TODO other properties...
@@ -42,14 +42,14 @@ trait BinOpBase extends InspectableBase {
   
   /** Caveat: matchers that produce more nodes may trigger further matching... */
   object BinOp {
-    def unapply[T,C](q: IR[T,C]): Option[BinOp[T,C]] = unapplyBinOp[T,C](q)
+    def unapply[T,C](q: Code[T,C]): Option[BinOp[T,C]] = unapplyBinOp[T,C](q)
   }
-  def unapplyBinOp[T,C](q: IR[T,C]): Option[BinOp[T,C]] = {
-    val intq = q.asInstanceOf[IR[Int,C]]
+  def unapplyBinOp[T,C](q: Code[T,C]): Option[BinOp[T,C]] = {
+    val intq = q.asInstanceOf[Code[Int,C]]
     q match {
-      case ir"($lhs:Int)+($rhs:Int)"   => Some(new Addition(intq,lhs,rhs)((lhs,rhs) => ir"$lhs+$rhs").asInstanceOf[Addition[T,C]])
-      case ir"($lhs:Int)+($rhs:Short)" => Some(new Addition(intq,lhs,ir"$rhs.toInt")((lhs,rhs) => ir"$lhs+$rhs").asInstanceOf[Addition[T,C]])
-      case ir"($lhs:Int)-($rhs:Int)"   => Some(new Addition(intq,lhs,ir"-$rhs")((lhs,rhs) => ir"$lhs+$rhs").asInstanceOf[Addition[T,C]])
+      case code"($lhs:Int)+($rhs:Int)"   => Some(new Addition(intq,lhs,rhs)((lhs,rhs) => code"$lhs+$rhs").asInstanceOf[Addition[T,C]])
+      case code"($lhs:Int)+($rhs:Short)" => Some(new Addition(intq,lhs,code"$rhs.toInt")((lhs,rhs) => code"$lhs+$rhs").asInstanceOf[Addition[T,C]])
+      case code"($lhs:Int)-($rhs:Int)"   => Some(new Addition(intq,lhs,code"-$rhs")((lhs,rhs) => code"$lhs+$rhs").asInstanceOf[Addition[T,C]])
       case _ => None
     }
   }
@@ -58,13 +58,13 @@ trait BinOpBase extends InspectableBase {
   // Helpers:
   
   object Operands {
-    def unapply[T,C](q: BinOp[T,C]): Some[(IR[T,C],IR[T,C])] = /*println(s"ops $q") before*/ Some(q.lhs -> q.rhs)
+    def unapply[T,C](q: BinOp[T,C]): Some[(Code[T,C],Code[T,C])] = /*println(s"ops $q") before*/ Some(q.lhs -> q.rhs)
   }
   /** Workaround the current limitation of RwR pattenr aliases preventing the use of Operands. This extracts two binops, 
     * where the second one is extracted from the rhs of the first. */
   object BinOp3 {
-    def unapply[T,C](q: IR[T,C]): Option[BinOp[T,C]->BinOp[T,C]] = q match {
-      case ir"${BinOp(bo0 @ Operands(_, BinOp(bo1)))}: $t" => Some((bo0 -> bo1).asInstanceOf[BinOp[T,C]->BinOp[T,C]])
+    def unapply[T,C](q: Code[T,C]): Option[BinOp[T,C]->BinOp[T,C]] = q match {
+      case code"${BinOp(bo0 @ Operands(_, BinOp(bo1)))}: $t" => Some((bo0 -> bo1).asInstanceOf[BinOp[T,C]->BinOp[T,C]])
       case _ => None
     }
   }

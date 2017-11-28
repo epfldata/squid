@@ -9,105 +9,105 @@ class TermRewriting extends MyFunSuite {
   
   test("Basics") {
     
-    eqt(ir"42" rewrite {
-      case ir"42" => ir"666"
-    }, ir"666")
+    eqt(code"42" rewrite {
+      case code"42" => code"666"
+    }, code"666")
     
-    eqt(ir"println(42)" rewrite {
-      case ir"42" => ir"666"
-    }, ir"println(666)")
+    eqt(code"println(42)" rewrite {
+      case code"42" => code"666"
+    }, code"println(666)")
     
   }
   
   test("Rewrite is Top-Down") {
     
-    eqt(ir"println(5)" rewrite {
-      case ir"${Const(n)}: Int" if n > 1 =>
-        if (n % 2 == 0) ir"${Const(n/2)} + ${Const(n/2)}"
-        else ir"${Const(n/2)} + ${Const(n/2 + 1)}"
-    }, ir"println { (1:Int).+(1:Int).+((1:Int).+((1:Int).+(1:Int))) }") // Ascriptions to prevent Scala from folding the constants
+    eqt(code"println(5)" rewrite {
+      case code"${Const(n)}: Int" if n > 1 =>
+        if (n % 2 == 0) code"${Const(n/2)} + ${Const(n/2)}"
+        else code"${Const(n/2)} + ${Const(n/2 + 1)}"
+    }, code"println { (1:Int).+(1:Int).+((1:Int).+((1:Int).+(1:Int))) }") // Ascriptions to prevent Scala from folding the constants
     
-    eqt(ir"List(1,2)" rewrite {
-      case ir"1" => ir"readInt"
-      case ir"2" => ir"readInt"
-      case ir"List(readInt,readInt)" => ir"Nil"
-    }, ir"List(readInt,readInt)")
+    eqt(code"List(1,2)" rewrite {
+      case code"1" => code"readInt"
+      case code"2" => code"readInt"
+      case code"List(readInt,readInt)" => code"Nil"
+    }, code"List(readInt,readInt)")
     
   }
   
   test("Captures Free Variables in Type") {
     
-    val open = ir"$$a: Int"
+    val open = code"$$a: Int"
     
-    val r = ir"List(readInt)" rewrite {
-      case ir"readInt" => ir"$open+1"
+    val r = code"List(readInt)" rewrite {
+      case code"readInt" => code"$open+1"
     }
-    eqt(r, ir"List(($$a: Int)+1)")
-    r ofType[ List[Int] IR Any{val a: Int} ]()
+    eqt(r, code"List(($$a: Int)+1)")
+    r ofType[ List[Int] Code Any{val a: Int} ]()
     
   }
   
   test("Captures Unknown Context in Type") {
     
-    def insert[C](x: Int IR C) = {
-      var r = ir"List(readInt)" rewrite { case ir"readInt" => ir"$x+1" }
-      r = r : List[Int] IR C
-      r : List[Int] IR C{val x:Int}
-      assertDoesNotCompile(" r = r : List[Int] IR C{val x:Int} ")
+    def insert[C](x: Int Code C) = {
+      var r = code"List(readInt)" rewrite { case code"readInt" => code"$x+1" }
+      r = r : List[Int] Code C
+      r : List[Int] Code C{val x:Int}
+      assertDoesNotCompile(" r = r : List[Int] Code C{val x:Int} ")
       r
     }
     
-    val r = insert(ir"$$a: Int")
+    val r = insert(code"$$a: Int")
     
-    eqt(r, ir"List(($$a: Int)+1)")
-    r ofType[ List[Int] IR Any{val a: Int} ]()
+    eqt(r, code"List(($$a: Int)+1)")
+    r ofType[ List[Int] Code Any{val a: Int} ]()
     
   }
   
   test("Aborted Rewritings") {
     
-    val one = ir"1"
+    val one = code"1"
     
-    ir"(1,2,3,4,5)" rewrite {
-      case ir"${Const(n)}: Int" =>
+    code"(1,2,3,4,5)" rewrite {
+      case code"${Const(n)}: Int" =>
         if (n % 2 != 0) throw RewriteAbort("Not even!")
-        ir"${Const(n/2)}+${Const(n/2)}"
-    } eqt ir"(1, $one+$one, 3, $one+$one+($one+$one), 5)"
+        code"${Const(n/2)}+${Const(n/2)}"
+    } eqt code"(1, $one+$one, 3, $one+$one+($one+$one), 5)"
     
   }
   
   test("Literals in patterns") {
     
-    ir"'abc -> 'def" rewrite {
-      case ir"Symbol(${Const("abc")})" =>
-        ir"'lol"
-    } eqt ir"'lol -> 'def"
+    code"'abc -> 'def" rewrite {
+      case code"Symbol(${Const("abc")})" =>
+        code"'lol"
+    } eqt code"'lol -> 'def"
     
   }
   
   test("Non-trivial name-pattern bindings in patterns") {
     
-    ir"println(1.toDouble+1,2.toDouble+1)" rewrite {
-      case ir"(${c @ Const(n)}:Int).toDouble+1" =>
+    code"println(1.toDouble+1,2.toDouble+1)" rewrite {
+      case code"(${c @ Const(n)}:Int).toDouble+1" =>
         //ir"$c.toDouble + ${Const(n+1.0)}"
-        ir"($c,${Const(n+1.0)})._2"
-    } eqt ir"println((1,2.0)._2,(2,3.0)._2)"
+        code"($c,${Const(n+1.0)})._2"
+    } eqt code"println((1,2.0)._2,(2,3.0)._2)"
     
   }
   
   test("Contexts") {
     
-    def foo[T,C](x:IR[T,C]):IR[T,C] = x rewrite {
-      case ir"val s = Symbol($str); $body:Int" =>
+    def foo[T,C](x:Code[T,C]):Code[T,C] = x rewrite {
+      case code"val s = Symbol($str); $body:Int" =>
         // We can refer to body.Ctx as below, because Ctx is now precisely defined (not just bounded):
-        identity(body) : IR[Int,body.Ctx]
-        identity(body) : IR[Int,base.ContextOf[body.type]]
+        identity(body) : Code[Int,body.Ctx]
+        identity(body) : Code[Int,base.ContextOf[body.type]]
         // ^ identity to avoid useless statement warnings
-        ir"val s = Symbol($str.reverse); ${(p:IR[Symbol,body.Ctx]) => ir"$body+1"}(s)"
+        code"val s = Symbol($str.reverse); ${(p:Code[Symbol,body.Ctx]) => code"$body+1"}(s)"
     }
     
-    foo(ir"""println{val x = Symbol("ok"); (a?:Double).toInt}""") eqt
-        ir"""println{val x = Symbol("ok".reverse); (a?:Double).toInt+1}"""
+    foo(code"""println{val x = Symbol("ok"); (a?:Double).toInt}""") eqt
+        code"""println{val x = Symbol("ok".reverse); (a?:Double).toInt+1}"""
     // Note: previous implem. used to generated a `lifted` let-binding introduced by automatic function lifting:
     //    ir"""println{val x = Symbol("ok".reverse); val lifted = x; (a?:Double).toInt+1}"""
     // But now automatic function lifting is paired with a call to tryInline, which removes that binding (good).

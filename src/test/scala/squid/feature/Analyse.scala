@@ -9,7 +9,7 @@ class Analyse extends MyFunSuite {
   
   test("Simple Analysis") {
     
-    val q = ir"println(1); var cur = 2; for (i <- 3 to 4) cur += 5; cur - 6"
+    val q = code"println(1); var cur = 2; for (i <- 3 to 4) cur += 5; cur - 6"
     
     var sum = 0
     q analyse {

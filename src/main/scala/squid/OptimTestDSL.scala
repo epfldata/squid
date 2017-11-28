@@ -12,36 +12,36 @@ class OptimTestDSL extends SimpleAST with OnlineOptimizer with SimpleRuleBasedTr
     //case ir"List[$t]($xs*).size" => ir"${Const(xs.size)}"
     
     /** To check that optimizations were applied */
-    case ir" 'unoptimized " => ir" 'optimized "
+    case code" 'unoptimized " => code" 'optimized "
       
     /** map map -> map */
-    case ir"($ls: List[$t0]) map ($f: t0 => $t1) map ($g: t1 => $t2)" =>
-      ir"$ls map ($f andThen $g)"
+    case code"($ls: List[$t0]) map ($f: t0 => $t1) map ($g: t1 => $t2)" =>
+      code"$ls map ($f andThen $g)"
       
     /** lambda andThen -> lambda */
-    case ir"((p: $t0) => $body: $t1) andThen ($g: t1 => $t2)" =>
-      ir"(p: $t0) => $g($body)"
+    case code"((p: $t0) => $body: $t1) andThen ($g: t1 => $t2)" =>
+      code"(p: $t0) => $g($body)"
     
     /** andThen lambda -> lambda */
-    case ir"($f: $t0 => $t1) andThen ((p: t1) => $body: $t2)" =>
-      ir"(p2: $t0) => { val p = $f(p2); $body }"
+    case code"($f: $t0 => $t1) andThen ((p: t1) => $body: $t2)" =>
+      code"(p2: $t0) => { val p = $f(p2); $body }"
       
     /** andThen andThen apply -> apply */
-    case ir"($f: $t0 => $t1) andThen ($g: t1 => $t2) apply $a" => ir"$g($f($a))"
+    case code"($f: $t0 => $t1) andThen ($g: t1 => $t2) apply $a" => code"$g($f($a))"
       
     /** lambda apply -> . */
-    case ir"((p: $t0) => $body: $t1)($arg)" => body subs ('p -> arg)
+    case code"((p: $t0) => $body: $t1)($arg)" => body subs ('p -> arg)
     // Version with intermediate binding (against code dup): -- may loop if val bindings are represented as redexes!!
     //case ir"((param: $t0) => $body: $t1)($arg)" => ir"val param = $arg; $body"
       
       
     /** list map -> list */
-    case ir"List[$t0]($xs*).map($f: t0 => $t1)" =>
+    case code"List[$t0]($xs*).map($f: t0 => $t1)" =>
     //case ir"List[$t0](${xs @ __*}).map($f: t0 => $t1)" => // FIXME: Error:(13, 11) exception during macro expansion: scala.MatchError: (xs @ (__* @ _)) (of class scala.reflect.internal.Trees$Bind)
       // FIXME $xs* syntax!
       
       // works:
-      ir"List(${ xs map (r => ir"$f($r)"): _* })"
+      code"List(${ xs map (r => code"$f($r)"): _* })"
       
       // works:
       //val args = xs map (r => ir"$f($r)")

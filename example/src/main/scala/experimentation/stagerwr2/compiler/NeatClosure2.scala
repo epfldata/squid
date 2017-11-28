@@ -8,52 +8,52 @@ import Embedding.Quasicodes._
 import Embedding.$
 import Embedding.SimplePredef._
 
-abstract class AdHocPoly[X] { def apply[T](t: Code[T]): Code[X] => Code[T] }
+abstract class AdHocPoly[X] { def apply[T](t: AnyCode[T]): AnyCode[X] => AnyCode[T] }
 
 object NeatClosure2 { // FIXME make reopen polymorphic!
   
-  def mkFun[S,T](body: IR[T,{val x:S}]) = (x: Code[S]) => body subs 'x -> x.asClosedIR
+  def mkFun[S,T](body: Code[T,{val x:S}]) = (x: AnyCode[S]) => body subs 'x -> x.asClosedCode
   
   //def close[X:IRType,R,S](f: Code[X] => Code[R])(k: (Code[R], Code[S] => Code[X] => Code[S]) => Code[S]): Code[S] = {
-  def close[X:IRType,R,S](f: Code[X] => Code[R])(k: (Code[R], AdHocPoly[X]) => Code[S]): Code[S] = {
+  def close[X:CodeType,R,S](f: AnyCode[X] => AnyCode[R])(k: (AnyCode[R], AdHocPoly[X]) => AnyCode[S]): AnyCode[S] = {
     import base._
     val fv = freshBoundVal(typeRepOf[X])
-    val body = f(IR(base.readVal(fv)))
+    val body = f(Code(base.readVal(fv)))
     //k(body, b => x => 
     //  IR(base.inline(fv,b.rep,x.rep)))
     k(body, new AdHocPoly[X] { 
-      def apply[T](b:Code[T]) = x => 
-        IR(base.inline(fv,b.rep,x.rep))
+      def apply[T](b:AnyCode[T]) = x => 
+        Code(base.inline(fv,b.rep,x.rep))
     })
   }
   
-  def doFlatMapStaged[A:IRType,B:IRType](p: Code[Producer[A]], f: Code[A] => Code[Producer[B]]): Code[Producer[B]] = {
+  def doFlatMapStaged[A:CodeType,B:CodeType](p: AnyCode[Producer[A]], f: AnyCode[A] => AnyCode[Producer[B]]): AnyCode[Producer[B]] = {
     
     //close[A,Producer[B],Nothing](f) { (body,reopen) =>
     close[A,Producer[B],Producer[B]](f) { (body,reopen) =>
-      def rec(t: Code[Producer[B]], reset: Code[() => Unit]): Code[Producer[B]] = t match {
+      def rec(t: AnyCode[Producer[B]], reset: AnyCode[() => Unit]): AnyCode[Producer[B]] = t match {
           
-        case ir"val x = Var[$xt]($init); $innerBody: Producer[B]" =>
+        case code"val x = Var[$xt]($init); $innerBody: Producer[B]" =>
           println("REC var "+init)
           val innerBodyFun = mkFun(innerBody)
           //rec(body)
           close(innerBodyFun) { (ib,reopenIb) =>
             //ir"val y = Var(uncheckedNullValue[$xt]); ${reopenIb(rec(ib))}(y)"
-            ir"val y = Var(uncheckedNullValue[$xt]); ${(y:Code[Var[xt.Typ]]) => reopenIb(rec(ib,ir"() => { $reset(); $y := $init }"))(y)}(y)"
+            code"val y = Var(uncheckedNullValue[$xt]); ${(y:AnyCode[Var[xt.Typ]]) => reopenIb(rec(ib,code"() => { $reset(); $y := $init }"))(y)}(y)"
           }
           
-        case ir"val x: $xt = $init; $innerBody: Producer[B]" =>
+        case code"val x: $xt = $init; $innerBody: Producer[B]" =>
           println("REC val "+init)
           val innerBodyFun = mkFun(innerBody)
           close(innerBodyFun) { (ib,reopenIb) =>
-            ir"val y = Var(uncheckedNullValue[$xt]); ${(y:Code[Var[xt.Typ]]) => reopenIb(rec(ib,ir"() => { $reset(); $y := $init }"))(ir"$y.!")}(y)"
+            code"val y = Var(uncheckedNullValue[$xt]); ${(y:AnyCode[Var[xt.Typ]]) => reopenIb(rec(ib,code"() => { $reset(); $y := $init }"))(code"$y.!")}(y)"
           }
           
-        case ir"$effect; $innerBody: Producer[B]" =>
+        case code"$effect; $innerBody: Producer[B]" =>
           println("REC eff "+effect)
-          rec(innerBody, ir"() => { $reset(); $effect; () }")
+          rec(innerBody, code"() => { $reset(); $effect; () }")
           
-        case ir"(k: (B => Unit)) => $innerBody: Unit" =>
+        case code"(k: (B => Unit)) => $innerBody: Unit" =>
           
           val reot = reopen(t)
           
@@ -62,7 +62,7 @@ object NeatClosure2 { // FIXME make reopen polymorphic!
           
           import Strm._
           
-          ir"""
+          code"""
             var curA: Option[A] = None
             (k:Consumer[B]) => {
               var consumed_fmr = false
@@ -85,7 +85,7 @@ object NeatClosure2 { // FIXME make reopen polymorphic!
         //case _ => // TODO handle non-fusable case 
           
       }
-      rec(body, ir"() => ()")
+      rec(body, code"() => ()")
       //??? : Code[Nothing]
     }
     

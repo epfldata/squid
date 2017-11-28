@@ -19,7 +19,7 @@ class OptimTests extends FunSuite {
     
     //val c0 = ir"Sequence(1,2,3,4)" // FIXME handle varargs in @embed...
     
-    val c0 = ir"Sequence.fromIndexed(1 to 10).toString"
+    val c0 = code"Sequence.fromIndexed(1 to 10).toString"
     
     val res = "Sequence(1,2,3,4,5,6,7,8,9,10)"
     assert(c0.run == res)

@@ -9,9 +9,9 @@ class TrickyTypes extends MyFunSuite {
   
   test("Local Type Synonym") {
     
-    ir"Option.empty[String]" eqt {
+    code"Option.empty[String]" eqt {
       type String = java.lang.String
-      ir"Option.empty[String]"
+      code"Option.empty[String]"
     }
     
   }
@@ -21,12 +21,12 @@ class TrickyTypes extends MyFunSuite {
     class Lol
     
     assertDoesNotCompile("""
-      ir"Option.empty[Lol]"
+      code"Option.empty[Lol]"
     """)
     
-    ir"Option.empty[Int]" eqt {
-      implicit val LolImpl = irTypeOf[Int].asInstanceOf[IRType[Lol]]
-      ir"Option.empty[Lol]"
+    code"Option.empty[Int]" eqt {
+      implicit val LolImpl = codeTypeOf[Int].asInstanceOf[CodeType[Lol]]
+      code"Option.empty[Lol]"
     }
     
   }
@@ -34,8 +34,8 @@ class TrickyTypes extends MyFunSuite {
   
   test("Explicit Empty Contexts and Inferred Contexts") {
     
-    List[IR[Int,{}]](ir"1", ir"2", ir"3").foldLeft(ir"0") { (acc, exp) =>
-      ir"if ($acc != 0) $acc else $exp"
+    List[Code[Int,{}]](code"1", code"2", code"3").foldLeft(code"0") { (acc, exp) =>
+      code"if ($acc != 0) $acc else $exp"
     }
     
   }
@@ -44,21 +44,21 @@ class TrickyTypes extends MyFunSuite {
   test("Lambda with Expected Type") {
     import base.Quasicodes._
     
-    val c1: IR[Int => Int => Bool => Bool,_] = ir{ (s:Int) =>
+    val c1: Code[Int => Int => Bool => Bool,_] = ir{ (s:Int) =>
       val n = 42
       k => { b => b }
     }
     
-    eqt(c1.typ, irTypeOf[Int => Int => Bool => Bool])
+    eqt(c1.typ, codeTypeOf[Int => Int => Bool => Bool])
     
   }
   
   
-  def foo[T](x:IR[T,{}]) = ir"$x==0"
+  def foo[T](x:Code[T,{}]) = code"$x==0"
   
   test("Any method called on type parameter") {
-    foo(ir"42") eqt ir"${ir"42:Any"} == 0"
-    foo(ir"42") neqt ir"${ir"42"} == 0" // Note: Int.== and Any.== have two different method symbols!!
+    foo(code"42") eqt code"${code"42:Any"} == 0"
+    foo(code"42") neqt code"${code"42"} == 0" // Note: Int.== and Any.== have two different method symbols!!
   }
   
   

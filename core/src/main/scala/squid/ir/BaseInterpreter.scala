@@ -197,7 +197,7 @@ class BaseInterpreter extends Base with RuntimeSymbols with TraceDebug {
   def constType(value: Any, underlying: TypeRep): TypeRep = () => ???
   
   object Const extends ConstAPI {
-    def unapply[T: sru.TypeTag](ir: IR[T, _]): Option[T] = ???
+    def unapply[T: sru.TypeTag](ir: Code[T, _]): Option[T] = ???
   }
   def hole(name: String, typ: TypeRep): Rep = throw new RuntimeException(s"Cannot interpret hole '$name' of ${typ()}")
   def hopHole(name: String, typ: TypeRep, yes: List[List[BoundVal]], no: List[BoundVal]): Rep = ???

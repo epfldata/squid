@@ -20,23 +20,23 @@ class MultiStage extends MyFunSuite {
   test("Nested ir expressions") {
     
     {
-      val ir2 = ir{ ir{42} } : IR[IR[Int,{}],{}]
-      val ir1 = ir2.run : IR[Int,{}]
-      assert(ir1 =~= ir"42")
+      val ir2 = ir{ ir{42} } : Code[Code[Int,{}],{}]
+      val ir1 = ir2.run : Code[Int,{}]
+      assert(ir1 =~= code"42")
       assert(ir1.run == 42)
     }
     
     {
-      val ir2 = ir{ ir{scala.None} } : IR[IR[Option[Int],{}],{}]
-      val ir1 = ir2.run : IR[Option[Int],{}]
-      assert(ir1 =~= ir"scala.None")
+      val ir2 = ir{ ir{scala.None} } : Code[Code[Option[Int],{}],{}]
+      val ir1 = ir2.run : Code[Option[Int],{}]
+      assert(ir1 =~= code"scala.None")
       assert(ir1.run == scala.None)
     }
     
     {
-      val ir2 = ir{ ir{ List(1,2,3) map (_ + 1 toDouble) } } : IR[IR[List[Double],{}],{}]
-      val ir1 = ir2.run : IR[List[Double],{}]
-      assert(ir1 =~= ir"List(1,2,3) map (_ + 1 toDouble)")
+      val ir2 = ir{ ir{ List(1,2,3) map (_ + 1 toDouble) } } : Code[Code[List[Double],{}],{}]
+      val ir1 = ir2.run : Code[List[Double],{}]
+      assert(ir1 =~= code"List(1,2,3) map (_ + 1 toDouble)")
       assert(ir1.run == { List(1,2,3) map (_ + 1 toDouble) })
     }
     
@@ -48,7 +48,7 @@ class MultiStage extends MyFunSuite {
      * (See cod eat end of file.)
      */
     
-    assert(irTypeOf[base.MtdSymbol].rep == base.uninterpretedType[sru.MethodSymbol])
+    assert(codeTypeOf[base.MtdSymbol].rep == base.uninterpretedType[sru.MethodSymbol])
     
     // Note:
     //ir{ ir{ ir{ List(1,2,3) map (_ + 1 toDouble) } } }  // Error:(49, 7) Embedding Error: Unsupported feature: TypeTag construction (for scp.utils.meta.RuntimeUniverseHelpers.sru.TypeSymbol)
@@ -58,14 +58,14 @@ class MultiStage extends MyFunSuite {
   test("Doubly-Nested ir expressions") {
     
     {
-      val ir3 = ir{ ir{ ir{scala.None} } } : IR[IR[IR[Option[Int],{}],{}],{}]
-      val ir2 = ir3.run : IR[IR[Option[Int],{}],{}]
-      val ir1 = ir2.run : IR[Option[Int],{}]
+      val ir3 = ir{ ir{ ir{scala.None} } } : Code[Code[Code[Option[Int],{}],{}],{}]
+      val ir2 = ir3.run : Code[Code[Option[Int],{}],{}]
+      val ir1 = ir2.run : Code[Option[Int],{}]
       //assert(ir2 =~= ir""" ir"scala.None" """)
       // ^ Note: this one is false because ir2, which uses QC, refers to `TestDSL2.Quasicodes.qcbase` while the other,
       // which uses QQ, refers to `TestDSL2.Predef.base`, which are semantically equivalent but different trees.
-      assert(ir2 =~= ir""" ir{scala.None} """)
-      assert(ir1 =~= ir"scala.None")
+      assert(ir2 =~= code""" ir{scala.None} """)
+      assert(ir1 =~= code"scala.None")
       assert(ir1.run == scala.None)
     }
     
@@ -78,7 +78,7 @@ class MultiStage extends MyFunSuite {
 object MultiStage {
   import TestDSL.Predef._
   
-  val rep = ir"42.toDouble"
+  val rep = code"42.toDouble"
   
 }
 

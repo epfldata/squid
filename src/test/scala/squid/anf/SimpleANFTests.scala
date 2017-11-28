@@ -29,21 +29,21 @@ class SimpleANFTests extends MyFunSuite(SimpleANFTests.DSL) {
   
   //case class bl[A,B](ir: DSL.IR[A,B]) {
   //  val r: DSL.Rep = ir.rep
-  def bl[A,B](ir: DSL.IR[A,B]): bl = bl(ir.rep)
+  def bl[A,B](ir: DSL.Code[A,B]): bl = bl(ir.rep)
   case class bl(r: DSL.Rep) {
     lazy val (effects,ret) = r.asBlock
     override def toString: String = s"($effects, $ret)"
   }
   
-  val ri = ir"readInt"
+  val ri = code"readInt"
   
   
   test("Variables") {
     
-    val f = ir"(x: Int) => {var a = x+1; a + a}"
+    val f = code"(x: Int) => {var a = x+1; a + a}"
     
-    ir"$f(42)" eqt
-      ir"""{
+    code"$f(42)" eqt
+      code"""{
         val x_0: scala.Int = (42:Int) + 1;
         var v_1: scala.Int = x_0;
         v_1 + v_1
@@ -54,25 +54,25 @@ class SimpleANFTests extends MyFunSuite(SimpleANFTests.DSL) {
   
   test("Imperative Flattening") {
     
-    val model = ir"print(1); print(2); print(3); print(4); 42"
+    val model = code"print(1); print(2); print(3); print(4); 42"
     
-    model eqt ir"print(1); { print(2); print(3) }; print(4); 42"
+    model eqt code"print(1); { print(2); print(3) }; print(4); 42"
     
-    val mid = ir"print(2); print(3)"
-    model eqt ir"print(1); {{ $mid; print(4) }; 42}"
+    val mid = code"print(2); print(3)"
+    model eqt code"print(1); {{ $mid; print(4) }; 42}"
     
   }
   
   
   test("Term Composition") {
     
-    val riri = ir"2 * ($ri + $ri)"
-    riri eqt ir"val ri0 = $ri; val ri1 = $ri; val s = ri0 + ri1; 2 * s"
+    val riri = code"2 * ($ri + $ri)"
+    riri eqt code"val ri0 = $ri; val ri1 = $ri; val s = ri0 + ri1; 2 * s"
     assert(bl(riri)
       .effects.size == 3)  // FIXME? ret not trivial
     //println(bl(riri).ret)
     
-    val ascr = ir"$riri : Any"
+    val ascr = code"$riri : Any"
     // FIXME
     //println(ascr rep)
     //assert(bl(ascr) // [ (#2 = scala.Predef.readInt()); (#7 = #2.+(#2)); (#8 = 2.*(#7)); #8: Any ]
@@ -81,8 +81,8 @@ class SimpleANFTests extends MyFunSuite(SimpleANFTests.DSL) {
     //println(bl(bl(ascr).ret))
     //println(bl(bl(bl(ascr).ret).ret))
     
-    val incr = ir"$riri + 1"
-    incr eqt ir"val riri = $riri; riri + 1"
+    val incr = code"$riri + 1"
+    incr eqt code"val riri = $riri; riri + 1"
     //incr eqt ir"val riri = $riri; val r = riri + 1; r" // FIXME trivial ret
     
   }
@@ -91,11 +91,11 @@ class SimpleANFTests extends MyFunSuite(SimpleANFTests.DSL) {
   // FIXME when xting a lambda body, we replace the param by a hole but by doing so the body block registers new effects (that used to be captured in enclosing scopes...)
   test("Insertion Across Binder") {
     
-    val a = ir"() => $ri+1"
+    val a = code"() => $ri+1"
     
     a eqt a
     
-    val aEq = ir"() => { val r = $ri; r+1 }"
+    val aEq = code"() => { val r = $ri; r+1 }"
     
     aEq eqt aEq // FIXME
     aEq eqt a
@@ -108,25 +108,25 @@ class SimpleANFTests extends MyFunSuite(SimpleANFTests.DSL) {
   
   test("FV Substitution") {
     
-    val open = ir"println($$x)"
+    val open = code"println($$x)"
     
-    val a = ir"val x = 42; $open"
-    a eqt ir"println(42)"
+    val a = code"val x = 42; $open"
+    a eqt code"println(42)"
     assert(bl(a) // [ (#16 = scala.Predef.println(42)); #16 ]
       .effects.size == 0) // FIXME?
     
-    val b = ir"val x = 42; $open -> $open"
-    b eqt ir"println(42) -> println(42)"
+    val b = code"val x = 42; $open -> $open"
+    b eqt code"println(42) -> println(42)"
     assert(bl(b) // [ (#35 = scala.Predef.println(42)); (#36 = scala.Predef.ArrowAssoc[Unit](#35)); (#37 = scala.Predef.println(42)); (#38 = #36.->[Unit](#37)); #38 ]
       .effects.size == 3) // FIXME?
     
     
-    val c = ir"() => ($$x: Unit)"
+    val c = code"() => ($$x: Unit)"
     assert(bl(c).effects.isEmpty)
     
-    val d = c subs 'x -> ir"println(2.toDouble)"
-    d eqt ir"() => println(2.toDouble)"
-    d eqt ir"() => { val x = 2.toDouble; println(x) }"
+    val d = c subs 'x -> code"println(2.toDouble)"
+    d eqt code"() => println(2.toDouble)"
+    d eqt code"() => { val x = 2.toDouble; println(x) }"
     assert(bl(d).effects.isEmpty)
     
   }
@@ -134,63 +134,63 @@ class SimpleANFTests extends MyFunSuite(SimpleANFTests.DSL) {
   
   test("Correct Inlining") {
     
-    ir"((x: Int) => x + x)(42)" eqt
-      ir"val u = 42; u + u"
+    code"((x: Int) => x + x)(42)" eqt
+      code"val u = 42; u + u"
     
-    ir"println( {(x: Int) => x + x} apply readInt )" eqt
-      ir"val u = readInt; val p = u + u; println(p)"
+    code"println( {(x: Int) => x + x} apply readInt )" eqt
+      code"val u = readInt; val p = u + u; println(p)"
     
-    ir"((x: Int, y: Int) => x + y)(1,2)" //transformWith (new SimpleANFTests.DSL.SelfTransformer with BindingNormalizer) eqt
-      ir"val u = 1; val v = 2; u + v"
+    code"((x: Int, y: Int) => x + y)(1,2)" //transformWith (new SimpleANFTests.DSL.SelfTransformer with BindingNormalizer) eqt
+      code"val u = 1; val v = 2; u + v"
     
-    ir"val f = (x: Int) => x; f(42)" eqt ir"42"
+    code"val f = (x: Int) => x; f(42)" eqt code"42"
     
   }
   
   
   test("Simple Term Equivalence") {
     
-    val lss = ir"List(1,2,3).sum"
+    val lss = code"List(1,2,3).sum"
     
-    lss eqt ir"List(1,2,3).sum"
+    lss eqt code"List(1,2,3).sum"
     
     //lss eqt ir"val a = 1; val ls = { val c = 3; List(a,{val tmp = 2; val b = tmp; b},c) }; val s = ls.sum; s" // FIXME
-    lss eqt ir"val a = 1; val ls = { val c = 3; List(a,{val tmp = 2; val b = tmp; b},c) }; ls.sum"
+    lss eqt code"val a = 1; val ls = { val c = 3; List(a,{val tmp = 2; val b = tmp; b},c) }; ls.sum"
     
   }
   
   
   test("Block Equivalence") {
     
-    val rd = ir"() => readDouble"
-    ir"$rd" eqt ir"$rd"
-    ir"($rd)()" eqt ir"($rd)()"
-    ir"($rd)() * ($rd)()" eqt ir"($rd)() * ($rd)()"
-    ir"(() => 42)() * (() => 42)()" eqt ir"val f = () => 42; f() * f()"
+    val rd = code"() => readDouble"
+    code"$rd" eqt code"$rd"
+    code"($rd)()" eqt code"($rd)()"
+    code"($rd)() * ($rd)()" eqt code"($rd)() * ($rd)()"
+    code"(() => 42)() * (() => 42)()" eqt code"val f = () => 42; f() * f()"
     
   }
   
   
   test("Block Inlining") {
     
-    val f = ir"() => readDouble"
+    val f = code"() => readDouble"
     
-    ir"val f = $f; (f, f)" eqt
-      ir"(() => readDouble, () => readDouble)"
+    code"val f = $f; (f, f)" eqt
+      code"(() => readDouble, () => readDouble)"
     
-    ir"($f)() * ($f)()" eqt
-      ir"val f = $f; f() * f()"
+    code"($f)() * ($f)()" eqt
+      code"val f = $f; f() * f()"
     
-    ir"(() => readDouble)() * (() => readDouble)()" eqt
-      ir"val f = $f; f() * f()"
+    code"(() => readDouble)() * (() => readDouble)()" eqt
+      code"val f = $f; f() * f()"
     
-    val fufu = ir"val f = (x:Unit) => readDouble; f(Unit) * f(Unit)"
-    fufu eqt ir"readDouble * readDouble"
-    fufu neqt ir"val r = readDouble; val f = (x:Unit) => r; f(Unit) * f(Unit)"
+    val fufu = code"val f = (x:Unit) => readDouble; f(Unit) * f(Unit)"
+    fufu eqt code"readDouble * readDouble"
+    fufu neqt code"val r = readDouble; val f = (x:Unit) => r; f(Unit) * f(Unit)"
     
     {
-      val a = ir"val f = (x:Unit) => readInt; f(Unit) * f(Unit)"
-      val b = ir"val a = readInt; val b = readInt; a * b"
+      val a = code"val f = (x:Unit) => readInt; f(Unit) * f(Unit)"
+      val b = code"val a = readInt; val b = readInt; a * b"
       a eqt b
     }
     
@@ -216,10 +216,10 @@ class SimpleANFTests extends MyFunSuite(SimpleANFTests.DSL) {
   
   test("Inlined Argument Eval Order") {
     
-    ir"((x: Int) => println(x))(readInt)" eqt
-      ir"val x = readInt; println(x)"
+    code"((x: Int) => println(x))(readInt)" eqt
+      code"val x = readInt; println(x)"
     
-    ir"((_: Int) => println)(readInt)" eqt ir"val _ = readInt; println"
+    code"((_: Int) => println)(readInt)" eqt code"val _ = readInt; println"
     //ir"((_: Int) => println)(readInt)" eqt ir"readInt; println" // FIXME
     
   }
@@ -227,45 +227,45 @@ class SimpleANFTests extends MyFunSuite(SimpleANFTests.DSL) {
   
   test("Effectful Term Equivalence") {
     
-    ir"println(42)" eqt ir"println(42)"
+    code"println(42)" eqt code"println(42)"
     
     //ir"println(42)" eqt ir"println(42); ()"  // TODO Unit normalization
     
-    ir"println(42); println" eqt ir"println(42); println"
+    code"println(42); println" eqt code"println(42); println"
     
     // Don't ignore effects:
-    eqt(ir"println(42); println", ir"println", false)
-    eqt(ir"println; 42", ir"42", false)
+    eqt(code"println(42); println", code"println", false)
+    eqt(code"println; 42", code"42", false)
     
     // Don't conflate distinct effects
-    eqt(ir"println -> println", ir"val x = println; x -> x", false)
+    eqt(code"println -> println", code"val x = println; x -> x", false)
     
     // Don't gloss over closure scopes
-    eqt(ir"() => {val x = readInt; x+x}", ir"val x = readInt; () => x+x", false)
-    eqt(ir"val x = readInt; (y: Int) => x+y", ir"(y: Int) => {val x = readInt; x+y}", false)
+    eqt(code"() => {val x = readInt; x+x}", code"val x = readInt; () => x+x", false)
+    eqt(code"val x = readInt; (y: Int) => x+y", code"(y: Int) => {val x = readInt; x+y}", false)
     
     // Don't assimilate different values -- remember assignments
-    eqt(ir"val a = readInt; val b = readDouble; a + b", ir"readInt + readDouble")
-    eqt(ir"val a = readInt; val b = readInt; a + b", ir"val a = readInt; val b = a; a + b", false)
+    eqt(code"val a = readInt; val b = readDouble; a + b", code"readInt + readDouble")
+    eqt(code"val a = readInt; val b = readInt; a + b", code"val a = readInt; val b = a; a + b", false)
     
     // Don't gloss over eval order
-    eqt(ir"val a = readInt; val b = readDouble; b + a", ir"readDouble + readInt", false)
+    eqt(code"val a = readInt; val b = readDouble; b + a", code"readDouble + readInt", false)
     
   }
   
   
   test("Matching") {
     
-    val x = ir"(x: Int) => println(x)"
+    val x = code"(x: Int) => println(x)"
     
     x match {
-      case ir"(x: Int) => $bo" =>
-        bo eqt ir"println($$x: Int)"
+      case code"(x: Int) => $bo" =>
+        bo eqt code"println($$x: Int)"
     }
     x match {
-      case ir"($x: Int) => $bo" =>
-        bo eqt ir"println($$x: Int)"
-        bo match { case ir"println($$x)" => }
+      case code"($x: Int) => $bo" =>
+        bo eqt code"println($$x: Int)"
+        bo match { case code"println($$x)" => }
     }
     
     // We don't support multi-effect-holes matching (yet?)
@@ -276,7 +276,7 @@ class SimpleANFTests extends MyFunSuite(SimpleANFTests.DSL) {
         println(bo rep)
     }*/
     
-    val init = ir"val x = readInt; x + x"
+    val init = code"val x = readInt; x + x"
     
     //val xtor = ir"$$eff; ($$a:Int) + ($$a: Int)"
     ////val xtor = ir"$$eff; (readInt) + (readInt)"
@@ -366,23 +366,23 @@ class SimpleANFTests extends MyFunSuite(SimpleANFTests.DSL) {
   
   test("By-Name Behavior of Boolean && ||") {
     
-    val c0 = ir"true && {println;true}"
+    val c0 = code"true && {println;true}"
     assert(c0.rep.asBlock._1.isEmpty)
     
     c0 match {
-      case ir"($a:Boolean) && $b" =>
-        a eqt ir"true"
-        b eqt ir"println; true"
+      case code"($a:Boolean) && $b" =>
+        a eqt code"true"
+        b eqt code"println; true"
     }
     
-    val c1 = ir"true || {println;true}"
+    val c1 = code"true || {println;true}"
     assert(c1.rep.asBlock._1.isEmpty)
     
     c1 match {
-      case ir"($a:Boolean) && $b" => fail
-      case ir"($a:Boolean) || $b" =>
-        a eqt ir"true"
-        b eqt ir"println; true"
+      case code"($a:Boolean) && $b" => fail
+      case code"($a:Boolean) || $b" =>
+        a eqt code"true"
+        b eqt code"println; true"
     }
     
   }

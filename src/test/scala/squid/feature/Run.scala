@@ -7,51 +7,51 @@ class Run extends MyFunSuite {
   
   test("New") {
     import BasicEmbedding._
-    val mc = ir"new MC(42)('ok, 'ko)"
+    val mc = code"new MC(42)('ok, 'ko)"
     assert(mc.run == new MC(42)('ok, 'ko))
   }
   
   test("Modules") {
-    same(ir"List".run, List)
-    same(ir"Nil".run, Nil)
-    same(ir"Run".run, Run)
-    same(ir"squid.TestDSL.Predef".run.base, TestDSL)
+    same(code"List".run, List)
+    same(code"Nil".run, Nil)
+    same(code"Run".run, Run)
+    same(code"squid.TestDSL.Predef".run.base, TestDSL)
   }
   
   test("Nullary Methods") {
-    same(ir"List()".run, List())
-    same(ir"List.empty".run, List.empty)
-    same(ir"List.canBuildFrom[Int]".run, List.canBuildFrom[Int])
+    same(code"List()".run, List())
+    same(code"List.empty".run, List.empty)
+    same(code"List.canBuildFrom[Int]".run, List.canBuildFrom[Int])
   }
   
   test("Imperative stuff") {
-    same(ir"var ls: List[Int] = Nil; ls ::= 1; ls ::= 2; ls ::= 3; ls.reverse.mkString".run, "123")
-    same(ir"val bf = List.canBuildFrom[Int](); bf += 1; bf += 2; bf += 3; bf.result".run, List(1,2,3))
+    same(code"var ls: List[Int] = Nil; ls ::= 1; ls ::= 2; ls ::= 3; ls.reverse.mkString".run, "123")
+    same(code"val bf = List.canBuildFrom[Int](); bf += 1; bf += 2; bf += 3; bf.result".run, List(1,2,3))
   }
   
   test("Functions") {
     
-    assert(ir"((x: Int) => x + 1)(42)".run == 43)
+    assert(code"((x: Int) => x + 1)(42)".run == 43)
     
-    val f = ir"(x: Int) => x+1"
+    val f = code"(x: Int) => x+1"
     
     assert((f.run apply 42) == 43)
     
-    assert(ir"Run.f(42)".run == 43)
+    assert(code"Run.f(42)".run == 43)
     
   }
   
   test("Compile Error On Open Terms") {
     
-    assertDoesNotCompile(""" ir"($$x: Int) + 1".run """)
+    assertDoesNotCompile(""" code"($$x: Int) + 1".run """)
     
-    val x = ir"42": Q[Int, {val x: Int}]
+    val x = code"42": Q[Int, {val x: Int}]
     assertDoesNotCompile(""" x.run """)
     
   }
   
   test("n until m") {
-    val t = ir"0 until 42"
+    val t = code"0 until 42"
     assert(t.run == (0 until 42))
   }
   
@@ -62,15 +62,15 @@ class Run extends MyFunSuite {
   //}
   
   test("Array and ClassTag") {
-    assert(ir"""Array.fill(3)("woof").toSeq""".run == Array.fill(3)("woof").toSeq)
+    assert(code"""Array.fill(3)("woof").toSeq""".run == Array.fill(3)("woof").toSeq)
   }
   
   test("Java Methods") {
-    same(ir"""String.valueOf("ok")""".run, String.valueOf("ok"))
-    same(ir""" "a" + "b" """.run, "ab")
-    same(ir""" "a" + 42 """.run, "a42")
-    same(ir""" "ok".length """.run, 2)
-    same(ir""" "ok".size """.run, 2)
+    same(code"""String.valueOf("ok")""".run, String.valueOf("ok"))
+    same(code""" "a" + "b" """.run, "ab")
+    same(code""" "a" + 42 """.run, "a42")
+    same(code""" "ok".length """.run, 2)
+    same(code""" "ok".size """.run, 2)
   }
   
   

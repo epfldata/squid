@@ -9,35 +9,35 @@ class Genericity extends MyFunSuite {
   
   test("Generic Contexts and AnyRef") {
     
-    assertCompiles(""" def constructTuple[C](x: IR[Int, C]): IR[Int, C] = ir"$x + ${Const(123)}" """)
-    assertCompiles(""" def constructTuple[C]: IR[Int, C] = ir"${Const(123):IR[Int,AnyRef]}" """)
+    assertCompiles(""" def constructTuple[C](x: Code[Int, C]): Code[Int, C] = code"$x + ${Const(123)}" """)
+    assertCompiles(""" def constructTuple[C]: Code[Int, C] = code"${Const(123):Code[Int,AnyRef]}" """)
     
   }
   
   
   test("List") {
     
-    val ls = ir"List(1.0, 2.0)"
+    val ls = code"List(1.0, 2.0)"
     //println(ls.rep.typ)
     
     
     //def foo[A: TypeEv](x: Q[A,{}]) = x match {
     def foo[A: TypeEv](x: Q[List[A],{}]) = x match {
-      case ir"List[A]($x,$y)" =>
+      case code"List[A]($x,$y)" =>
         //println(typeEv[A])
-        ir"List($y,$x)"
+        code"List($y,$x)"
     }
     
     //println(foo(ls))
     
     (ls: Q[_,{}]) match {
-      case ir"$ls: List[Int]" => ???
-      case ir"$ls: List[Double]" =>
+      case code"$ls: List[Int]" => ???
+      case code"$ls: List[Double]" =>
     }
     
     
     (ls: Q[_,{}]) match {
-      case ir"$ls: List[$t]" => eqt(t, irTypeOf[Double])
+      case code"$ls: List[$t]" => eqt(t, codeTypeOf[Double])
     }
     
     /*

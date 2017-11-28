@@ -94,15 +94,15 @@ object ImplFlowOptimizer extends Embedding.SelfTransformer with FixPointRuleBase
   
   rewrite {
       
-    case ir"($as: Strm[$ta]).map[$tb]($f).take($n)" =>
+    case code"($as: Strm[$ta]).map[$tb]($f).take($n)" =>
       //println(0)
-      ir"$as.take($n).map[$tb]($f)"
+      code"$as.take($n).map[$tb]($f)"
       
     //case ir"($as: Strm[$ta]).map[$tb]($f).drop($n)" =>
     //  ir"$as.drop($n).map[$tb]($f)"
       
-    case ir"($as: Strm[$ta]).take($n).take($m)" =>
-      ir"$as.take($n max $m)"
+    case code"($as: Strm[$ta]).take($n).take($m)" =>
+      code"$as.take($n max $m)"
       
     //case ir"($as: Strm[$ta]).take($n).drop($m)" =>
     //  ir"$as.drop($m).take($n - $m)" // FIXME careful with drop(-n) ... normally valid
@@ -111,15 +111,15 @@ object ImplFlowOptimizer extends Embedding.SelfTransformer with FixPointRuleBase
     //  ir"$as.drop($n + $m)"
       
       
-    case ir"($as: Strm[$ta]).map[$tb]($fb).map[$tc]($fc)" =>
-      ir"$as.map($fb andThen $fc)"
+    case code"($as: Strm[$ta]).map[$tb]($fb).map[$tc]($fc)" =>
+      code"$as.map($fb andThen $fc)"
       
-    case ir"($as: Strm[$ta]).flatMap[$tb]($fb).map[$tc]($fc)" =>
+    case code"($as: Strm[$ta]).flatMap[$tb]($fb).map[$tc]($fc)" =>
       //ir"$as.flatMap(_.map(_.map($fb andThen $fc))"
-      ir"$as.flatMap(as => $fb(as).map($fc))"
+      code"$as.flatMap(as => $fb(as).map($fc))"
       
-    case ir"($as: Strm[$ta]).map[$tb]($fb).flatMap[$tc]($fc)" =>
-      ir"$as.flatMap($fb andThen $fc)"
+    case code"($as: Strm[$ta]).map[$tb]($fb).flatMap[$tc]($fc)" =>
+      code"$as.flatMap($fb andThen $fc)"
       
     // TODO?
     //case ir"($as: Strm[$ta]).filter($pred)" =>
@@ -134,26 +134,26 @@ object ImplFlowOptimizer extends Embedding.SelfTransformer with FixPointRuleBase
       
     // Folding
       
-    case ir"($as: Strm[$ta]).foreach($f)" =>
-      ir"consumeWhile($as){a => $f(a); true}"
+    case code"($as: Strm[$ta]).foreach($f)" =>
+      code"consumeWhile($as){a => $f(a); true}"
       
-    case ir"consumeWhile(($as: Strm[$ta]).map[$tb]($f))($g)" =>
-      ir"consumeWhile($as)($f andThen $g)"
+    case code"consumeWhile(($as: Strm[$ta]).map[$tb]($f))($g)" =>
+      code"consumeWhile($as)($f andThen $g)"
     
-    case ir"consumeWhile(($as: Strm[$ta]).take($n))($f)" =>
+    case code"consumeWhile(($as: Strm[$ta]).take($n))($f)" =>
       //ir"var taken = 0; consumeWhile($as){a => taken < $n && $f(a) }"
-      ir"var taken = 0; consumeWhile($as){a => val t = taken; taken = t+1; t < $n && $f(a) }"
+      code"var taken = 0; consumeWhile($as){a => val t = taken; taken = t+1; t < $n && $f(a) }"
     
-    case ir"consumeWhile(($as: Strm[$ta]).flatMap[$tb]($f))($g)" =>
+    case code"consumeWhile(($as: Strm[$ta]).flatMap[$tb]($f))($g)" =>
       //ir"consumeWhileNested($as)($f andThen $g)"
-      ir"consumeWhileNested($as)($f)($g)"
+      code"consumeWhileNested($as)($f)($g)"
       
       
     // Zipping
       
-    case ir"consumeWhile(($as:Strm[$ta]).zipWith[$tb,$tc]($bs)($f))($g)" =>
+    case code"consumeWhile(($as:Strm[$ta]).zipWith[$tb,$tc]($bs)($f))($g)" =>
       
-      val as0 = ir"(k:$ta=>Bool) => consumeWhile($as)(k)" transformWith ImplFlowOptimizer
+      val as0 = code"(k:$ta=>Bool) => consumeWhile($as)(k)" transformWith ImplFlowOptimizer
       val bs0 = bs transformWith ImplFlowOptimizer
       
       println(as0)
@@ -223,7 +223,7 @@ object FlatMapFusion extends Embedding.SelfTransformer with FixPointRuleBasedTra
     //case ir"flatten[$ta]((k:Consumer[Producer[ta]]) => $body:ta)" =>
     //case ir"flatten[$ta]((k:Consumer[Producer[ta]]) => $body:Producer[ta])" =>
     // ^ nope, all wrong -- type check because of stupid Unit coercion
-    case ir"flatten[$ta]((k:Consumer[Producer[ta]]) => $body:Unit)" =>
+    case code"flatten[$ta]((k:Consumer[Producer[ta]]) => $body:Unit)" =>
       println(body)
       ???
       
@@ -235,7 +235,7 @@ object FlatMapFusion extends Embedding.SelfTransformer with FixPointRuleBasedTra
     //  ???
       
     //case ir"doFlatMap[$ta,$tb]($p,$f)" =>
-    case ir"doFlatMap[$ta,$tb]($p, a => ${NeatClosure(clos)})" =>
+    case code"doFlatMap[$ta,$tb]($p, a => ${NeatClosure(clos)})" =>
       //println(clos)
       //val res = clos.make[Nothing] { (term,reset) =>
       //  println(term,reset)
@@ -259,7 +259,7 @@ object FlatMapFusion extends Embedding.SelfTransformer with FixPointRuleBasedTra
       fuseFlatMap(p, clos)
       //fuseFlatMap[ta.Typ,tb.Typ](p, clos)
       
-    case ir"doFlatMap[$ta,$tb]($p, ${Lambda(body)})" =>   // goal is to extract lambda without making holes
+    case code"doFlatMap[$ta,$tb]($p, ${Lambda(body)})" =>   // goal is to extract lambda without making holes
       //fuseFlatMap(p, clos)
       ???
     
@@ -272,7 +272,7 @@ object FlatMapFusion extends Embedding.SelfTransformer with FixPointRuleBasedTra
   
   //def fuseFlatMap[A:IRType,B:IRType,C](p: IR[Producer[A],C], clos: NeatClosure[Producer[B],C{val a:A}]) = {
   //def fuseFlatMap[A:IRType,B:IRType,C](p: IR[Producer[A],C], clos: NeatClosure[Producer[B],C{val a:A}]): IR[Producer[B],C] = {
-  def fuseFlatMap[A:IRType,B:IRType,C](p: IR[Producer[A],C], clos: NeatClosure[Producer[B],C{val a:A}]): IR[Producer[B],Any] = { // ^ FIXME why?? :-(
+  def fuseFlatMap[A:CodeType,B:CodeType,C](p: Code[Producer[A],C], clos: NeatClosure[Producer[B],C{val a:A}]): Code[Producer[B],Any] = { // ^ FIXME why?? :-(
     val res = clos.make { (term,reset) =>
     //val res = clos.make[Producer[B]] { (term,reset) =>
       println("TR: ",term,reset)
@@ -311,7 +311,7 @@ object FlatMapFusion extends Embedding.SelfTransformer with FixPointRuleBasedTra
       //Embedding.SimplePredef unsound
       //
       ///*
-      ir"""
+      code"""
         var curA: Option[A] = None
         (k:Consumer[B]) => {
           var consumed = false
@@ -367,14 +367,14 @@ object FlatMapInlining extends Embedding.Lowering('FlatMap) with TopDownTransfor
 
 //object ImplLowering extends Embedding.Lowering('Impl) with TopDownTransformer
 object ImplInlining extends Embedding.Lowering('Impl)
-object ImplCtorInline extends Embedding.SelfIRTransformer with IRTransformer with FixPointTransformer {
-  def transform[T,C](code: IR[T,C]): IR[T,C] = (code match {
-    case ir"(if ($c) $thn else $els : Strm[$ta]).producer" => ir"if ($c) $thn.producer else $els.producer"
-    case ir"Strm($pf).producer" => pf
-    case ir"val $st = Strm[$t]($pf); $body: $bt" =>
-      body rewrite { case ir"$$st.producer" => pf } subs 'st -> {System.err.println("huh s");return code}
+object ImplCtorInline extends Embedding.SelfCodeTransformer with CodeTransformer with FixPointTransformer {
+  def transform[T,C](code: Code[T,C]): Code[T,C] = (code match {
+    case code"(if ($c) $thn else $els : Strm[$ta]).producer" => code"if ($c) $thn.producer else $els.producer"
+    case code"Strm($pf).producer" => pf
+    case code"val $st = Strm[$t]($pf); $body: $bt" =>
+      body rewrite { case code"$$st.producer" => pf } subs 'st -> {System.err.println("huh s");return code}
     case _ => code
-  }).asInstanceOf[IR[T,C]]
+  }).asInstanceOf[Code[T,C]]
 }
 object ImplLowering extends Embedding.TransformerWrapper(ImplInlining, ImplCtorInline) with TopDownTransformer with FixPointTransformer
 //object ImplLowering extends Embedding.TransformerWrapper(ImplInlining, ImplCtorInline) with BottomUpTransformer with FixPointTransformer

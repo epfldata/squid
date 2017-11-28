@@ -15,17 +15,17 @@ trait ListOptims extends SimpleRuleBasedTransformer { self =>
   
   rewrite {
     
-    case ir"($ls: List[$ta]) .foldLeft[$tb] ( $init )( $f )" =>
+    case code"($ls: List[$ta]) .foldLeft[$tb] ( $init )( $f )" =>
       
-      ir""" var cur = $init
+      code""" var cur = $init
             $ls foreach { x => cur = $f(cur, x) }
             cur """
       
       ///*
-    case ir"($ls: List[$t]) foreach ($f: t => Any)" =>
+    case code"($ls: List[$t]) foreach ($f: t => Any)" =>
       
       //val res =
-      ir""" var iter = $ls
+      code""" var iter = $ls
             while (iter.nonEmpty)
             { $f(iter.head); iter = iter.tail } """
       

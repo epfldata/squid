@@ -42,7 +42,7 @@ class SimpleANF extends AST with CurryEncoding with SimpleEffects { anf =>
   type StmtRep = Either[Val -> Rep, Rep]
   type BlockRep = List[StmtRep] -> Rep // Note: perhaps a repr easier to handle would be: List[Option[Val] -> Rep] -> Rep
   
-  override protected def mkIR[T,C](r: Rep): IR[T,C] = r.asInstanceOf[IR[T,C]]
+  override protected def mkCode[T,C](r: Rep): Code[T,C] = r.asInstanceOf[Code[T,C]]
   
   type Occurrence = Range
   object Occurrence {
@@ -51,7 +51,7 @@ class SimpleANF extends AST with CurryEncoding with SimpleEffects { anf =>
     val Unknown = 0 to Int.MaxValue
   }
   
-  case class Rep(dfn: Def) extends IR[Any,Nothing] {
+  case class Rep(dfn: Def) extends Code[Any,Nothing] {
     val rep = this
     
     def isTrivial = !effect.immediate

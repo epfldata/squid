@@ -29,34 +29,34 @@ class InheritedDefs extends MyFunSuite {
   
   test("Inherited Methods") {
     
-    val d = ir"Derived"
+    val d = code"Derived"
     
     assert(d.trep.tpe =:= typeRepOf[Derived.type].tpe)
     assert(d.trep.tpe =:= sru.typeOf[Derived.type])
     
     eqt(d.trep, typeRepOf[Derived.type])
-    same(ir"Derived.foo".run, 42)
-    same(ir"$d.foo".run, 42)
+    same(code"Derived.foo".run, 42)
+    same(code"$d.foo".run, 42)
     
-    same(ir"(new Derived()).foo".run, 0.5)
-    same(ir"(Derived()).foo".run, 0.5)
+    same(code"(new Derived()).foo".run, 0.5)
+    same(code"(Derived()).foo".run, 0.5)
     
     same(TestDSL.loadMtdSymbol(TestDSL.loadTypSymbol("squid.feature.Derived"), "foo", None), sru.typeOf[Derived].member(sru.TermName("foo")))
   }
   
   test("Inherited Classes") {
     
-    val ndti = ir"new Derived.Test[Int]"
-    val ndtd = ir"new Derived.TestDerived"
-    eqt(ndti.trep, ir"Derived.Test[Int]".trep)
-    eqt(ndtd.trep, ir"Derived.TestDerived()".trep)
+    val ndti = code"new Derived.Test[Int]"
+    val ndtd = code"new Derived.TestDerived"
+    eqt(ndti.trep, code"Derived.Test[Int]".trep)
+    eqt(ndtd.trep, code"Derived.TestDerived()".trep)
     
     eqt(ndti.trep, new base.TypeRep(sru.typeOf[Derived.Test[Int]]))
     assert(ndti.trep =:= new base.TypeRep(sru.typeOf[Derived.Test[Int]]))
     assert(!(ndtd.trep =:= new base.TypeRep(sru.typeOf[Derived.Test[Int]])))
     assert(ndtd.trep <:< new base.TypeRep(sru.typeOf[Derived.Test[Int]]))
     
-    same(ir"$ndtd.bar".run, 666)
+    same(code"$ndtd.bar".run, 666)
     
     
     val manual_ndtd = {

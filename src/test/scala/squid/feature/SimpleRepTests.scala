@@ -9,7 +9,7 @@ class SimpleRepTests extends MyFunSuite {
   import TestDSL.SimplePredef._
  
   def optim[A](pgrm: Rep[A]): Rep[A] = pgrm rewrite {
-    case ir"List[$t]($xs*).size" => Const(xs.size)
+    case code"List[$t]($xs*).size" => Const(xs.size)
   }
   
   test("Simple Rep") {
