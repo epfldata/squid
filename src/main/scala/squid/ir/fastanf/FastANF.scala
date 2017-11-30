@@ -837,13 +837,28 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     HOPHole2(name, typ, args, visible filterNot (args.flatten contains _))
   def substitute(r: => Rep, defs: Map[String, Rep]): Rep = {
     println(s"Subs: $r with $defs")
-    if (defs isEmpty) r |> inlineBlock // TODO works if I remove this...
-    else bottomUp(r) {
-      case h@Hole(n, _) => defs getOrElse(n, h)
-      case h@SplicedHole(n, _) => defs getOrElse(n, h)
-      //case h: BoundVal => defs getOrElse(h.name, h) // TODO FVs in lambda become BVs too early, this should be changed!!
-      case h => h
-    } |> inlineBlock
+    val r0 = 
+      if (defs isEmpty) r
+      else bottomUp(r) {
+        case h@Hole(n, _) => defs getOrElse(n, h)
+        case h@SplicedHole(n, _) => defs getOrElse(n, h)
+        //case h: BoundVal => defs getOrElse(h.name, h) // TODO FVs in lambda become BVs too early, this should be changed!!
+        case h => h
+      } 
+    
+    r0 |> inlineBlock
+  }
+  override def insertAfterTransformation(r: => Rep, defs: Map[String, Rep]): Rep = {
+    // TODO for now we do nothing to r. Later make sure that after applying the defs it is still valid in ANF!
+    require(defs.isEmpty)
+    r
+    
+    //if (defs isEmpty) r
+    //else bottomUp(r) {
+    //  case h@Hole(n, _) => defs getOrElse(n, h)
+    //  case h@SplicedHole(n, _) => defs getOrElse(n, h)
+    //  case h => h
+    //}
   }
 
 

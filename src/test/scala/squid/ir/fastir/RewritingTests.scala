@@ -55,6 +55,13 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
     assert(b =~= ir"val t = ${ir"Option(42)"}; 42")
   } 
   
+  test("Substitution should be called from inside a reification context") {
+    val a = ir"readDouble" rewrite {
+      case ir"readDouble" => ir"42.toDouble"
+    }
+    assert(a =~= ir"42.toDouble")
+  }
+  
   test("Rewriting sequences of bindings") {
     val a = ir"val a = readInt; val b = readDouble.toInt; a + b" rewrite {
       case ir"readDouble.toInt" => ir"readInt"
