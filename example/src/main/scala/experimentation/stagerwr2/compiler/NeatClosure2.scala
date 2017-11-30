@@ -12,7 +12,7 @@ abstract class AdHocPoly[X] { def apply[T](t: AnyCode[T]): AnyCode[X] => AnyCode
 
 object NeatClosure2 { // FIXME make reopen polymorphic!
   
-  def mkFun[S,T](body: Code[T,{val x:S}]) = (x: AnyCode[S]) => body subs 'x -> x.asClosedCode
+  def mkFun[S,T](body: Code[T,{val x:S}]) = (x: AnyCode[S]) => body subs 'x -> x.unsafe_asClosedCode
   
   //def close[X:IRType,R,S](f: Code[X] => Code[R])(k: (Code[R], Code[S] => Code[X] => Code[S]) => Code[S]): Code[S] = {
   def close[X:CodeType,R,S](f: AnyCode[X] => AnyCode[R])(k: (AnyCode[R], AdHocPoly[X]) => AnyCode[S]): AnyCode[S] = {

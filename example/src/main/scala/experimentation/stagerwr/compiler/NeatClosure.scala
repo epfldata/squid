@@ -14,7 +14,7 @@ import Embedding.SimplePredef.{Rep=>Code,_}
 
 object NeatClosure {
   
-  def mkFun[S,T](body: IR[T,{val x:S}]) = (x: Code[S]) => body subs 'x -> x.asClosedCode
+  def mkFun[S,T](body: IR[T,{val x:S}]) = (x: Code[S]) => body subs 'x -> x.unsafe_asClosedCode
   
   //def rec[T:CodeType](t: Code[T], reset: Code[() => Unit]): Code[T] = {
   def rec[T:CodeType,R:CodeType](t: Code[T], reset: Code[() => Unit], term_reset: (Code[T], Code[() => Unit]) => Code[R]): Code[R] = {

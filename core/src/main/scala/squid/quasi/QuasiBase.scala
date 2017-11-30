@@ -74,7 +74,7 @@ self: Base =>
     type Typ <: T
     val rep: Rep
     
-    def asClosedCode: Code[T,Any] = `internal Code`(rep)
+    def unsafe_asClosedCode: ClosedCode[T] = `internal Code`(rep)
     
     // In the future: have a mehtod that actually checks contexts at runtime, once we have reified hygienic contexts...
     //def asIR[C:Ctx]: Option[IR[T,C]] = ???
@@ -91,6 +91,9 @@ self: Base =>
     def apply[T](rep: Rep): AnyCode[T] = mkCode(rep)
     def unapply[T](c: AnyCode[T]): Option[Rep] = Some(c.rep)
   }
+  
+  type OpenCode[+T] = Code[T,Nothing]
+  type ClosedCode[+T] = Code[T,Any]
   
   object Code {
     def apply[T,C](rep: Rep): Code[T,C] = mkCode(rep)
@@ -137,6 +140,8 @@ self: Base =>
       * -- in fact, now that we have `Ctx = C @uncheckedVariance` it's not really useful anymore... */
     override def withTypeOf[Typ >: T](x: AnyCode[Typ]) = this: Code[Typ,C]
     
+    override def unsafe_asClosedCode = this.asInstanceOf[ClosedCode[T]]
+    
     /** Useful when we have non-denotable contexts (e.g., rewrite rule contexts) */
     def withContextOf[Ctx <: C](x: Code[Any, Ctx]) = this: Code[T,Ctx]
     //def unsafeWithContextOf[Ctx](x: IR[Any, Ctx]) = this.asInstanceOf[IR[T,Ctx]]  // does not seem to be too useful...
@@ -179,6 +184,9 @@ self: Base =>
     type AnyCode[+T] = self.AnyCode[T]
     type Code[+T,-C] = self.Code[T,C]
     type CodeType[T] = self.CodeType[T]
+    
+    type OpenCode[+T] = self.OpenCode[T]
+    type ClosedCode[+T] = self.ClosedCode[T]
     
     type __* = self.__*
     

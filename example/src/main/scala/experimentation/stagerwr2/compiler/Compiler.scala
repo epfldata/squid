@@ -103,7 +103,7 @@ object ImplCtorInline extends Embedding.SelfCodeTransformer with CodeTransformer
       import base.SimplePredef.unsound
       import base.SimplePredef.{Rep=>Code}
       
-      val r = NeatClosure2.doFlatMapStaged(pa,(x:Code[ta.Typ]) => body subs 'a -> x.asClosedCode)
+      val r = NeatClosure2.doFlatMapStaged(pa,(x:Code[ta.Typ]) => body subs 'a -> x.unsafe_asClosedCode)
       println(r)
       
       r

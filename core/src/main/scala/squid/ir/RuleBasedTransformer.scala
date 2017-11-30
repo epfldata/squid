@@ -55,7 +55,7 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
       case q"$base.InspectableCodeOps[$t,$c]($term).$_($_)" =>
         (base, term, t.tpe, c.tpe)
       case q"$base.InspectableAnyCodeOps[$t]($term).$_($_)" =>
-        (base, term, t.tpe, Any)
+        (base, term, t.tpe, Nothing)
     }
     val base = baseTree
     debug(s"Found base `${showCode(base)}` of type `${base.tpe}`")

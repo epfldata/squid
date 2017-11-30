@@ -369,7 +369,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               
             
             case q"$baseTree.$$Code[$tpt]($idt)" =>
-              val tree = q"$baseTree.$$[$tpt,$Any]($idt.asClosedCode)"
+              val tree = q"$baseTree.$$[$tpt,$Any]($idt.unsafe_asClosedCode)"
               liftTerm(tree, parent, expectedType)
               
             /** Replaces insertion unquotes with whatever `insert` feels like inserting.
@@ -623,8 +623,10 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
         
         val context = tq"$ctxBase { ..${ fv map { case (n,t) => q"val ${TermName(n)}: $t" } } }"
         
-        q"val $shortBaseName: $baseTree.type = $baseTree; $baseTree.`internal Code`[$retType, $context]($Base.wrapConstruct($res))"
-        //                                ^ not using $Base shortcut here or it will show in the type of the generated term
+        val tree = q"val $shortBaseName: $baseTree.type = $baseTree; $baseTree.`internal Code`[$retType, $context]($Base.wrapConstruct($res))"
+        //                               ^ not using $Base shortcut here or it will show in the type of the generated term
+        
+        if (Any <:< cleanedUpGLB && fv.isEmpty) q"$tree:$baseTree.ClosedCode[$retType]" else tree
         
         
       case Some(selector) =>
