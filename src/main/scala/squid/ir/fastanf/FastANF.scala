@@ -405,10 +405,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     
     def extractHOPHole(name: String, typ: TypeRep, argss: List[List[Rep]], visible: List[BoundVal])(implicit es: State): ExtractState = {
       println("EXTRACTINGHOPHOLE")
-      type Func = List[List[BoundVal]] -> Rep
-      def emptyFunc(r: Rep) = List.empty[List[BoundVal]] -> r
-      def fargss(f: Func) = f._1
-      def fbody(f: Func) = f._2
       
       def hasUndeclaredBVs(r: Rep): Boolean = {
         println(s"Checking $r")
@@ -429,42 +425,61 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         hasUndeclaredBVs0(r, Set.empty)
       }
 
-      def extendFunc(args: List[Rep], maybeFuncAndState: Option[(Func, State)]): Option[(Func, State)] = {
+      def extendFunc(args: List[Rep], maybeCurrFuncAndState: Option[(Rep, State)]): Option[(Rep, State)] = {
         val hopArgs = args.map(arg => bindVal("hopArg", arg.typ, Nil))
         val transformations = args zip hopArgs
         
+        def body(r: Rep): Rep = {
+          def body0(d: Def): Option[Rep] = d match {
+            case l: Lambda => l.body match {
+              case lb: LetBinding => Some(body(lb))
+              case body => Some(body)
+            }
+            case _ => None
+          }
+          
+          
+          r match {
+            case lb: LetBinding => body0(lb.value) getOrElse lb
+            case _ => r
+          }
+        }
+        
         for {
-          (f, es) <- maybeFuncAndState alsoApply println
+          (f, es) <- maybeCurrFuncAndState alsoApply println
 
-          newBodyAndState = transformations.foldLeft(fbody(f) -> es) {
-            case ((body, es), (bv: BoundVal, hopArg)) =>
-              val replace = es.ctx(bv)
-              replace rebind hopArg
-              (body, es)
-              
-            case ((body, es), (lb: LetBinding, hopArg)) => 
-              val lbBVs = bvs(lb)
-              val done = (s: State) => lbBVs forall (s.ctx.keySet contains _) // TODO Keep set of matched BVs in state?
-              
-              extractWithState(lb, body)(done)(es) map { es =>
-                val replace =  es.ctx(lb.last.bound)
-                bottomUpPartial(filterLBs(body)(es.ctx.values.toSet contains _.bound)) { case `replace` => hopArg } -> es
-              } getOrElse body -> es
-
-            case ((body, es), (r, hopArg)) => (bottomUpPartial(body) { case `r` => hopArg }, es)
+          newBodyAndState = transformations.foldLeft(body(f) -> es) {
+            case ((body, es), (arg, hopArg)) => arg match {
+              case bv: BoundVal => 
+                val replace = es.ctx(bv)
+                replace rebind hopArg
+                body -> es
+                
+              case lb: LetBinding => 
+                val lbBVs = bvs(lb)
+                val done: State => Boolean = s => lbBVs forall (s.ctx.keySet contains _) // TODO Keep set of matched BVs in state?
+                
+                extractWithState(lb, body)(done)(es) map { es =>
+                  val replace =  es.ctx(lb.last.bound)
+                  bottomUpPartial(filterLBs(body)(es.ctx.values.toSet contains _.bound)) { case `replace` => hopArg } -> es
+                } getOrElse body -> es
+                
+              case _ => bottomUpPartial(body) { case `arg` => hopArg } -> es
+            }
           }
           
           _ = bottomUpPartial(newBodyAndState._1) { case bv: BoundVal if visible contains bv => return None } // TODO is too early to check? If there are more args left
-        } yield ((hopArgs :: fargss(f)) -> newBodyAndState._1, newBodyAndState._2)
+        } yield newBodyAndState match {
+          case (func0, es0) => wrapConstruct(lambda(hopArgs, func0)) -> es0
+        }
       }
       
       val oe = for {
         es1 <- typ extract (xtee.typ, Covariant)
         m <- merge(es.ex, es1)
-        (f, es2) <- argss.foldRight(Option(emptyFunc(xtee) -> (es withNewExtract m)))(extendFunc)
-        l = fargss(f).foldRight(fbody(f)) { case (args, body) => wrapConstruct(lambda(args, body)) }
-        if !hasUndeclaredBVs(l)
-      } yield es2 updateExtractWith Some(repExtract(name -> l))
+        (f, es2) <- argss.foldRight(Option(xtee -> (es withNewExtract m)))(extendFunc)
+        if !hasUndeclaredBVs(f)
+      } yield es2 updateExtractWith Some(repExtract(name -> f))
       
       oe getOrElse Left(es)
     }
