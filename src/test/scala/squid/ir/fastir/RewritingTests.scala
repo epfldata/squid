@@ -62,6 +62,13 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
     assert(a =~= ir"42.toDouble")
   }
   
+  test("Code generation should handle a hole in return position") {
+    val a = ir"val a = 10.toDouble; val b = 22.toDouble; a + b" rewrite {
+      case ir"val a = 10.toDouble; ($body:Double)" => ir"readDouble"
+    }
+    assert(a =~= ir"readDouble")
+  }
+  
   test("Rewriting sequences of bindings") {
     val a = ir"val a = readInt; val b = readDouble.toInt; a + b" rewrite {
       case ir"readDouble.toInt" => ir"readInt"

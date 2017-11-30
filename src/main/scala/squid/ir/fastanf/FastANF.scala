@@ -772,32 +772,35 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       
       def appendRestOfXtee(code: Rep, xtor: Rep, ctx: Ctx): Rep = xtor match {
         case lb: LetBinding =>
-          val xtorLast = lb.last
-          val lastXteeMatched = ctx(xtorLast.bound) 
-          lastXteeMatched.owner |>? {
-            case innerLB: LetBinding => code |>? {
-              case codeLB: LetBinding => 
-                val codeLast = codeLB.last
-                codeLast.body = innerLB.body
-                bottomUpPartial(code) { case `lastXteeMatched` => codeLast.bound }
-            }
+          val xtorLast = lb.last 
+          xtorLast.body match {
+            case _: Hole | _: HOPHole2 => code
+            case _ =>
+              val lastXteeMatched = ctx(xtorLast.bound)
+              lastXteeMatched.owner |>? {
+                case innerLB: LetBinding => code |>? {
+                  case codeLB: LetBinding =>
+                    val codeLast = codeLB.last
+                    codeLast.body = innerLB.body
+                    bottomUpPartial(code) { case `lastXteeMatched` => codeLast.bound }
+                }
+              }
+              code
           }
-          code
           
         case _ => code
       }
       
-      if (preCheck(es.ex))
-        for {
-          code <- code(es.ex)
-          codeWithRest = appendRestOfXtee(code, xtor, es.ctx)
-          if check(Set.empty, es.matchedImpureBVs)(filterLBs(codeWithRest)(es.matchedImpureBVs contains _.bound))
-        } yield code
+      if (preCheck(es.ex)) for {
+        code <- code(es.ex)
+        codeWithRest = appendRestOfXtee(code, xtor, es.ctx)
+        if check(Set.empty, es.matchedImpureBVs)(filterLBs(codeWithRest)(es.matchedImpureBVs contains _.bound))
+      } yield code
       else None
     }
     
     rewriteRepWithState(xtor, xtee) match {
-      case Right(es) => genCode(es) alsoApply println
+      case Right(es) => genCode(es) alsoApply(c => println(s"GEN: $c"))
       case Left(_) => None
     }
   }
