@@ -547,11 +547,16 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     
       case (lb1: LetBinding, lb2: LetBinding) => extractLBs(lb1, lb2)(done)
     
-      // TODO Stop at markers?  
-      case (lb: LetBinding, _: Rep) => (effect(lb), effect(xtee)) match {
-        case (Pure, Pure) => extractWithState(lb.body, xtee)(done)
-        case (Impure, Pure) => Left(es)
-        case (_, Impure) => Left(es) // Assuming the return value cannot be impure
+      //// TODO Stop at markers?  
+      //case (lb: LetBinding, _: Rep) => (effect(lb), effect(xtee)) match {
+      //  case (Pure, Pure) => extractWithState(lb.body, xtee)(done)
+      //  case (Impure, Pure) => Left(es)
+      //  case (_, Impure) => Left(es) // Assuming the return value cannot be impure
+      //}
+
+      case (lb: LetBinding, _: Rep) => es.flags.xtorFlag(lb.bound) match {
+        case Start => Left(es)
+        case Skip => extractWithState(lb.body, xtee)(done)
       }
         
       case (bv: BoundVal, lb: LetBinding) => for {
