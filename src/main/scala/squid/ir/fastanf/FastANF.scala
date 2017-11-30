@@ -319,7 +319,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
   protected def extract(xtor: Rep, xtee: Rep): Option[Extract] = {
     println(s"Extract(\n$xtor, \n$xtee)")
-    extractWithState(xtor, xtee)(_ => false)(State.forExtraction(xtor, xtee)).fold(_ => None, Some(_)) map (_.ex)
+    extractWithState(xtor, xtee)(_ => false)(State.init(xtor, xtee)).fold(_ => None, Some(_)) map (_.ex)
   }
 
   type Ctx = Map[BoundVal, BoundVal]
@@ -331,7 +331,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   type ExtractState = Either[State, State]
   implicit def rightBias[A, B](e: Either[A, B]): Either.RightProjection[A,B] = e.right
   
-  case class State(ex: Extract, ctx: Ctx, flags: Flags, matchedImpureBVs: Set[BoundVal], failedMatches: Map[BoundVal, Set[BoundVal]], makeUnreachable: Boolean) {
+  case class State(ex: Extract, ctx: Ctx, flags: Flags, matchedImpureBVs: Set[BoundVal], failedMatches: Map[BoundVal, Set[BoundVal]]) {
     def withNewExtract(newEx: Extract): State = copy(ex = newEx)
     def withCtx(newCtx: Ctx): State = copy(ctx = newCtx)
     def withCtx(p: (BoundVal, BoundVal)): State = copy(ctx = ctx + p)
@@ -347,11 +347,10 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     }
   }
   object State {
-    def forRewriting(xtor: Rep, xtee: Rep): State = State(xtor, xtee, true)
-    def forExtraction(xtor: Rep, xtee: Rep): State = State(xtor, xtee, false)
+    def init(xtor: Rep, xtee: Rep): State = apply(xtor, xtee)
     
-    private def apply(xtor: Rep, xtee: Rep, makeUnreachable: Bool): State = 
-      State(EmptyExtract, ListMap.empty, Flags(xtor, xtee), Set.empty, Map.empty.withDefaultValue(Set.empty), makeUnreachable)
+    private def apply(xtor: Rep, xtee: Rep): State = 
+      State(EmptyExtract, ListMap.empty, Flags(xtor, xtee), Set.empty, Map.empty.withDefaultValue(Set.empty))
   }
 
   sealed trait Flag
@@ -703,7 +702,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   }
   
   override def rewriteRep(xtor: Rep, xtee: Rep, code: Extract => Option[Rep]): Option[Rep] = 
-    rewriteRep0(xtor, xtee, code)(false)(State.forRewriting(xtor, xtee))
+    rewriteRep0(xtor, xtee, code)(false)(State.init(xtor, xtee))
 
   def rewriteRep0(xtor: Rep, xtee: Rep, code: Extract => Option[Rep])(internalRec: Boolean)(implicit es: State): Option[Rep] = {
     def rewriteRepWithState(xtor: Rep, xtee: Rep)(implicit es: State): ExtractState = {
