@@ -107,6 +107,17 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
     assert(b =~= ir"val t1 = Option(11).get; val t2 = Option(11).get; ${ir"11"} + 22")
   }
   
+  test("Rewriting should remove the dependent pure statements") {
+    val a = ir"val a = readInt; val b = readDouble.toInt; a + b" rewrite {
+      case ir"readDouble.toInt" => ir"readInt"
+    }
+    assert(a =~= ir"val a = readInt; val b = readInt; a + b")
+  }
+  
+  test("Rewriting should not remove statements that weren't matched") {
+    
+  }
+  
   //test("Rewriting with impures") {
   //  val a = ir"val a = readInt; val b = readInt; (a + b) * 0.5" rewrite {
   //    case ir"(($h1: Int) + ($h2: Int)) * 0.5" => dbg_ir"($h1 * $h2) + 42.0"

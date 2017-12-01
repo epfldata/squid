@@ -338,6 +338,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     def withMatchedImpures(r: Rep): State = r match {
       case lb: LetBinding if !isPure(lb.value) => copy(matchedImpureBVs = matchedImpureBVs + lb.bound) withMatchedImpures lb.body
       case lb: LetBinding => this withMatchedImpures lb.body
+      case bv: BoundVal => copy(matchedImpureBVs = matchedImpureBVs + bv)
       case _ => this // Everything else is pure so we ignore it
     } 
     def withFailed(p: (BoundVal, BoundVal)): State = copy(failedMatches = updateWith(failedMatches)(p))
@@ -509,7 +510,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     def extractHole(h: Hole, r: Rep)(implicit es: State): ExtractState = {
       println(s"ExtractHole: $h --> $r")
       
-      val newEs = (h, r) match {
+      (h, r) match {
         case (Hole(n, t), bv: BoundVal) =>
           es.updateExtractWith(
             t extract(xtee.typ, Covariant),
@@ -520,7 +521,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           es.updateExtractWith(
             t extract(lb.typ, Covariant),
             Some(repExtract(n -> lb))
-          )
+          ) map (_ withMatchedImpures lb)
 
         case (Hole(n, t), _) =>
           es.updateExtractWith(
@@ -528,8 +529,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
             Some(repExtract(n -> xtee))
           )
       }
-      
-      newEs map (_ withMatchedImpures r)
     }
 
     def extractInside(bv: BoundVal, d: Def)(implicit es: State): ExtractState = 
@@ -784,32 +783,69 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         }
       }
       
-      def appendRestOfXtee(code: Rep, xtor: Rep, ctx: Ctx): Rep = xtor match {
-        case lb: LetBinding =>
-          val xtorLast = lb.last 
-          xtorLast.body match {
-            case _: Hole | _: HOPHole2 => code
-            case _ =>
-              val lastXteeMatched = ctx(xtorLast.bound)
-              lastXteeMatched.owner |>? {
-                case innerLB: LetBinding => code |>? {
-                  case codeLB: LetBinding =>
-                    val codeLast = codeLB.last
-                    codeLast.body = innerLB.body
-                    bottomUpPartial(code) { case `lastXteeMatched` => codeLast.bound }
-                }
+      def cleanup(r: Rep, remove: Set[BoundVal]): Rep = r match {
+        case lb: LetBinding if remove contains lb.bound => cleanup(lb.body, remove)
+        case lb: LetBinding if isPure(lb.value) => 
+          val bvsInValue = bvs(lb.value)
+          
+          if (bvsInValue exists (remove contains)) {
+            cleanup(lb.body, remove ++ bvsInValue.toSet)
+          } else {
+            lb.body = cleanup(lb.body, remove) 
+            lb
+          }
+        case lb: LetBinding => 
+          lb.body = cleanup(lb.body, remove)
+          lb
+        case _ => r
+      }
+      
+      def finalize(code: Rep, xtor: Rep, filteredXtee: Rep)(ctx: Ctx): Rep = {
+        println(s"FOO: $code, \n$xtor, \n$filteredXtee")
+        
+        xtor match {
+          case xtorLB: LetBinding =>
+            val xtorLast = xtorLB.last
+            xtorLast.body match {
+              case xtorRet: BoundVal => code match {
+                case codeLB: LetBinding =>
+                  val codeLast = codeLB.last
+                  codeLast.body |>? {
+                    case codeRet: BoundVal =>
+                      val bv = ctx(xtorRet)
+                      codeLast.body =  bottomUpPartial(filteredXtee) { case `bv` => codeRet }
+                  }
+                  code
+
+                case _ =>
+                  val bv = ctx(xtorRet)
+                  bottomUpPartial(filteredXtee) { case `bv` => code }
+              }
+
+              // Hole?  
+              case _ => code
+            }
+
+          case _ => code match {
+            case codeLB: LetBinding =>
+              val codeLast = codeLB.last
+              codeLast.body |>? {
+                case codeRet: BoundVal =>
+                  codeLast.body = bottomUpPartial(filteredXtee) { case `xtor` => codeRet }
               }
               code
+
+            case _ =>
+              bottomUpPartial(filteredXtee) { case `xtor` => code }
           }
-          
-        case _ => code
+        }
       }
       
       if (preCheck(es.ex)) for {
         code <- code(es.ex)
-        codeWithRest = appendRestOfXtee(code, xtor, es.ctx)
-        if check(Set.empty, es.matchedImpureBVs)(filterLBs(codeWithRest)(es.matchedImpureBVs contains _.bound))
-      } yield code
+        code0 = finalize(code, xtor, cleanup(xtee, es.matchedImpureBVs))(es.ctx)
+        if check(Set.empty, es.matchedImpureBVs)(code0)
+      } yield code0
       else None
     }
     
