@@ -33,9 +33,9 @@ In Scala, text quotation is written between two `"` (double quotation marks).
 `"abc"` represents the string of characters made of characters `'a'`, `'b'` and `'c'`.
 
 Squid allows one to also quote _code_ instead of _text_.
-The syntax is `ir"..."`,
-which represents a program fragment in some _intermediate representation_ (IR) – hence the `ir` prefix.
-For example, the value `ir"2 + 2"` is _not_ some string of characters,
+The syntax is `code"..."`,
+which represents a program fragment in some _intermediate representation_ (IR) – hence the `code` prefix.
+For example, the value `code"2 + 2"` is _not_ some string of characters,
 but an abstract syntax tree representing the expression `2 + 2`.
 It can be viewed as syntactic sugar for an explicit representation of code
 via the composition of function applications,
@@ -53,14 +53,14 @@ is equivalent to
 Note that when the expression we escape is a simple identifier, we can write
 `$x` instead of `${x}`.
 
-It is also possible to _quasi_-quote code, with the same syntax `ir` as seen above,
+It is also possible to _quasi_-quote code, with the same syntax `code` as seen above,
 using `${...}` for escape.
 This allows us to compose code fragments together to form bigger programs.
 
 ### Note on Quasi-_code_
 
-The syntax `ir{ ... $(x)... }`, referred to as _quasicode_,
-can be used in place of `ir" ... ${x}... "` in expression mode (but not in `case` patterns).
+The syntax `code{ ... $(x)... }`, referred to as _quasicode_,
+can be used in place of `code" ... ${x}... "` in expression mode (but not in `case` patterns).
 This has several advantages, including good IDE integration: autocompletion, syntax and error highlighting, jump-to-definition, etc.
 
 
@@ -71,14 +71,14 @@ This has several advantages, including good IDE integration: autocompletion, syn
 As a simple example of composition, consider the following REPL session:
 
 ```scala
-> val a = ir"2"
-a: IR[Int,{}] = ir"2"
+> val a = code"2"
+a: Code[Int,{}] = code"2"
 
-> val b = ir"$a + $a"
-b: IR[Int,{}] = ir"(2).+(2)"
+> val b = code"$a + $a"
+b: Code[Int,{}] = code"(2).+(2)"
 ```
 
-**Note**: for clarity, here and below, we have simplified the types displayed in the REPL (for example shortening `Embedding.IR` to `IR`).
+**Note**: for clarity, here and below, we have simplified the types displayed in the REPL (for example shortening `Embedding.Code` to `Code`).
 
 By looking at the types in the REPL, we can tell we are manipulating terms of type `Int`.
 We will see later what the second type parameter means (here `{}`).
@@ -86,8 +86,8 @@ We will see later what the second type parameter means (here `{}`).
 The `Const` function can be used to _lift_ normal values to terms (code values):
 
 ```scala
-> ir"${Const(42)}.toDouble"
-res: IR[Double,{}] = ir"42.toDouble"
+> code"${Const(42)}.toDouble"
+res: Code[Double,{}] = code"42.toDouble"
 ```
 
 It is possible to _execute_ the code we have composed using the function `run`.
@@ -124,20 +124,20 @@ power: (n: Int, x: Double)Double
 res8: Double = 9.0
 ```
 
-And then, by simply adding staging annotations (in the form of `IR` types)
+And then, by simply adding staging annotations (in the form of `Code` types)
 to indicate what computations should be delayed (as opposed to executed in the current stage),
 we construct a _code generator_, that given any program fragment of type `Double`,
 constructs a sequence of multiplications of that number.
 
 ```scala
-> def power(n: Int, x: IR[Double,{}]): IR[Double,{}] = {
-    if (n > 0) ir"${power(n-1, x)} * $x"
-    else ir"1.0"
+> def power(n: Int, x: Code[Double,{}]): Code[Double,{}] = {
+    if (n > 0) code"${power(n-1, x)} * $x"
+    else code"1.0"
   }
-power: (n: Int, x: IR[Double,{}])IR[Double,{}]
+power: (n: Int, x: Code[Double,{}])Code[Double,{}]
 
-> power(2, ir"3.0")
-res: IR[Double,{}] = ir"1.0.*(3.0).*(3.0)"
+> power(2, code"3.0")
+res: Code[Double,{}] = code"1.0.*(3.0).*(3.0)"
 ```
 
 We will see in the next section how to
@@ -148,15 +148,15 @@ use this code generator to great effect for optimizing our programs.
 As an interesting aside, note that quasiquotes and quasicode can be nested:
 
 ```scala
-> val a = ir{ir{1}}  // also written:  ir""" ir"1" """
-a: IR[IR[Int,Any],Any] =
-ir"""{
+> val a = code{code{1}}  // also written:  code""" code"1" """
+a: Code[Code[Int,Any],Any] =
+code"""{
   val __b___0 = Quasicodes.qcbase;
   Quasicodes.qcbase.`internal IR`[Int, Any](__b___0.wrapConstruct(__b___0.const(1)))
 }"""
 
 > val b = a.compile
-b: IR[Int,Any] = ir"1"
+b: Code[Int,Any] = code"1"
 
 > val c = b.compile
 c: Int = 1
@@ -183,34 +183,36 @@ this definition needs to be accessible via a static path
 
 Open terms are terms that contain unbound variable references (free variables).
 Squid quasiquote disallow the implicit definition of open terms.
-For example, `ir"x + 1"` is illegal, because `x` is unbound.
+For example, `code"x + 1"` is illegal, because `x` is unbound.
 However, the `?x` syntax can be used to explicitly ask for a free variable, as in:
-`ir"(?str: String).length"`, which contains an unbound variable `str` of type `String`.
+`code"(?str: String).length"`, which contains an unbound variable `str` of type `String`.
 Scala's local type inference means we will usually need a type annotation with each explicit free variable introduction.
 
 In order to keep track of what free variables are contained in a term,
-terms have type `IR[Typ,Ctx]`,
+terms have type `Code[Typ,Ctx]`,
 where the second type parameter `Ctx` represents the _context requirement_ of the term.
 We write context requirements using Scala's syntax for structural types.
 For example, `{}` is the empty context and `{val n: Int}` is a context in which a value `n` of type `Int` must be defined.
 
 ```scala
-> val strlen = ir"(?str: String).length"
-strlen: IR[Int,{val str: String}] = ir"?str.length()"
+> val strlen = code"(?str: String).length"
+strlen: Code[Int,{val str: String}] = code"?str.length()"
 ```
 
 The `IR` class is contravariant in its `Ctx` type argument,
 so that a term with a context `C` can be used as a term with a _more specific_ context `C' <: C`. 
 For example, we have:  
-`IR[Int,{}]  <:  IR[Int,{val ls: Seq[Int]}]  <:  IR[Int,{val ls: List[Int]}]`  
+`Code[Int,{}]  <:  Code[Int,{val ls: Seq[Int]}]  <:  Code[Int,{val ls: List[Int]}]`  
 This is because `List[Int] <: Seq[Int]` and so `{val ls: List[Int]} <: {val ls: Seq[Int]}`.
 
 
-**Note**: When you write out something like `ir"42"` in the REPL,
-you might actually see `IR[Int,Any]` instead of `IR[Int,{}]`.
+**Note**: When you write out something like `code"42"` in the REPL,
+you might actually see `Code[Int,Any]` instead of `Code[Int,{}]`.
 This is because in Scala, the empty structural type `{}` (equivalent to `AnyRef` or Java's `Object`) is a subtype
 of the more general type `Any`, which is inferred by the quasiquote engine.
-You can read it as: `ir"42"` can be used in _**any**_ context.
+You can read it as: `code"42"` can be used in _**any**_ context.
+Similarly, we sometimes use the `ClosedCode[T]` alias, 
+which is just a type synonym for `Code[T,Any]`.
 
 Naturally, it is prohibited to `run` open terms. The system statically makes sure of that:
 
@@ -227,9 +229,9 @@ the corresponding _free_ variables in `t` will be captured, and will no more be 
 For example, consider:
 
 ```scala
-> val len123 = ir"val str = List(1,2,3).toString; $strlen"
-len123: IR[Int,{}] =
-ir"""{
+> val len123 = code"val str = List(1,2,3).toString; $strlen"
+len123: Code[Int,{}] =
+code"""{
   val str_0 = scala.collection.immutable.List.apply[scala.Int](1, 2, 3).toString();
   str_0.length()
 }"""
@@ -244,11 +246,11 @@ res: Int = 13
 Given an open term, one can replace all its occurrences of a free variable by applying the `subs` method.
 
 ```scala
-> val q = ir"(?x: Int) + 1"
-q: IR[Int, {val x: Int}] = ir"?x + 1"
+> val q = code"(?x: Int) + 1"
+q: Code[Int, {val x: Int}] = code"?x + 1"
 
-> val s = q.subs((Symbol("x"), ir"42"))
-s: IR[Int, {}] = ir"42 + 1"
+> val s = q.subs((Symbol("x"), code"42"))
+s: Code[Int, {}] = code"42 + 1"
 ```
 
 `Symbol` is a Scala construct from the standard library which has a dedicated syntax, so that
@@ -259,18 +261,18 @@ Finally, a tuple `(a,b)` can be written `a -> b` (standard Scala syntactic sugar
 As a result, we will simply write the following, equivalent to the code above:
 
 ```scala
-> val s = q subs 'x -> ir"42"
-s: IR[Int, {}] = ir"42 + 1"
+> val s = q subs 'x -> code"42"
+s: Code[Int, {}] = code"42 + 1"
 ```
 
 It is also possible to only rename free variables. The two following lines are equivalent:
 
 ```scala
 > val q0 = q rename 'x -> 'y
-q: IR[Int, {val y: Int}] = ir"(y: Int) + 1"
+q: Code[Int, {val y: Int}] = code"(y: Int) + 1"
 
-> val q1 = q subs 'x -> ir"?y: Int"
-q: IR[Int, {val y: Int}] = ir"?y + 1"
+> val q1 = q subs 'x -> code"?y: Int"
+q: Code[Int, {val y: Int}] = code"?y + 1"
 ```
 
 These operations will turn out to be crucial in Section _Rewritings_.
@@ -284,28 +286,28 @@ We saw that the `power` function defined above, when partially applied, yields a
 takes a program of type `Double` and returns a program of the same type:
 
 ```scala
-> val p3 = power(3, _ : IR[Double,{}])
-p3: IR[Double,{}] => IR[Double,{}] = <function1>
+> val p3 = power(3, _ : Code[Double,{}])
+p3: Code[Double,{}] => Code[Double,{}] = <function1>
 
-> p3(ir"2.0")
-res: IR[Double,{}] = ir"1.0.*(2.0).*(2.0).*(2.0)"
+> p3(code"2.0")
+res: Code[Double,{}] = code"1.0.*(2.0).*(2.0).*(2.0)"
 ```
 
-What we would now like to have is a term of type `IR[Double => Double,{}]`,
+What we would now like to have is a term of type `Code[Double => Double,{}]`,
 that we can compile and execute efficiently. 
 We have to pass a variable reference to `power` instead of a closed term.
 To allow for this, we make `power` polymorphic
 in the context of the term it multiplies with itself (the body of the function does not change):
 
 ```scala
-> def power[C](n: Int, x: IR[Double,C]): IR[Double,C] = {
-    if (n > 0) ir"${power(n-1, x)} * $x"
-    else ir"1.0"
+> def power[C](n: Int, x: Code[Double,C]): Code[Double,C] = {
+    if (n > 0) code"${power(n-1, x)} * $x"
+    else code"1.0"
   }
-power: [C](n: Int, x: IR[Double,C])IR[Double,C]
+power: [C](n: Int, x: Code[Double,C])Code[Double,C]
 
-> val x_5 = power(5, ir"?x: Double")
-res15: IR[Double,Any{val x: Double}] = ir"1.0.*(?x).*(?x).*(?x).*(?x).*(?x)"
+> val x_5 = power(5, code"?x: Double")
+res15: Code[Double,Any{val x: Double}] = code"1.0.*(?x).*(?x).*(?x).*(?x).*(?x)"
 ```
 
 Note that it would be easy to perform some rewriting after the fact to remove the useless `1.0 *` from the generated code, 
@@ -317,7 +319,7 @@ For more details on this subject, see the [documentation on transformers](/doc/T
 We can now generate on the fly efficient code for calculating the _n_-th power of any `Double`:
 
 ```scala
-> val power5 = ir"(x: Double) => ${x_5}".compile
+> val power5 = code"(x: Double) => ${x_5}".compile
 power5: Double => Double = <function1>
 
 > power5(1.5)
@@ -363,11 +365,11 @@ In Squid, one can pattern-match code just like one pattern-matches data.
 Holes in patterns behave like extractors, allowing to take apart code expressions:
  
 ```scala
-> val m = ir"readInt + 1" match { case ir"($n: Int) + 1" => n }
-m: IR[Int,{}] = ir"scala.Predef.readInt()"
+> val m = code"readInt + 1" match { case code"($n: Int) + 1" => n }
+m: Code[Int,{}] = code"scala.Predef.readInt()"
 
-> val ir"($m: Int) + 1" = ir"readInt + 1"
-m: IR[Int,{}] = ir"scala.Predef.readInt()"
+> val code"($m: Int) + 1" = code"readInt + 1"
+m: Code[Int,{}] = code"scala.Predef.readInt()"
 ```
 
 (In the code above, the second REPL line is equivalent to the first one, using Scala syntactic sugar.)
@@ -377,8 +379,8 @@ For example, extracting a subterm in a context where a binding exists
 will give to the extracted sybterm a type that reflects the potential dependency:
 
 ```scala
-> val funBody = ir"(x: Int) => x + 1" match { case ir"(y: Int) => $b" => b }
-funBody: IR[Int, {val y: Int}] = ir"?y + 1"
+> val funBody = code"(x: Int) => x + 1" match { case code"(y: Int) => $b" => b }
+funBody: Code[Int, {val y: Int}] = code"?y + 1"
 ```
 
 Notice in the code above that _**bound variable names do not matter**_:
@@ -389,12 +391,12 @@ Just like `Const` can be used to construct constants into the code by _lifting_ 
 we can also use it to _extract_ constant current-stage values:
 
 ```scala
-> funBody match { case ir"($z: Int) + (${Const(k)}: Int)" => (z,k) }
-res: (IR[Int, {val y: Int}], Int) = (ir"?y", 1)
+> funBody match { case code"($z: Int) + (${Const(k)}: Int)" => (z,k) }
+res: (Code[Int, {val y: Int}], Int) = (code"?y", 1)
 ```
 
 Notice that in the examples above, it is necessary to provide the type of extraction holes because the `+` operation
-in Scala is ad-hoc polymorphic. Writing a pattern like `case ir"($x: Long) * $y"` will give us an error such as:
+in Scala is ad-hoc polymorphic. Writing a pattern like `case code"($x: Long) * $y"` will give us an error such as:
 ```
 ambiguous reference to overloaded definition,
 both method * in class Long of type (x: Char)Long
@@ -402,7 +404,7 @@ and  method * in class Long of type (x: Byte)Long
 match argument types (Nothing)
 ```
 
-**Caveat**: Because of the infamous `any2stringadd` implicit conversion, syntax `ir"($x: Int) + $y"` will make Scala think that
+**Caveat**: Because of the infamous `any2stringadd` implicit conversion, syntax coder"($x: Int) + $y"` will make Scala think that
 `y` has type `String` and `+` is string concatenation...
 
 
@@ -415,15 +417,15 @@ one will have to provide an implicit type representation evidence, of type `IRTy
 For example, this is how to implement a function returning a program that builds a singleton list from a value:
 
 ```scala
-> def mkSingle[T,C](x: IR[T,C])(implicit ev: IRType[T]) = ir"List($x)"
-> mkSingle(ir"42")
-res: IR[List[Int],{}] = ir"scala.collection.immutable.List.apply[scala.Int](42)"
+> def mkSingle[T,C](x: Code[T,C])(implicit ev: IRType[T]) = code"List($x)"
+> mkSingle(code"42")
+res: Code[List[Int],{}] = code"scala.collection.immutable.List.apply[scala.Int](42)"
 ```
 
 Scala  also provides the equivalent shortcut syntax:
 
 ```scala
-def mkSingle[T:IRType,C](x: IR[T,C]) = ir"List($x)"
+def mkSingle[T:IRType,C](x: Code[T,C]) = code"List($x)"
 ```
 
 
@@ -436,18 +438,18 @@ This is done with a similar syntax.
 Consider the following rewriting, which implements β-reduction (lambda application inlining):
 
 ```scala
-> def beta[T:IRType,C](x: IR[T,C]) = x match {
-  case ir"((x: $t) => $body: T)($a)" => body subs 'x -> a
+> def beta[T:IRType,C](x: Code[T,C]) = x match {
+  case code"((x: $t) => $body: T)($a)" => body subs 'x -> a
 }
-> beta(ir"((x: Int) => x + x + 1)(readInt)")
-res: IR[Int,{}] = ir"scala.Predef.readInt().+(scala.Predef.readInt()).+(1)"
+> beta(code"((x: Int) => x + x + 1)(readInt)")
+res: Code[Int,{}] = code"scala.Predef.readInt().+(scala.Predef.readInt()).+(1)"
 ```
 
 In the right-hand side of this `case` expression,
-extracted value `body` has type `IR[T,C{val x: t.Typ}]` (see the section on [Context Polymorphism](#context-polymorphism) to understand syntax `C{val x: t}`)
+extracted value `body` has type `Code[T,C{val x: t.Typ}]` (see the section on [Context Polymorphism](#context-polymorphism) to understand syntax `C{val x: t}`)
 where `t` is the local extracted type representation (introduced by the `ir` pattern macro).
 Note that `t` is a _value_ representing a type, not a type per se. 
-So one cannot write `Option[IR[t,C]]`, for example; instead one has to write `Option[IR[t.Typ,C]]`
+So one cannot write `Option[Code[t,C]]`, for example; instead one has to write `OptionCodeIR[t.Typ,C]]`
 where path-dependent type `t.Typ` _reflects_ in the type system what `t` represents at runtime,
 a.k.a what `t` _reifies_.
 Perhaps paradoxically, `t` can be viewed as having type `t: IRType[t.Typ]`.
@@ -461,12 +463,12 @@ Of course, β-reduction is unsound if no care is being taken to avoid duplicatin
 A better implementation would be:
 
 ```scala
-> def beta[T:IRType,C](x: IR[T,C]) = x match {
-  case ir"((x: $t) => $body: T)($a)" => ir"val x = $a; $body"
+> def beta[T:IRType,C](x: Code[T,C]) = x match {
+  case code"((x: $t) => $body: T)($a)" => code"val x = $a; $body"
 }
-> beta(ir"((x: Int) => x + x + 1)(readInt)")
-res: IR[Int,{}] =
-ir"""{
+> beta(code"((x: Int) => x + x + 1)(readInt)")
+res: Code[Int,{}] =
+code"""{
   val x_0 = scala.Predef.readInt();
   x_0.+(x_0).+(1)
 }"""
@@ -496,30 +498,30 @@ which makes it very handy to define context-polymorphic functions that refine th
 
 For instance, one can define:
 ```scala
-def intro[C](n: IR[Int, C]) = ir"(?s: String) take $n"
-def outro[C](q: IR[String, C{val s: String}]) = ir"(s: String) => $q"
+def intro[C](n: Code[Int, C]) = code"(?s: String) take $n"
+def outro[C](q: Code[String, C{val s: String}]) = code"(s: String) => $q"
 ```
 
 Function `intro` reuses term `n` of context `C` and _introduces_ a free variable `s`,
-yielding context `IR[String, C{val s: String}]`.
+yielding context `Code[String, C{val s: String}]`.
 On the other hand, `outro` takes a term `q` of context `C` _extended with_ `s: String` and captures that variable
 by constructing a bigger term and inserting `q` in a context where `y` is defined.
 
 Here are a few usage examples:
 
 ```scala
-> val a = ir"?x: Int"
-a: IR[Int, {val x: Int}] = ir"?x"
+> val a = code"?x: Int"
+a: Code[Int, {val x: Int}] = code"?x"
 
 > val b = intro(a)
-b: IR[Int, {val s: String; val x: Int}] = ir"scala.Predef.augmentString(?s).take(?x)"
+b: Code[Int, {val s: String; val x: Int}] = code"scala.Predef.augmentString(?s).take(?x)"
 
 > val c = outro[{val x: Int}](b)
-c: IR[String => String, {val x: Int}] = ir"(s_0: java.lang.String) => scala.Predef.augmentString(s_0).take(?x)"
+c: Code[String => String, {val x: Int}] = code"(s_0: java.lang.String) => scala.Predef.augmentString(s_0).take(?x)"
 
-> ir"val x = 3; $c"
-res0: IR[String => String, {}] =
-ir"""{
+> code"val x = 3; $c"
+res0: Code[String => String, {}] =
+code"""{
   val x_0 = 3;
   (s_1: java.lang.String) => scala.Predef.augmentString(s_1).take(x_0)
 }"""
@@ -541,8 +543,8 @@ To transform a term `t`, one can use the following syntax:
 
 ```scala
 t rewrite {
-  case ir"..." => code1
-  case ir"..." => code2
+  case code"..." => code1
+  case code"..." => code2
   ...
 }
 ```
@@ -553,20 +555,20 @@ where `x` is the line and `y` is the column of the `case` corresponding to the r
 
 In case the context of the right-hand side is more restrictive than the context of the pattern,
 the result of the rewriting will be associated with a context capturing those extra requirements.
-For example, notice how the result of the rewriting below has type `IR[Unit,{val d: Double}]` whereas the original term had type `IR[Unit,{}]`.
+For example, notice how the result of the rewriting below has type `Code[Unit,{val d: Double}]` whereas the original term had type `Code[Unit,{}]`.
 This is because we have introduced a free variable in the right-hand side of the rewriting rule.
 
 ```scala
-ir"val x = 42; println(x.toDouble)" rewrite { case ir"($n:Int).toDouble" => ir"(?d: Double)+1" }
-res: IR[Unit,{val d: Double}] =
-ir"""{
+code"val x = 42; println(x.toDouble)" rewrite { case code"($n:Int).toDouble" => code"(?d: Double)+1" }
+res: Code[Unit,{val d: Double}] =
+code"""{
   val x_0 = 42;
   scala.Predef.println(?d.+(1))
 }"""
 ```
 
-In the code above, the type of extracted term `n` is `IR[Double,<context @ 1:16>]` and
-the type of the rewritten term `ir"(?d: Double)+1"` has its context requirement refined as `IR[Double,<context @ 1:y>{val d: Double}]`.
+In the code above, the type of extracted term `n` is `Code[Double,<context @ 1:16>]` and
+the type of the rewritten term `code"(?d: Double)+1"` has its context requirement refined as `Code[Double,<context @ 1:y>{val d: Double}]`.
 
 
 A similar macro, `fix_rewrite`, does the same as `rewrite` but applies the rewriting over and over again until the program stops changing (it reaches a fixed point).
@@ -595,9 +597,9 @@ to a more efficient sequence of multiplications, in the case where `n` is a smal
 We make use of the context-polymorphic `power` function defined in the previous section.
 
 ```scala
-def opt[T,C](pgrm: IR[T,C]) = pgrm rewrite {
-  case ir"Math.pow($x, ${Const(d)})"
-  if d.isValidInt && (0 to 16 contains d.toInt)  =>  power(d.toInt, ir"$x")
+def opt[T,C](pgrm: Code[T,C]) = pgrm rewrite {
+  case code"Math.pow($x, ${Const(d)})"
+  if d.isValidInt && (0 to 16 contains d.toInt)  =>  power(d.toInt, code"$x")
 }
 ```
 
@@ -610,17 +612,17 @@ It demonstrates that indeed any staged computation can happen on the right-hand 
 combining the powers of pattern-based program analysis and Multi-Stage Programming!
 
 ```scala
-def opt[T,C](pgrm: IR[T,C]) = pgrm rewrite {
-  case ir"Math.pow($x, ${Const(d)})"
+def opt[T,C](pgrm: Code[T,C]) = pgrm rewrite {
+  case code"Math.pow($x, ${Const(d)})"
   if d.isValidInt && (0 to 16 contains d.toInt) =>
-    var acc = ir"1.0" withContextOf x
-    for (n <- 1 to d.toInt) acc = ir"$acc * $x"
+    var acc = code"1.0" withContextOf x
+    for (n <- 1 to d.toInt) acc = code"$acc * $x"
     acc
 }
 ```
 
-We use helper method `withContextOf` to type `ir"1.0"` as `IR[Double,<context @ 2:16>]`
-so that we can later assign `ir"$acc * $x"` to it in the loop
+We use helper method `withContextOf` to type `code"1.0"` as `Code[Double,<context @ 2:16>]`
+so that we can later assign `code"$acc * $x"` to it in the loop
 – otherwise, the variable would have an incompatible type and Scala would reject the assignment.
 
 Let us now try out our optimization!
@@ -629,8 +631,8 @@ Let us now try out our optimization!
 ```scala
 > import Math._
 > val normCode = opt(ir{ (x:Double,y:Double) => sqrt(pow(x,2) + pow(y,2)) })
-normCode: IR[(Double, Double) => Double,{}] =
-ir"((x_0: Double, y_1: Double) => java.lang.Math.sqrt(1.0.*(x_0).*(x_0).+(1.0.*(y_1).*(y_1))))"
+normCode: Code[(Double, Double) => Double,{}] =
+code"((x_0: Double, y_1: Double) => java.lang.Math.sqrt(1.0.*(x_0).*(x_0).+(1.0.*(y_1).*(y_1))))"
 
 > val norm = normCode.compile
 norm: (Double, Double) => Double = <function2>
@@ -692,8 +694,8 @@ Now we can put factorial in a quasiquote:
         else n * f(n - 1)
   }
 }
-factorial: IR[Int => Int,Any] =
-ir"""My.Y[Int, Int](((f_0: Function1[Int, Int]) => ((n_1: Int) => 
+factorial: Code[Int => Int,Any] =
+code"""My.Y[Int, Int](((f_0: Function1[Int, Int]) => ((n_1: Int) => 
   if (n_1.<=(1)) 1
   else n_1.*(f_0(n_1.-(1))))))"""
 ```
@@ -715,8 +717,8 @@ as explained in the [documentation on lowering transformers](/doc/Transformers.m
 [TODO]
 
 ```scala
-  case ir"val arr = new collection.mutable.ArrayBuffer[$t]($v); arr.clear; arr" =>
-       ir"new collection.mutable.ArrayBuffer[$t]()"
+  case code"val arr = new collection.mutable.ArrayBuffer[$t]($v); arr.clear; arr" =>
+       code"new collection.mutable.ArrayBuffer[$t]()"
 ```
  -->
  
@@ -739,20 +741,20 @@ assuming that the original array `arr` is only used in expressions of the form
 `arr(i) = (x,y)`.
 
 ```scala
-> def rewriteArrayOfTuples[T,C](pgrm: IR[T,C]) = pgrm rewrite {
-    case ir"val $arr = new Array[(Int,Int)]($len); $body: $bt" =>
+> def rewriteArrayOfTuples[T,C](pgrm: Code[T,C]) = pgrm rewrite {
+    case code"val $arr = new Array[(Int,Int)]($len); $body: $bt" =>
       //        ^ we extract the binding for arr; equivalent to a free variable
       
       // boilerplate for the free variables that refer to the future replacement arrays:
-      val a = ir"?a: Array[Int]"
-      val b = ir"?b: Array[Int]"
+      val a = code"?a: Array[Int]"
+      val b = code"?b: Array[Int]"
       
       val body0 = body rewrite {
-        case ir"$$arr.length" => len
+        case code"$$arr.length" => len
         //      ^ double dollar inserts a term in a pattern
-        case ir"$$arr($i)._1" => ir"$a($i)"
-        case ir"$$arr($i)._2" => ir"$b($i)"
-        case ir"$$arr($i) = ($x:Int,$y:Int)" => ir"$a($i) = $x; $b($i) = $y"
+        case code"$$arr($i)._1" => code"$a($i)"
+        case code"$$arr($i)._2" => code"$b($i)"
+        case code"$$arr($i) = ($x:Int,$y:Int)" => code"$a($i) = $x; $b($i) = $y"
       }
       
       // abort if there are still `arr` free variables left in `body0`:
@@ -761,7 +763,7 @@ assuming that the original array `arr` is only used in expressions of the form
       // 'subs' lazily evaluates its right-hand side argument
       
       // reconstruct the final program
-      ir"val a = new Array[Int]($len); val b = new Array[Int]($len); $body1"
+      code"val a = new Array[Int]($len); val b = new Array[Int]($len); $body1"
 }
 
 > rewriteArrayOfTuples(ir{
@@ -775,7 +777,7 @@ assuming that the original array `arr` is only used in expressions of the form
   val idx = new scala.util.Random().nextInt(xs.length)
   xs(idx)._1 + xs(idx)._2
 })
-res0: IR[Int,{}] = ir"""{
+res0: Code[Int,{}] = code"""{
   val l_0 = scala.Predef.readInt();
   val a_1 = new scala.Array[scala.Int](l_0);
   val b_2 = new scala.Array[scala.Int](l_0);
@@ -803,12 +805,14 @@ res0: IR[Int,{}] = ir"""{
 
 ## Debugging Quasiquotes
 
-Replace `ir"..."` with `dbg_ir"..."` and look at the compilation messages.
-Similarly, there is `dbg_rewrite`.
+Replace `code"..."` with `dbg_code"..."` and look at the compilation messages.
+They may help you figure out whether the quasiquote was compiled as expected
+(sometimes, you may notice that the wrong types or implicit arguments may have been inferred).
+Similarly, there is `dbg_rewrite` for debugging code rewritings.
 
 To see why rewritings did not fire or how they fired,
 consider adding printing statements in the right-hand side of the rewriting,
-or use `base.debugFor(... code ...)` to print precise logging information.
+or use `Embedding.debugFor(... code ...)` to print precise logging information.
 
 
 

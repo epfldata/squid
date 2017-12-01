@@ -9,14 +9,14 @@
 **Squid** (for the approximative contraction of **Sc**ala **Qu**ot**ed** **D**SLs)
 is a **metaprogramming** framework 
 that facilitates the **type-safe** manipulation of **Scala programs**.
-Squid is geared towards
-the implementation of **library-defined optimizations** [[2]](#gpce17) and 
-helps with the compilation of **Domain-Specific Languages** (DSL) embedded in Scala [[1]](#scala17).
-In addition, it uses **advanced static typing** techniques to prevent common metaprogramming errors [[3]](#popl18).
+Squid extends multi-stage programming capabilities with support for code inspection and code transformation. It has special support for 
+**library-defined optimizations** [[2]](#gpce17) and 
+helps with the compilation of **domain-specific languages** (DSL) embedded in Scala [[1]](#scala17).
+Squid uses **advanced static typing** techniques to prevent common metaprogramming errors, such as scope extrusion [[3]](#popl18).
 
 <!-- TODO: give concrete application examples to pique curiosity/generate interest -->
 
-**Caution:** Squid is still experimental, and the interfaces it exposes may change in the future. This applies especially to the semi-internal interfaces used to implement intermediate representation backends (the `Base` trait and derived).
+**Caution:** Squid is still experimental, and the interfaces it exposes may slightly change in the future. This applies especially to the semi-internal interfaces used to implement intermediate representation backends (the `Base` trait and derived).
 
 
 <a name="early-example">
@@ -37,7 +37,7 @@ Assume we define some library function `foo` as below:
 ```
 
 The `@embed` annotation allows Squid to the see the method implementations inside an object or class, so that they can be inlined later automatically (as shown below) 
-–– note that this annotation is _not_ required when we just want to use these methods in a quasiquote!
+–– note that this annotation is _not_ required in general, as non-annotated methods can also be used inside quasiquotes.
 
 What follows is an example REPL session demonstrating some program manipulation
 using Squid quasiquotes, 
@@ -46,7 +46,7 @@ transformers and first-class term rewriting:
 ```scala
 // Syntax `code"t"` represents term `t` in some specified intermediate representation
 > val pgrm0 = code"Test.foo(1 :: 2 :: 3 :: Nil) + 1"
-pgrm0: Code[Double] = code"""
+pgrm0: ClosedCode[Double] = code"""
   val x_0 = Test.foo[scala.Int](scala.collection.immutable.Nil.::[scala.Int](3).::[scala.Int](2).::[scala.Int](1));
   x_0.+(1).toDouble
 """
@@ -55,15 +55,15 @@ pgrm0: Code[Double] = code"""
 // `Lowering('P)` builds a transformer that inlines all functions marked with phase `P`
 // Here we inline `Test.foo`, which is annotated at phase `'MyPhase`
 > val pgrm1 = pgrm0 transformWith (new Lowering('MyPhase) with BottomUpTransformer)
-pgrm1: Code[Double] = code"scala.collection.immutable.Nil.::[scala.Int](3).::[scala.Int](2).::[scala.Int](1).head.+(1).toDouble"
+pgrm1: ClosedCode[Double] = code"scala.collection.immutable.Nil.::[scala.Int](3).::[scala.Int](2).::[scala.Int](1).head.+(1).toDouble"
 
 // Next, we perform a fixed-point rewriting to partially-evaluate
 // the statically-known parts of our program:
 > val pgrm2 = pgrm1 fix_rewrite {
     case code"($xs:List[$t]).::($x).head" => x
-    case code"(${Const(n)}:Int) + (${Const(m)}:Int)" => Const(n+m)
+    case code"(${Const(n)}:Int) + (${Const(m)}:Int)" => Const(n + m)
   }
-pgrm2: Code[Double] = code"2.toDouble"
+pgrm2: ClosedCode[Double] = code"2.toDouble"
 
 // Finally, let's runtime-compile and evaluate that program!
 > pgrm2.compile
@@ -74,13 +74,17 @@ Naturally, this simple REPL session can be generalized into a proper domain-spec
 (for example, see the stream fusion compiler [[2]](#gpce17)).
 
 It is then possible to turn this into a static program optimizer,
-so that writing the following expression expands at compile time into just `println(2)`:
+so that writing the following expression 
+expands at compile time into just `println(2)`,
+as show in the
+[IntroExampleTest](/example/src/test/scala/example/doc/IntroExampleTest.scala#L11)
+file:
 
 ```scala
 MyOptimizer.optimize{ println(Test.foo(1 :: 2 :: 3 :: Nil) + 1) }
 ```
 
-We can also make this into a proper [Squid macro](#smacros),
+We could also turn this into a dedicated [Squid macro](#smacros),
 an alternative to the current Scala-reflection macros.
 
 
@@ -123,39 +127,32 @@ Quasiquotes are the primitive tool that Squid provides to manipulate program fra
 –– building, composing and decomposing them.
 Quasiquotes are central to most aspects of program transformation in Squid.
 
-**Note:** in our POPL paper [[3]](popl18), we refer to code types as `Code[T,C]`; in the actual implementation presented here, these types are written `IR[T,C]` 
-(and `Code[T]` is used for non-contextual code types).
+[You can find an in-depth tutorial about Squid quasiquotes here.](/doc/tuto/Quasiquotes.md)
+
+**Note:**
+In the original Squid papers [[1]](#scala17) and [[2]](#gpce17),
+we used `Code[T]` as the type of program fragments.
+With the introduction of scope safety and our POPL paper [[3]](popl18),
+this type now takes an extra parameter, as in `Code[T,C]` where `C` represent the term's context requirements.  
+We cans still use type `AnyCode[T]` when we don't care about those context requirements; this type has limited capabilities, but can be turned into a proper code type with method `unsafe_asClosedCode`.
+On the other hand, `ClosedCode[T]` (a synonym for `Code[T,{}]`) is the type of closed program fragments.
+
 
 #### Type-Safe Code Manipulation
 
 Unlike the standard [Scala Reflection quasiquotes](https://docs.scala-lang.org/overviews/quasiquotes/intro.html),
 Squid quasiquotes are statically-typed and hygienic, 
-ensuring that manipulated programs remain well-typed 
+ensuring that manipulated programs remain well-scoped and well-typed 
 and that variable bindings and other symbols do not get mixed up.
-Squid quasiquotes focus on expressions (not definitions), but Squid provides way to _embed_ arbitrary class and object definitions so that their methods can be inlined at any point (or even automatically).
-
-
-#### Flavors of Quasiquotes
-
-Two forms of quasiquotes co-exist in Squid:
-
- * **Simple Quasiquotes [(tutorial)](/doc/tuto/Quasiquotes.md)** provide the basic functionalities expected from statically-typed quasiquotes,
-   and can be used for a wide range of tasks, including [multi-stage programming (MSP)](https://en.wikipedia.org/wiki/Multi-stage_programming).
-   They support both runtime interpretation, runtime compilation and static code generation.
-   For more information, see [[1]](#scala17).
-
- * **Contextual Quasiquotes [(tutorial)](/doc/tuto/Quasiquotes.md)** 
-   push the type-safety guarantees already offered by simple quasiquotes even further,
-   making sure that all generated programs are well-scoped in addition to being well-typed.
-   While they are slightly less ergonomic than the previous flavor, 
-   these quasiquotes are especially well-suited for expressing advanced program transformation algorithms and complicated staging techniques.
-   For more information, see [[3]](#popl18).
-
-Both forms of quasiquotes support a flexible pattern-matching syntax 
+Still, Squid quasiquotes support a flexible pattern-matching syntax 
 and facilities to traverse programs recursively while applying transformations.
 
-As a quick reference available to all Squid users, 
-we provide a [cheat sheet](doc/reference/Quasiquotes.md) that summarizes the features of each system. Also see the [quasiquotes tutorial](/doc/tuto/Quasiquotes.md).
+
+While Squid quasiquotes focus on expressions (not definitions), Squid also provides a way to _embed_ arbitrary class and object definitions so that their methods can be inlined effortlessly, at the discretion of the metaprogrammer.
+
+
+As a quick reference for Squid users, 
+we provide a [cheat sheet](doc/reference/Quasiquotes.md) that summarizes the features of Squid quasiquotes. Also see the [quasiquotes tutorial](/doc/tuto/Quasiquotes.md).
 
 
 

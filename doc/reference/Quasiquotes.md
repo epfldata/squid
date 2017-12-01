@@ -22,33 +22,37 @@ println(code{123.toDouble})  // quasicode
 
 
 
-## Types of Quasiquotes
+## Quasiquotes
 
-**Simple quasiquotes [(tutorial)](/doc/tuto/Quasiquotes.md)** 
+**Quasiquotes [(see the tutorial here)](/doc/tuto/Quasiquotes.md)** 
 are written `code"..."` (or with short syntax `c"..."`),
-and have type `Code[T]` 
-where type argument `T` reflects the type of the term represented by the quasiquote.
-
-**Contextual quasiquotes [(tutorial)](/doc/tuto/ContextualQuasiquotes.md)**
-are written `ir"..."`
-and have type `IR[T,C]`
-where type argument `T` reflects the type of the term represented by the quasiquote,
+and have type `Code[T,C]`
+where type argument `T` reflects the type of the term (program fragment) represented by the quasiquote,
 and `C` reflects the _context requirements_ of that term.
 
-These two types are interoperable, 
-since we have the subtyping relation `IR[T,C] <: Code[T]`.
-A contextual term, of type `IR[T,C]`, 
-is already a simple term of type `Code[T]`.
+
+## Related Code Types
+
+Sometimes, you may not care about the context of a program fragment,
+in which case you can use the type `AnyCode[T]`,
+since we have the subtyping relation `Code[T,C] <: AnyCode[T]`.
 On the other hand,
-any simple term, of type `Code[T]`,
-can be _casted_ (converted) into a contextual term with the unsafe method `.asClosedIR` 
+any term of type `AnyCode[T]`,
+can be _casted_ (converted) into a contextual term with the unsafe method `.unsafe_asClosedCode` 
 –– this cast is only well-defined if the simple term does not have free variables (i.e., it is a _closed_ term).
+This conversion returns a `ClosedCode[T]`, 
+which is itself a type alias for `Code[T,Any]` (a piece of code valid in **any** context).
+We will sometimes write `Code[T,{}]` for aesthetic reasons, 
+leveraging the fact that since `{} == AnyRef <: Any`, we have `Code[T,Any] <: Code[T,{}]`, 
+but in general using type `Code[T,Any]` (or equivalently, `ClosedType[T]`) 
+works slightly better with type inference.
+
 
 
 ## Quasicode
 
-Both quasiquote flavors have a _quasicode_ alternative, 
-written `code{...}` and `ir{...}` respectively.
+An alternative to quasiquotes, **quasicode** is 
+written `code{...}`.
 Quasicoding has the following limitations compared to quasiquotation:
  
  * cannot be used in patterns (due to a Scala limitation);
@@ -65,24 +69,22 @@ Quasicoding has the following limitations compared to quasiquotation:
  
 
 
-## Features Common to Simple and Contextual Quasiquotes
+## Basic Features of Quasiquotes
 
-<!-- In the following, 
-features presented with the simple quasiquote `code"..."` syntax are available to  -->
-All features available to simple quasiquotes are also available to contextual quasiquotes, so in the following every example that uses syntax `code"..."` can be translated to the contextual `ir"..."` syntax.
+All other features available to quasiquotes are also available to quasicode, so in the following, examples that uses syntax `code"..."` can usually be translated to the alternative `code{...}` syntax.
 
 
 ### Supported Scala Features
 
 Squid quasiquotes are for manipulating **expressions**
 –– meaning that **definitions** (of classes, traits, objects, methods and types)
-cannot appear inside quasiquotes, though _references_ to external definitions can.
-If you want to manipulate definitions, other tools exist (for example, see [Scalameta](http://scalameta.org/)). These tools typically have much weaker guarantees.
-Indeed, by its very nature, manipulating definitions cannot usually be type-preserving and type-safe 
+cannot appear inside quasiquotes, though _references_ to such externally-defined constructs can.
+If you want to manipulate definitions, other tools exist (for example, see [Scalameta](http://scalameta.org/)). These tools typically have much weaker guarantees
+–– indeed, by its very nature, manipulating definitions cannot usually be type-preserving and type-safe 
 (e.g., changing the fields of a class will likely break programs that used the old field definitions).
 
 
-Currently supported term-level features:
+Currently supported term-level features of quasiquotes:
  
  * constant literals
  for types `Unit`, `Boolean`, `Byte`, `Char`, `Short`, `Int`, `Long`, `Float`, `Double`, `String` and `Class[_]` for class references (such as `classOf[List[_]]`; these arise as part of the inferred type tags passed to array constructors, for example);
@@ -143,7 +145,7 @@ Scala features that will probably be supported in the future:
 
 Currently supported type-level features:
 
-
+[TODO]
 
 
 Feature not likely to be supported in the future (unless a strong need emerges):
@@ -207,7 +209,7 @@ For example:
 ```scala
 val q0 = code"Seq(1,2,3)" match {
   case code"Seq[Int]($xs*)" =>
-    // xs: Seq[Code[Int]]
+    // xs: Seq[ClosedCode[Int]]
     assert(xs == Seq(c"1",c"2",c"3"))
     val xs2 = c"0" +: xs
     code"Seq[Int](${xs2}*)"
@@ -222,7 +224,7 @@ in expressions, one can write `c"Seq[Int](${xs: _*})"`
 and in pattern, one can write `c"Seq[Int](${xs @ __*})"`.
 
 
-Unquote-splicing is not to be confused with the Scala `_*` syntax, which is supported normally inside quasiquotes. Writing `$xs:_*` implies that `xs` has type `Code[Seq[Int]]`, _not_ `Seq[Code[Int]]`. For example:
+Unquote-splicing is not to be confused with the Scala `_*` syntax, which is supported normally inside quasiquotes. Writing `$xs:_*` implies that `xs` has type `ClosedCode[Seq[Int]]`, _not_ `Seq[Code[Int]]`. For example:
 
 ```scala
 def mkSeq(n: Int): Seq[Int] = ???
@@ -240,7 +242,7 @@ This yield type representation values `t` of type `CodeType[t.Typ]`.
 For example:
 
 ```scala
-def opt(x: Code[Any]) = x match {
+def opt(x: AnyCode[Any]) = x match {
   case code"List[$t]($xs*).size" => Const(xs.size)
   case _ => x
 }
@@ -330,7 +332,7 @@ TODO
 
 
 
-## Additional Features of Contextual Quasiquotes
+## More Advanced, Contextual Features of Quasiquotes
 
 TODO
 
