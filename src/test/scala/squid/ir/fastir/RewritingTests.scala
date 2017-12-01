@@ -76,6 +76,37 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
     assert(a =~= ir"val a = readInt; val b = readInt; a + b")
   }
   
+  test("Rewriting with HOPHoles") {
+    val a = ir"val a = 11.toDouble; val b = 22.toDouble; val c = 33.toDouble; (a,b,c)" rewrite {
+      case ir"val a = ($x:Int).toDouble; val b = ($y:Int).toDouble; ($body(a, b): Tuple3[Double, Double, Double])" =>
+        ir"val a = ($x+$y).toDouble/2; $body(a, a)"
+    }
+    val f = ir"(x: Double, y: Double) => (x, y, 33.toDouble)"
+    assert(a =~= ir"val a = (11+${ir"22"}).toDouble/2; $f(a, a)")
+  }
+  
+  test("Rewriting lambdas") {
+    val l = ir"(x: Double) => x * 2"
+    
+    val a = ir"val a = 11.toDouble; val f = $l; f(a)" rewrite {
+      case ir"(x: Double) => x * 2" => ir"(x: Double) => x * 4"
+    }
+    val l0 = ir"(x: Double) => x * 4"
+    assert(a =~= ir"val a = 11.toDouble; val f = $l0; f(a)")
+  }
+  
+  test("Rewriting should happen at all occurences") {
+    val a = ir"val a = Option(11).get; val b = 22; val c = Option(33).get; a + b + c" rewrite {
+      case ir"Option(($n: Int)).get" => n
+    }
+    assert(a =~= ir"val a = Option(11).get; val b = 22; val c = Option(33).get; ${ir"11"} + 22 + 33")
+    
+    val b = ir"val a = Option(Option(11).get).get; val b = 22; a + b" rewrite {
+      case ir"Option(($n: Int)).get" => n
+    }
+    assert(b =~= ir"val t1 = Option(11).get; val t2 = Option(11).get; ${ir"11"} + 22")
+  }
+  
   //test("Rewriting with impures") {
   //  val a = ir"val a = readInt; val b = readInt; (a + b) * 0.5" rewrite {
   //    case ir"(($h1: Int) + ($h2: Int)) * 0.5" => dbg_ir"($h1 * $h2) + 42.0"
