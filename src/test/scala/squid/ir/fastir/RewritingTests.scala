@@ -114,8 +114,11 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
     assert(a =~= ir"val a = readInt; val b = readInt; a + b")
   }
   
-  test("Rewriting should not remove statements that weren't matched") {
-    
+  test("Rewriting should not remove statements that are part of the result") {
+    val a = ir"val a = readInt; val b = readDouble; a + b" rewrite {
+      case ir"readInt" => ir"readDouble.toInt"
+    }
+    assert(a =~= ir"val a = readDouble.toInt; val b = readDouble; a + b")
   }
   
   //test("Rewriting with impures") {

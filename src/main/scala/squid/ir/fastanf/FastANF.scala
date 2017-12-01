@@ -843,8 +843,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       
       if (preCheck(es.ex)) for {
         code <- code(es.ex)
-        code0 = finalize(code, xtor, cleanup(xtee, es.matchedImpureBVs))(es.ctx)
-        if check(Set.empty, es.matchedImpureBVs)(code0)
+        code0 = finalize(code, xtor, xtee)(es.ctx)
+        if check(Set.empty, es.matchedImpureBVs)(cleanup(code0, es.matchedImpureBVs))
       } yield code0
       else None
     }
