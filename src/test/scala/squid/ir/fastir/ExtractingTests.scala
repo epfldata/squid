@@ -17,7 +17,7 @@ class ExtractingTests extends MyFunSuiteBase(ExtractingTests.Embedding) {
     }
     
     ir"println(42.toDouble)" match {
-      case ir"println($h)" => assert(h =~= ir"42.toDouble")
+      case ir"val t = ($h: Double); println(t)" => assert(h =~= ir"42.toDouble")
     }
     
     ir"(42, 1337)" match {
@@ -85,6 +85,14 @@ class ExtractingTests extends MyFunSuiteBase(ExtractingTests.Embedding) {
     ir"val a = readInt; val b = readInt; b" match {
       case ir"val t = ($h: Int); val bX = readInt; bX" => assert(h =~= ir"readInt")
     }
+  }
+  
+  test("Extracting should not match a return in the middle of block") {
+    assert(Try {
+      ir"val a = readInt; a + 11 + 22" match {
+        case ir"val a = readInt; a + 11" => fail
+      }
+    }.isFailure)
   }
 }
 

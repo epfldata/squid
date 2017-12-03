@@ -2,8 +2,11 @@ package squid
 package ir
 package fastir
 
+import squid.test.Test.Embedding
+
 class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
   import RewritingTests.Embedding.Predef._
+  import RewritingTests.Embedding.Quasicodes._
 
   test("Simple rewrites") {
     val a = ir"123" rewrite {
@@ -31,10 +34,10 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
   }
 
   test("Rewriting subpatterns") {
-    val a = ir"(10.toDouble + 111) * .5" match {
+    val a = ir"(10.toDouble + 111) * .5" rewrite {
       case ir"(($n: Double) + 111) * .5" => ir"$n * .25"
     }
-    assert(a =~= ir"10.toDouble * .25")
+    assert(a =~= ir"val t = 10.toDouble; val t2 = (t + 111) * .5; t * .25")
 
     val b = ir"Option(42).get" rewrite {
       case ir"Option(($n: Int)).get" => n
@@ -120,6 +123,32 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
     }
     assert(a =~= ir"val a = readDouble.toInt; val b = readDouble; a + b")
   }
+  
+  test("Rewriting should not partially match inside a lambda") {
+    val a = ir"(x: Double) => x * 2 + 33" rewrite {
+      case ir"(x: Double) => x * 2" => fail
+    }
+  }
+
+  /* --- Hacky solutions --- */
+  test("Rewriting should flag lambdas as starting points") {
+    // Else we get an "Illegal ANF self argument" because the rewriting 
+    // puts a LB in the function position of tha App f(a)
+    val l = ir"(x: Double) => x * 2"
+    val a = ir"val a = 11.toDouble; val f = $l; f(a)" rewrite {
+      case ir"(x: Double) => x * 2" => ir"(x: Double) => x * 4"
+    }
+  }
+  
+  test("Rewriting should remove matched lambdas") {
+    // Else since genCode puts code at the top it will rewrite
+    // again and again the same lambda
+    val l = ir"(x: Double) => x * 2"
+    val a = ir"val a = 11.toDouble; val f = $l; f(a)" rewrite {
+      case ir"(x: Double) => x * 2" => ir"(x: Double) => x * 4"
+    }
+  }
+  /* ----------------------- */
   
   //test("Rewriting with impures") {
   //  val a = ir"val a = readInt; val b = readInt; (a + b) * 0.5" rewrite {

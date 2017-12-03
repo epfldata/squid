@@ -319,7 +319,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
   protected def extract(xtor: Rep, xtee: Rep): Option[Extract] = {
     println(s"Extract(\n$xtor, \n$xtee)")
-    extractWithState(xtor, xtee)(_ => false)(State.init(xtor, xtee)).fold(_ => None, Some(_)) map (_.ex)
+    extractWithState(xtor, xtee)(_ => false)(State.forExtraction(xtor, xtee)).fold(_ => None, Some(_)) map (_.ex)
   }
 
   type Ctx = Map[BoundVal, BoundVal]
@@ -331,7 +331,9 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   type ExtractState = Either[State, State]
   implicit def rightBias[A, B](e: Either[A, B]): Either.RightProjection[A,B] = e.right
   
-  case class State(ex: Extract, ctx: Ctx, flags: Flags, matchedImpureBVs: Set[BoundVal], failedMatches: Map[BoundVal, Set[BoundVal]]) {
+  case class State(ex: Extract, ctx: Ctx, flags: Flags, matchedImpureBVs: Set[BoundVal], failedMatches: Map[BoundVal, Set[BoundVal]], partialMatching: Boolean) {
+    private val _partialMatching = partialMatching
+    
     def withNewExtract(newEx: Extract): State = copy(ex = newEx)
     def withCtx(newCtx: Ctx): State = copy(ctx = newCtx)
     def withCtx(p: (BoundVal, BoundVal)): State = copy(ctx = ctx + p)
@@ -342,16 +344,20 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case _ => this // Everything else is pure so we ignore it
     } 
     def withFailed(p: (BoundVal, BoundVal)): State = copy(failedMatches = updateWith(failedMatches)(p))
-
+    def withPartialMatching: State = copy(partialMatching = true)
+    def withCompleteMatching: State = copy(partialMatching = false)
+    def withDefaultEarlyReturn: State = copy(partialMatching = _partialMatching)
+    
     def updateExtractWith(e: Option[Extract]*)(implicit default: State): ExtractState = {
       mergeAll(Some(ex) +: e).fold[ExtractState](Left(default))(ex => Right(this withNewExtract ex))
     }
   }
   object State {
-    def init(xtor: Rep, xtee: Rep): State = apply(xtor, xtee)
+    def forExtraction(xtor: Rep, xtee: Rep): State = apply(xtor, xtee, false)
+    def forRewriting(xtor: Rep, xtee: Rep): State = apply(xtor, xtee, true)
     
-    private def apply(xtor: Rep, xtee: Rep): State = 
-      State(EmptyExtract, ListMap.empty, Flags(xtor, xtee), Set.empty, Map.empty.withDefaultValue(Set.empty))
+    private def apply(xtor: Rep, xtee: Rep, inRewriting: Boolean): State = 
+      State(EmptyExtract, ListMap.empty, Flags(xtor, xtee), Set.empty, Map.empty.withDefaultValue(Set.empty), inRewriting)
   }
 
   sealed trait Flag
@@ -380,18 +386,31 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       }
       
       def genFlags0(r: Rep, unusedBVs: Set[BoundVal], impures: Set[BoundVal]): (Set[BoundVal], Set[BoundVal]) = r match {
-        case lb: LetBinding =>
-          val updated = update(
-            lb.value, 
-            unusedBVs + lb.bound,
-            effect(lb.value) match {
-              case Pure => impures
-              case Impure => impures + lb.bound
-            }
-          )
-          genFlags0(lb.body, updated._1, updated._2)
+        case lb: LetBinding => lb.value match {
+          // TODO should just inline the function in App during the transformation. Else you get an "Illegal ANF self argument".
+          case _: Lambda =>
+            val updated = update(
+              lb.value,
+              unusedBVs + lb.bound,
+              effect(lb.value) match {
+                case Pure => impures + lb.bound
+                case Impure => impures + lb.bound
+              }
+            )
+            genFlags0(lb.body, updated._1, updated._2)
+          case _ =>
+            val updated = update(
+              lb.value,
+              unusedBVs + lb.bound,
+              effect(lb.value) match {
+                case Pure => impures
+                case Impure => impures + lb.bound
+              }
+            )
+            genFlags0(lb.body, updated._1, updated._2)
+        }
         
-        case bv: BoundVal => (unusedBVs - bv, impures)
+        case bv: BoundVal => (unusedBVs - bv, impures) alsoApply println
         case _ => (unusedBVs, impures)
       }
 
@@ -459,10 +478,10 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
                 val lbBVs = bvs(lb)
                 val done: State => Boolean = s => lbBVs forall (s.ctx.keySet contains _) // TODO Keep set of matched BVs in state?
                 
-                extractWithState(lb, body)(done)(es) map { es =>
+                extractWithState(lb, body)(done)(es withPartialMatching) map { es =>
                   val replace =  es.ctx(lb.last.bound)
                   bottomUpPartial(filterLBs(body)(es.ctx.values.toSet contains _.bound)) { case `replace` => hopArg } -> es
-                } getOrElse body -> es
+                } getOrElse body -> (es withDefaultEarlyReturn)
                 
               case _ => bottomUpPartial(body) { case `arg` => hopArg } -> es
             }
@@ -572,13 +591,20 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         case Skip => extractWithState(lb.body, xtee)(done)
       }
         
-      case (bv: BoundVal, lb: LetBinding) => for {
-        es1 <- extractWithState(bv, lb.bound)(done).left
-        es2 <- extractInside(bv, lb.value)(es1).left
-        es3 <- extractWithState(bv, lb.body)(done)(es2).left
-      } yield es3
-    
-      case (_: Rep, lb: LetBinding) if es.matchedImpureBVs contains lb.bound => extractWithState(xtor, lb.body)(done)
+      case (bv: BoundVal, lb: LetBinding) => 
+        if (es.ctx.keySet contains bv) Right(es)
+        else {
+          if (!isPure(lb) || !es.partialMatching) Left(es)
+          else {
+            for {
+              es1 <- extractWithState(bv, lb.bound)(done).left
+              es2 <- extractInside(bv, lb.value)(es1).left
+              es3 <- extractWithState(bv, lb.body)(done)(es2).left
+            } yield es3
+          }
+        }
+        
+      case (_: Rep, lb: LetBinding) if (es.matchedImpureBVs contains lb.bound) || es.partialMatching => extractWithState(xtor, lb.body)(done)
     
       case (_, Ascribe(s, _)) => extractWithState(xtor, s)(done)
     
@@ -651,8 +677,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case (l1: Lambda, l2: Lambda) =>
         for {
           es1 <- es updateExtractWith (l1.boundType extract(l2.boundType, Covariant))
-          es2 <- extractWithState(l1.body, l2.body)(done)(es1 withCtx l1.bound -> l2.bound)
-        } yield es2
+          es2 <- extractWithState(l1.body, l2.body)(done)(es1 withCtx l1.bound -> l2.bound withCompleteMatching)
+        } yield es2 withDefaultEarlyReturn
 
       case (ma1: MethodApp, ma2: MethodApp) if ma1.mtd == ma2.mtd =>
         def targExtract(es0: State): ExtractState =
@@ -701,7 +727,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   }
   
   override def rewriteRep(xtor: Rep, xtee: Rep, code: Extract => Option[Rep]): Option[Rep] = 
-    rewriteRep0(xtor, xtee, code)(false)(State.init(xtor, xtee))
+    rewriteRep0(xtor, xtee, code)(false)(State.forRewriting(xtor, xtee))
 
   def rewriteRep0(xtor: Rep, xtee: Rep, code: Extract => Option[Rep])(internalRec: Boolean)(implicit es: State): Option[Rep] = {
     def rewriteRepWithState(xtor: Rep, xtee: Rep)(implicit es: State): ExtractState = {
@@ -783,68 +809,68 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         }
       }
       
-      def cleanup(r: Rep, remove: Set[BoundVal]): Rep = r match {
-        case lb: LetBinding if remove contains lb.bound => cleanup(lb.body, remove)
-        case lb: LetBinding if isPure(lb.value) => 
-          val bvsInValue = bvs(lb.value)
-          
-          if (bvsInValue exists (remove contains)) {
-            cleanup(lb.body, remove ++ bvsInValue.toSet)
-          } else {
-            lb.body = cleanup(lb.body, remove) 
+      def cleanup(r: Rep, remove: Set[BoundVal], removeLambdas: Boolean)(ctx: Ctx): Rep = r match {
+        case lb: LetBinding if remove contains lb.bound => cleanup(lb.body, remove, removeLambdas)(ctx)
+        case lb: LetBinding => lb.value match {
+          case _: Lambda if (ctx.values.toSet contains lb.bound) && removeLambdas => 
+            cleanup(lb.body, remove, removeLambdas)(ctx)
+          case v if isPure(v) =>
+            val bvsInValue = bvs(lb.value)
+
+            if (bvsInValue exists (remove contains)) {
+              cleanup(lb.body, remove ++ bvsInValue.toSet, removeLambdas)(ctx)
+            } else {
+              lb.body = cleanup(lb.body, remove, removeLambdas)(ctx)
+              lb
+            }
+          case _ =>
+            lb.body = cleanup(lb.body, remove, removeLambdas)(ctx)
             lb
-          }
-        case lb: LetBinding => 
-          lb.body = cleanup(lb.body, remove)
-          lb
+        }
+          
         case _ => r
       }
       
-      def finalize(code: Rep, xtor: Rep, filteredXtee: Rep)(ctx: Ctx): Rep = {
-        println(s"FOO: $code, \n$xtor, \n$filteredXtee")
-        
-        xtor match {
-          case xtorLB: LetBinding =>
-            val xtorLast = xtorLB.last
-            xtorLast.body match {
-              case xtorRet: BoundVal => code match {
-                case codeLB: LetBinding =>
-                  val codeLast = codeLB.last
-                  codeLast.body |>? {
-                    case codeRet: BoundVal =>
-                      val bv = ctx(xtorRet)
-                      codeLast.body =  bottomUpPartial(filteredXtee) { case `bv` => codeRet }
-                  }
-                  code
+      def finalize(code: Rep, xtor: Rep, filteredXtee: Rep)(ctx: Ctx): Rep = xtor match {
+        case xtorLB: LetBinding =>
+          val xtorLast = xtorLB.last
+          xtorLast.body match {
+            case xtorRet: BoundVal => code match {
+              case codeLB: LetBinding =>
+                val codeLast = codeLB.last
+                codeLast.body |>? {
+                  case codeRet: BoundVal =>
+                    val bv = ctx(xtorRet)
+                    codeLast.body =  bottomUpPartial(filteredXtee) { case `bv` => codeRet }
+                }
+                code
 
-                case _ =>
-                  val bv = ctx(xtorRet)
-                  bottomUpPartial(filteredXtee) { case `bv` => code }
-              }
-
-              // Hole?  
-              case _ => code
+              case _ =>
+                val bv = ctx(xtorRet)
+                bottomUpPartial(filteredXtee) { case `bv` => code }
             }
 
-          case _ => code match {
-            case codeLB: LetBinding =>
-              val codeLast = codeLB.last
-              codeLast.body |>? {
-                case codeRet: BoundVal =>
-                  codeLast.body = bottomUpPartial(filteredXtee) { case `xtor` => codeRet }
-              }
-              code
-
-            case _ =>
-              bottomUpPartial(filteredXtee) { case `xtor` => code }
+            // Hole?  
+            case _ => code
           }
+
+        case _ => code match {
+          case codeLB: LetBinding =>
+            val codeLast = codeLB.last
+            codeLast.body |>? {
+              case codeRet: BoundVal =>
+                codeLast.body = bottomUpPartial(filteredXtee) { case `xtor` => codeRet }
+            }
+            code
+
+          case _ => bottomUpPartial(filteredXtee) { case `xtor` => code }
         }
       }
       
       if (preCheck(es.ex)) for {
-        code <- code(es.ex)
-        code0 = finalize(code, xtor, xtee)(es.ctx)
-        if check(Set.empty, es.matchedImpureBVs)(cleanup(code0, es.matchedImpureBVs))
+        code <- code(es.ex) alsoApply(c => println(s"CODE: $c"))
+        code0 = finalize(code, xtor, xtee)(es.ctx) alsoApply (c => println(s"CODE0: $c"))
+        if check(Set.empty, es.matchedImpureBVs)(cleanup(code0, es.matchedImpureBVs, true)(es.ctx))
       } yield code0
       else None
     }
