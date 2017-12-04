@@ -913,7 +913,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
   def bvs(r: Rep): List[BoundVal] = {
     def bvs0(r: Rep, acc: List[BoundVal]): List[BoundVal] = r match {
-      case lb: LetBinding => lb.bound :: acc
+      case lb: LetBinding => bvs0(lb.body, lb.bound :: acc)
       case _ => acc
     }
 

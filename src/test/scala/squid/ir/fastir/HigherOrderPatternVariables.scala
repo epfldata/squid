@@ -134,6 +134,12 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
       case ir"(x: Int, y: Int) => ($h(x + y): Int)" => assert(h =~= ir"(x: Int) => { println(x); x }")
     }
   }
+  
+  test("HOPHoles should be able to extract nested letbindings") {
+    ir"val a = readInt; val b = readInt; val a1 = a + 1; val b1 = b + 1; a1 + b1" match {
+      case ir"($h(readInt + 1): Int)" => assert(h =~= ir"(x: Int) => x + x")
+    }
+  }
 }
 
 object HigherOrderPatternVariables {
