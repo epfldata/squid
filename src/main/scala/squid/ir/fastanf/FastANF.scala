@@ -416,7 +416,17 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
             genFlags0(lb.body, updated._1, updated._2)
         }
         
-        case bv: BoundVal => (unusedBVs - bv, impures) alsoApply println
+        case bv: BoundVal => (unusedBVs - bv, impures) //alsoApply println
+
+        case HOPHole2(_, _, argss, _) =>
+          val updatedImpures = argss.flatten.foldLeft(impures) {
+            case (impures, arg) => arg match {
+              case lb: LetBinding if !isPure(lb.value) => impures + lb.bound
+              case _ => impures
+            }
+          }
+          (unusedBVs, updatedImpures)
+
         case _ => (unusedBVs, impures)
       }
 
@@ -523,11 +533,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           es2 <- extractWithState(lb1, lb2.body)(es1).left
         } yield es2
 
-        case (Skip, Start) => for {
-          es1 <- extractAndContinue(lb1, lb2).left
-          es2 <- extractWithState(lb1.body, lb2)(es1).left
-        } yield es2
-
+        case (Skip, Start) => extractWithState(lb1.body, lb2)
+        
         case (Skip, Skip) => extractWithState(lb1.body, lb2.body)
       }
     }
@@ -726,7 +733,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           es4 <- es3.updateExtractWith(ma1.typ extract (ma2.typ, Covariant))
         } yield es4
 
-      case (DefHole(h), _) => extractWithState(h, wrapConstruct(letbind(v2)))
+      case (DefHole(h), _) if !isPure(v2) => extractWithState(h, wrapConstruct(letbind(v2)))
 
       case _ => Left(es)
     }

@@ -17,7 +17,7 @@ class ExtractingTests extends MyFunSuiteBase(ExtractingTests.Embedding) {
     }
     
     ir"println(42.toDouble)" match {
-      case ir"val t = ($h: Double); println(t)" => assert(h =~= ir"42.toDouble")
+      case ir"println(($h: Int).toDouble)" => assert(h =~= ir"42")
     }
     
     ir"(42, 1337)" match {
@@ -81,6 +81,24 @@ class ExtractingTests extends MyFunSuiteBase(ExtractingTests.Embedding) {
         case ir"val aX = readInt; val bX = readInt; bX + aX" => fail
       }
     }.isFailure)
+    
+    assert(Try {
+      ir"(readInt, readDouble)" match {
+        case ir"(readDouble, readInt)" => fail
+      }
+    }.isFailure)
+    
+    ir"readInt; readDouble" match {
+      case ir"$a; $b" => 
+        assert(a =~= ir"readInt")
+        assert(b =~= ir"readDouble")
+    }
+    
+    ir"val r1 = readInt; val a = 20 + r1; val r2 = readDouble; a + r2" match {
+      case ir"val r1 = ($r1: Int); val r2 = ($r2: Double); val a = 20 + r1; a + r2" => 
+        assert(r1 =~= ir"readInt")
+        assert(r2 =~= ir"readDouble")
+    }
 
     ir"val a = readInt; val b = readInt; b" match {
       case ir"val t = ($h: Int); val bX = readInt; bX" => assert(h =~= ir"readInt")

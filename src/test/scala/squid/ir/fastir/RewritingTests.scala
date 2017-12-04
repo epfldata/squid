@@ -157,13 +157,19 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
   //  assert(a =~= ir"(readInt + readInt) + 42.0")
   //}
 
-  //test("Rewriting simple expressions only once") {
-  //  val a = ir"println((50, 60))" rewrite {
-  //    case ir"($x:Int,$y:Int)" => ir"($y:Int,$x:Int)"
-  //    //case ir"(${Const(n)}:Int)" => Const(n+1)
-  //  }
-  //  assert(a =~= ir"println((61,51))")
-  //}
+  test("Rewriting simple expressions only once") {
+    /*
+     * TODO 
+     * goes into an infinite loop since it rewrites 
+     * at the "current" point. So the topdown transformer 
+     * will apply the transformation again on what was rewritten.
+     */
+    //val a = ir"println((50, 60))" rewrite {
+    //  case ir"($x:Int,$y:Int)" => ir"($y:Int,$x:Int)"
+    //  //case ir"(${Const(n)}:Int)" => Const(n+1)
+    //}
+    //assert(a =~= ir"println((61,51))")
+  }
   //
   //test("Function Rewritings") {
   //  val a = ir"(x: Int) => (x-5) * 32" rewrite {
