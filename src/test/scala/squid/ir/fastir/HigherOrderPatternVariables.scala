@@ -76,9 +76,9 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
   test("Non-trivial arguments") {
     val id = ir"(z: Int) => z"
     
-    //ir"(a: Int, b: Int, c: Int) => a + b + c" matches {
-    //  case ir"(x: Int, y: Int, z: Int) => $body(x + y, z): Int" => assert(body == ir"(r: Int, s: Int) => r + s")
-    //}
+    ir"(a: Int, b: Int, c: Int) => a + b + c" matches {
+      case ir"(x: Int, y: Int, z: Int) => $body(x + y, z): Int" => assert(body == ir"(r: Int, s: Int) => r + s")
+    }
 
     ir"(a: Int, b: Int, c: Int) => a + b + c" match {
       case ir"(x: Int, y: Int, z: Int) => $body(x + y + z): Int" => assert(body =~= id)
@@ -126,6 +126,12 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
     val f = ir"(x: Int) => println(x + 1)"
     ir"val a = 20; $f(a)" match {
       case ir"(x: Int) => ($prt(x + 1): Int)" => assert(prt =~= ir"(x: Int) => println(x)")
+    }
+  }
+  
+  test("HOPHoles should extract all the occurences of the pattern") {
+    ir"val f = (x: Int, y: Int) => { println(x + y); x + y }; f(11, 22)" match {
+      case ir"(x: Int, y: Int) => ($h(x + y): Int)" => assert(h =~= ir"(x: Int) => { println(x); x }")
     }
   }
 }

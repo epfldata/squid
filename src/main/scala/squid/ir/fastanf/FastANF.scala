@@ -493,11 +493,22 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
               case lb: LetBinding => 
                 val lbBVs = bvs(lb)
                 val done: State => Boolean = s => lbBVs forall (s.ctx.keySet contains _) // TODO Keep set of matched BVs in state?
+    
+                def replaceAllOccurences(r: Rep, body: Rep)(es: State): Rep -> State = {
+                  def replaceAllOccurences0(r: Rep, body: Rep)(implicit es: State): Rep -> State = {
+                    extractWithState(lb, body) map { es0 =>
+                      println(s"------------------")
+                      val replace =  es0.ctx(lb.last.bound)
+                      val body0  = bottomUpPartial(filterLBs(body)(es0.ctx.values.toSet contains _.bound)) { case `replace` => hopArg }
+                      replaceAllOccurences0(r, body0)._1 -> es0
+                    } getOrElse body -> es
+                  }
+                  
+                  replaceAllOccurences0(r, body)(es withTerminationPredicate done withPartialMatching)
+                    .mapSecond(_.withDefaultTerminationPredicate.withDefaultEarlyReturn)
+                }
                 
-                extractWithState(lb, body)(es withTerminationPredicate done withPartialMatching) map { es =>
-                  val replace =  es.ctx(lb.last.bound)
-                  bottomUpPartial(filterLBs(body)(es.ctx.values.toSet contains _.bound)) { case `replace` => hopArg } -> es
-                } getOrElse body -> es.withDefaultTerminationPredicate.withDefaultEarlyReturn
+                replaceAllOccurences(lb, body)(es)
                 
               case _ => bottomUpPartial(body) { case `arg` => hopArg } -> es
             }
