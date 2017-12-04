@@ -121,6 +121,13 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
     // assert(b == ir"readDouble.toInt + 42")
     // assert(b == ir"val r = readDouble + 1; r")
   }
+  
+  test("HOPHoles should be able to extract an impure statement") {
+    val f = ir"(x: Int) => println(x + 1)"
+    ir"val a = 20; $f(a)" match {
+      case ir"(x: Int) => ($prt(x + 1): Int)" => assert(prt =~= ir"(x: Int) => println(x)")
+    }
+  }
 }
 
 object HigherOrderPatternVariables {

@@ -99,6 +99,10 @@ class ExtractingTests extends MyFunSuiteBase(ExtractingTests.Embedding) {
         assert(r1 =~= ir"readInt")
         assert(r2 =~= ir"readDouble")
     }
+    
+    ir"val r1 = readInt; val a = 20 + r1; val b = r1 * 2; val r2 = a + readDouble; r2 + b" match {
+      case ir"val r1 = readInt; val b = r1 * 2; val a = 20 + r1; val r2 = a + readDouble; r2 + b" => 
+    }
 
     ir"val a = readInt; val b = readInt; b" match {
       case ir"val t = ($h: Int); val bX = readInt; bX" => assert(h =~= ir"readInt")

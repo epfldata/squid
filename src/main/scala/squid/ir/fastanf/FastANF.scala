@@ -606,16 +606,13 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         
       case (bv: BoundVal, lb: LetBinding) => 
         if (es.ctx.keySet contains bv) Right(es)
-        else {
-          if (!isPure(lb) || !es.partialMatching) Left(es)
-          else {
-            for {
-              es1 <- extractWithState(bv, lb.bound).left
-              es2 <- extractInside(bv, lb.value)(es1).left
-              es3 <- extractWithState(bv, lb.body)(es2).left
-            } yield es3
-          }
-        }
+        else if (es.partialMatching) {
+          for {
+            es1 <- extractWithState(bv, lb.bound).left
+            es2 <- extractInside(bv, lb.value)(es1).left
+            es3 <- extractWithState(bv, lb.body)(es2).left
+          } yield es3
+        } else Left(es)
         
       case (_: Rep, lb: LetBinding) if (es.matchedImpureBVs contains lb.bound) || es.partialMatching => extractWithState(xtor, lb.body)
     
