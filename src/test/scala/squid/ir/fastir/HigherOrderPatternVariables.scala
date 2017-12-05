@@ -133,6 +133,18 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
     ir"val f = (x: Int, y: Int) => { println(x + y); x + y }; f(11, 22)" match {
       case ir"(x: Int, y: Int) => ($h(x + y): Int)" => assert(h =~= ir"(x: Int) => { println(x); x }")
     }
+
+    ir"val f = (x: Int, y: Int) => { println(x + y); val a = x + y; println(x * y); val b = x * y; a + b}; f(11, 22)" match {
+      case ir"(x: Int, y: Int) => ($h(x + y, x * y): Int)" => assert(h =~= ir"(x: Int, y: Int) => { println(x); println(y); x + y }")
+    }
+
+    ir"val f = (x: Int, y: Int) => { println(x * y); val a = x + y; println(x + y); val b = x * y; a + b}; f(11, 22)" match {
+      case ir"(x: Int, y: Int) => ($h(x + y, x * y): Int)" => assert(h =~= ir"(x: Int, y: Int) => { println(y); println(x); x + y }")
+    }
+
+    ir"val f = (x: Int, y: Int) => { println(x * y); val a = x + y; println(x + y); val b = x * y; println(a + b); a * b}; f(11, 22)" match {
+      case ir"(x: Int, y: Int) => ($h(x + y, x * y): Int)" => assert(h =~= ir"(x: Int, y: Int) => { println(y); println(x); println(x + y); x * y}")
+    }
   }
   
   test("HOPHoles should be able to extract nested letbindings") {
