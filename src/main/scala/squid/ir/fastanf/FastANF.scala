@@ -286,36 +286,35 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   // * --- * --- * --- *  Implementations of `InspectableBase` methods  * --- * --- * --- *
 
   def extractType(xtor: TypeRep, xtee: TypeRep, va: squid.ir.Variance): Option[Extract] = Some(EmptyExtract) //unsupported
-  def bottomUp(r: Rep)(f: Rep => Rep): Rep = transformRepAndDef(r)(identity, f)(identity)
-  def topDown(r: Rep)(f: Rep => Rep): Rep = transformRepAndDef(r)(f)(identity)
-  def transformRepAndDef(r: Rep)(pre: Rep => Rep, post: Rep => Rep = identity)(preDef: Def => Def, postDef: Def => Def = identity): Rep = {
-    def transformRepAndDef0(r: Rep) = transformRepAndDef(r)(pre, post)(preDef, postDef)
-
-    def transformDef(d: Def): Def = postDef(preDef(d) match {
-      case App(f, a) => App(transformRepAndDef0(f), transformRepAndDef0(a)) // Note: App is a MethodApp, but we can transform it more efficiently this way
-      case ma: MethodApp => MethodApp(transformRepAndDef0(ma.self), ma.mtd, ma.targs, ma.argss argssMap (transformRepAndDef0(_)), ma.typ)
-      case l: Lambda => // Note: destructive modification of the lambda binding!
-        //new Lambda(l.name, l.bound, l.boundType, transformRepAndDef0(l.body))
-        l.body = l.body |> transformRepAndDef0
-        l
-      case _ => d
-    })
-
+  def bottomUp(r: Rep)(f: Rep => Rep): Rep = transformRep(r)(identity, f)
+  def topDown(r: Rep)(f: Rep => Rep): Rep = transformRep(r)(f)
+  
+  def transformRep(r: Rep)(pre: Rep => Rep, post: Rep => Rep = identity): Rep = {
+    def transformRep0(r: Rep) = transformRep(r)(pre, post)
+    
+    def transformDef(d: Def): Either[Rep, Def] = d match {
+      case ma: MethodApp => 
+        Left(MethodApp.toANF(transformRep0(ma.self), ma.mtd, ma.targs, ma.argss argssMap transformRep0, ma.typ))
+      case l: Lambda =>
+        l.body = l.body |> transformRep0
+        Right(l)
+      case _ => Right(d)
+    }
+    
     post(pre(r) match {
-      case lb: LetBinding => // Note: destructive modification of the let-binding!
-        lb.value = lb.value |> transformDef
-        lb.body = lb.body |> transformRepAndDef0
-        lb
-      case Ascribe(s, t) =>
-        Ascribe(transformRepAndDef0(s), t)
-      case Module(p, n, t) =>
-        Module(transformRepAndDef0(p), n, t)
+      case lb: LetBinding =>
+        lb.value |> transformDef match {
+          case Right(d) =>
+            lb.value = d
+            lb.body = lb.body |> transformRep0
+            lb
+          case Left(r) => LetBinding.withRepValue(lb.name, lb.bound, r, lb.body |> transformRep0)
+        }
+      case Ascribe(s, t) => Ascribe(transformRep0(s), t)
+      case Module(p, n, t) => Module(transformRep0(p), n, t)
       case r @ ((_:Constant) | (_:Hole) | (_:Symbol) | (_:SplicedHole) | (_:HOPHole) | (_:HOPHole2) | (_:NewObject) | (_:StaticModule)) => r
     })
   }
-  
-  def transformRep(r: Rep)(pre: Rep => Rep, post: Rep => Rep = identity): Rep =
-    transformRepAndDef(r)(pre, post)(identity, identity)
 
   protected def extract(xtor: Rep, xtee: Rep): Option[Extract] = {
     println(s"Extract(\n$xtor, \n$xtee)")
@@ -392,31 +391,18 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       }
       
       def genFlags0(r: Rep, unusedBVs: Set[BoundVal], impures: Set[BoundVal]): (Set[BoundVal], Set[BoundVal]) = r match {
-        case lb: LetBinding => lb.value match {
-          // TODO should just inline the function in App during the transformation. Else you get an "Illegal ANF self argument".
-          case _: Lambda =>
-            val updated = update(
-              lb.value,
-              unusedBVs + lb.bound,
-              effect(lb.value) match {
-                case Pure => impures + lb.bound
-                case Impure => impures + lb.bound
-              }
-            )
-            genFlags0(lb.body, updated._1, updated._2)
-          case _ =>
-            val updated = update(
-              lb.value,
-              unusedBVs + lb.bound,
-              effect(lb.value) match {
-                case Pure => impures
-                case Impure => impures + lb.bound
-              }
-            )
-            genFlags0(lb.body, updated._1, updated._2)
-        }
+        case lb: LetBinding =>
+          val updated = update(
+            lb.value,
+            unusedBVs + lb.bound,
+            effect(lb.value) match {
+              case Pure => impures
+              case Impure => impures + lb.bound
+            }
+          )
+          genFlags0(lb.body, updated._1, updated._2)
         
-        case bv: BoundVal => (unusedBVs - bv, impures) //alsoApply println
+        case bv: BoundVal => (unusedBVs - bv, impures)
 
         case HOPHole2(_, _, argss, _) =>
           val updatedImpures = argss.flatten.foldLeft(impures) {
@@ -584,7 +570,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
     def contentsOf(h: Hole)(implicit es: State): Option[Rep] = es.ex._1 get h.name // TODO check in ex._3, return Option[List[Rep]]
 
-    println(s"extractWithState: $xtor\n$xtee\n")
+    println(s"-----\nextractWithState: \n$xtor\n\n$xtee\n-----\n\n")
     if (es.isDone) Right(es)
     else xtor -> xtee match {
       case (h: Hole, lb: LetBinding) => contentsOf(h) match {
@@ -602,29 +588,24 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case (HOPHole2(name, typ, argss, visible), _) => extractHOPHole(name, typ, argss, visible)
     
       case (lb1: LetBinding, lb2: LetBinding) => extractLBs(lb1, lb2)
-    
-      //// TODO Stop at markers?  
-      //case (lb: LetBinding, _: Rep) => (effect(lb), effect(xtee)) match {
-      //  case (Pure, Pure) => extractWithState(lb.body, xtee)(done)
-      //  case (Impure, Pure) => Left(es)
-      //  case (_, Impure) => Left(es) // Assuming the return value cannot be impure
-      //}
 
       case (lb: LetBinding, _: Rep) => es.flags.xtorFlag(lb.bound) match {
         case Start => Left(es)
         case Skip => extractWithState(lb.body, xtee)
       }
         
-      case (bv: BoundVal, lb: LetBinding) => 
+      case (bv: BoundVal, lb: LetBinding) =>
         if (es.ctx.keySet contains bv) Right(es)
-        else if (es.partialMatching) {
-          for {
-            es1 <- extractWithState(bv, lb.bound).left
-            es2 <- extractInside(bv, lb.value)(es1).left
-            es3 <- extractWithState(bv, lb.body)(es2).left
-          } yield es3
-        } else Left(es)
-        
+        else if (es.partialMatching) for {
+          es1 <- extractWithState(bv, lb.bound).left
+          es2 <- extractInside(bv, lb.value)(es1).left
+          es3 <- extractWithState(bv, lb.body)(es2).left
+        } yield es3
+        else es.flags.xteeFlag(lb.bound) match {
+          case Skip => extractWithState(bv, lb.body)
+          case Start => Left(es)
+        }
+
       case (_: Rep, lb: LetBinding) if (es.matchedImpureBVs contains lb.bound) || es.partialMatching => extractWithState(xtor, lb.body)
     
       case (_, Ascribe(s, _)) => extractWithState(xtor, s)
@@ -830,24 +811,21 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         }
       }
       
-      def cleanup(r: Rep, remove: Set[BoundVal], removeLambdas: Boolean)(ctx: Ctx): Rep = r match {
-        case lb: LetBinding if remove contains lb.bound => cleanup(lb.body, remove, removeLambdas)(ctx)
-        case lb: LetBinding => lb.value match {
-          case _: Lambda if (ctx.values.toSet contains lb.bound) && removeLambdas => 
-            cleanup(lb.body, remove, removeLambdas)(ctx)
-          case v if isPure(v) =>
-            val bvsInValue = bvs(lb.value)
+      def cleanup(r: Rep, remove: Set[BoundVal])(ctx: Ctx): Rep = r match {
+        case lb: LetBinding if remove contains lb.bound => cleanup(lb.body, remove)(ctx)
+        
+        case lb: LetBinding if isPure(lb.value) =>
+          val bvsInValue = bvs(lb.value)
 
-            if (bvsInValue exists (remove contains)) {
-              cleanup(lb.body, remove ++ bvsInValue.toSet, removeLambdas)(ctx)
-            } else {
-              lb.body = cleanup(lb.body, remove, removeLambdas)(ctx)
-              lb
-            }
-          case _ =>
-            lb.body = cleanup(lb.body, remove, removeLambdas)(ctx)
+          if (bvsInValue exists (remove contains)) {
+            cleanup(lb.body, remove ++ bvsInValue.toSet)(ctx)
+          } else {
+            lb.body = cleanup(lb.body, remove)(ctx)
             lb
-        }
+          }
+          
+        case lb: LetBinding => lb.body = cleanup(lb.body, remove)(ctx)
+          lb
           
         case _ => r
       }
@@ -891,7 +869,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       if (preCheck(es.ex)) for {
         code <- code(es.ex) alsoApply(c => println(s"CODE: $c"))
         code0 = finalize(code, xtor, xtee)(es.ctx) alsoApply (c => println(s"CODE0: $c"))
-        if check(Set.empty, es.matchedImpureBVs)(cleanup(code0, es.matchedImpureBVs, true)(es.ctx))
+        if check(Set.empty, es.matchedImpureBVs)(cleanup(code0, es.matchedImpureBVs)(es.ctx))
       } yield code0
       else None
     }

@@ -116,6 +116,28 @@ class ExtractingTests extends MyFunSuiteBase(ExtractingTests.Embedding) {
       }
     }.isFailure)
   }
+  
+  test("Squid paper") {
+    
+    // 3.2
+    ir"${ir"2"} + 1" match {
+      case ir"($n: Int) + 1" => 
+        val res = ir"$n - 1"
+        assert(res =~= ir"${ir"2"} - 1")
+    }
+    
+    // 3.6
+    assert(Try {
+      ir"(x: Int) => x + 1" match {
+        case ir"(x: Int) => $body: Int" => fail
+      }}.isFailure
+    )
+    
+    ir"(x: Int) => x + 1" match {
+      case ir"(x: Int) => $f(x): Int" => assert(f =~= ir"(x: Int) => x + 1")
+    }
+    // ---
+  }
 }
 
 object ExtractingTests {

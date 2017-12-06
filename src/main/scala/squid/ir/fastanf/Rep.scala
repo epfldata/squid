@@ -101,6 +101,51 @@ object MethodApp {
       case _ => SimpleMethodApp(self: Rep, mtd: MethodSymbol, targs: List[TypeRep], argss)(typ)
     }
   }
+  
+  def toANF(self: Rep, mtd: MethodSymbol, targs: List[TypeRep], argss: ArgumentLists, typ0: TypeRep)(implicit base: FastANF): Rep = {
+    def split(r: Rep): Option[LetBinding] -> Rep = r match {
+      case lb: LetBinding => Some(lb) -> lb.last.body
+      case _ => None -> r
+    }
+    
+    val self0 = self |> split
+    //val argss0 = argss.argssList map split // TODO loosing structure of ArgumentLists...
+    
+    def withANFSelf(argss0: ArgumentLists): Rep = self0 match {
+      case (Some(lb), ret) =>
+        val innerLB = new Symbol {
+          protected var _parent: SymbolParent = new LetBinding("tmp", this, MethodApp(ret, mtd, targs, argss0, typ0), this)
+        }.owner.asInstanceOf[LetBinding]
+        
+        lb.last.body = innerLB
+        lb
+        
+      case (None, ret) => new Symbol {
+        protected var _parent: SymbolParent = new LetBinding("tmp", this, MethodApp(ret, mtd, targs, argss0, typ0), this)
+      }.owner.asInstanceOf[LetBinding]
+    }
+    
+    //val mergedArgss0 = argss0.foldRight((None: Option[LetBinding], List.empty[Rep])) {
+    //  case ((Some(lb), ret), (lbAcc, argssAcc)) => 
+    //    val lbAcc0 = lbAcc match {
+    //      case Some(lbAcc) => 
+    //        lb.last.body = lbAcc
+    //        lb
+    //      case None => lb
+    //    }
+    //    (Some(lbAcc0), ret :: argssAcc)
+    //    
+    //  case ((None, ret), (lbAcc, argssAcc)) => (lbAcc, ret :: argssAcc)
+    //}
+    
+    //val t = (None, argss) match {
+    //  case (Some(lb), argss0) => 
+    //    lb.last.body = withANFSelf(argss)//(argss0.foldRight(NoArguments: ArgumentList)(_ ~: _)) 
+    //    lb
+    //  case (None, argss0) => withANFSelf(argss)//(argss0.foldRight(NoArguments: ArgumentList)(_ ~: _))
+    //}
+    withANFSelf(argss)
+  }
 }
 final case class SimpleMethodApp protected(self: Rep, mtd: MethodSymbol, targs: List[TypeRep], argss: ArgumentLists)(val typ: TypeRep) 
   extends MethodApp with CachedHashCode { doChecks }
@@ -214,6 +259,20 @@ class LetBinding(var name: String, var bound: Symbol, var value: Def, private va
   }
   override def toString: String = s"val $bound = $value; $body"
 }
+object LetBinding {
+  def withRepValue(name: String, bound: Symbol, value: Rep, mkBody: => Rep): Rep = value match {
+    case lb: LetBinding =>
+      val last = lb.last
+      last.name = name
+      bound rebind last.bound
+      last.bound = bound
+      last.body = mkBody
+      lb
+
+    case _ => throw new IllegalArgumentException
+  }
+}
+
 class Lambda(var name: String, var bound: Symbol, val boundType: TypeRep, var body: Rep)(implicit base: FastANF) extends Def with RebindableBinding {
   val typ: TypeRep =  base.funType(boundType, body.typ)
   override def toString: String = s"($bound: $boundType) => $body --"

@@ -95,7 +95,7 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
       case ir"(x: Double) => x * 2" => ir"(x: Double) => x * 4"
     }
     val l0 = ir"(x: Double) => x * 4"
-    assert(a =~= ir"val a = 11.toDouble; val f = $l0; f(a)")
+    assert(a =~= ir"val a = 11.toDouble; val fOld = $l; val f = $l0; f(a)")
   }
   
   test("Rewriting should happen at all occurences") {
@@ -129,33 +129,17 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
       case ir"(x: Double) => x * 2" => fail
     }
   }
-
-  /* --- Hacky solutions --- */
-  test("Rewriting should flag lambdas as starting points") {
-    // Else we get an "Illegal ANF self argument" because the rewriting 
-    // puts a LB in the function position of tha App f(a)
-    val l = ir"(x: Double) => x * 2"
-    val a = ir"val a = 11.toDouble; val f = $l; f(a)" rewrite {
-      case ir"(x: Double) => x * 2" => ir"(x: Double) => x * 4"
-    }
-  }
   
-  test("Rewriting should remove matched lambdas") {
-    // Else since genCode puts code at the top it will rewrite
-    // again and again the same lambda
-    val l = ir"(x: Double) => x * 2"
-    val a = ir"val a = 11.toDouble; val f = $l; f(a)" rewrite {
-      case ir"(x: Double) => x * 2" => ir"(x: Double) => x * 4"
+  test("Squid paper") {
+    
+    // 3.4
+    val a = ir"List(1,2,3).foldLeft(0)((acc,x) => acc+x) + 4" rewrite {
+      case ir"($ls: List[Int]).foldLeft[Int]($init)($f)" =>
+        ir"var cur = $init; $ls.foreach(x => cur = $f(cur, x)); cur"
     }
+    assert(a =~=
+      ir"val t = List(1, 2, 3); val f = ((acc: Int, x: Int) => acc+x); t.foldLeft(0)(f); var cur = 0; t.foreach(x => cur = f(cur, x)); cur + 4")
   }
-  /* ----------------------- */
-  
-  //test("Rewriting with impures") {
-  //  val a = ir"val a = readInt; val b = readInt; (a + b) * 0.5" rewrite {
-  //    case ir"(($h1: Int) + ($h2: Int)) * 0.5" => dbg_ir"($h1 * $h2) + 42.0"
-  //  }
-  //  assert(a =~= ir"(readInt + readInt) + 42.0")
-  //}
 
   test("Rewriting simple expressions only once") {
     /*

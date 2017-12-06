@@ -29,10 +29,12 @@ trait Effects {
 
     case Module(r, _, _) => effect(r)
 
+    case HOPHole2(_, _, args, _) => Impure//args.flatten.foldLeft(Pure: Effect) { _ |+| effect(_) }
+
     case Constant(_) | _: Symbol |
          StaticModule(_) | NewObject(_) |
          Hole(_, _) | SplicedHole(_, _) |
-         HOPHole(_, _, _, _) | HOPHole2(_, _, _, _) => Pure
+         HOPHole(_, _, _, _) => Pure
   }
 
   def mtdEffect(m: MethodSymbol): Effect = {
@@ -77,4 +79,6 @@ trait StandardEffects extends Effects {
   addPureMtd(MethodSymbol(TypeSymbol("scala.Tuple2$"), "apply"))
   addPureMtd(MethodSymbol(TypeSymbol("scala.Tuple3$"), "apply"))
   addPureMtd(MethodSymbol(TypeSymbol("squid.lib.package$"),"uncurried2"))
+  addPureMtd(MethodSymbol(TypeSymbol("scala.collection.LinearSeqOptimized"),"foldLeft"))
+  addPureMtd(MethodSymbol(TypeSymbol("scala.collection.immutable.List$"),"apply"))
 }
