@@ -89,13 +89,27 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
   }
   
   test("Rewriting lambdas") {
-    val l = ir"(x: Double) => x * 2"
-    
-    val a = ir"val a = 11.toDouble; val f = $l; f(a)" rewrite {
+    val a = ir"val a = 11.toDouble; val f = (x: Double) => x * 2; f(a)" rewrite {
       case ir"(x: Double) => x * 2" => ir"(x: Double) => x * 4"
     }
-    val l0 = ir"(x: Double) => x * 4"
-    assert(a =~= ir"val a = 11.toDouble; val fOld = $l; val f = $l0; f(a)")
+    assert(a =~= ir"val a = 11.toDouble; val fOld = (x: Double) => x * 2; val f = (x: Double) => x * 4; f(a)")
+
+    // Rewrite multiple lambdas
+    val b = ir"val a = 11.toDouble; val f1 = (x: Double) => { println(x); x * 2 }; val f2 = (x: Double) => { val t = x * 2; val p = println(x); t }; f1(a) + f2(a)" rewrite {
+      case ir"(x: Double) => { println(x); x * 2 }" => ir"(x: Double) => x * 4"
+    }
+    assert(b =~= ir"val a = 11.toDouble; val f1 = (x: Double) => x * 4; val f2 = (x: Double) => x * 4; f1(a) + f2(a)")
+    
+    // Rewrite nested lambda
+    val c = ir"val a = 11.toDouble; val f1 = (x: Double) => { val f2 = (x: Double) => { val t = x * 2; val p = println(x); t }; println(x); f2(x) * 2 }; f1(a)" rewrite {
+      case ir"(x: Double) => { println(x); x * 2 } " => ir"(x: Double) => x * 4"
+    }
+    assert(c =~= ir"val a = 11.toDouble; val f1 = (x: Double) => { val f2 = (x: Double) => x * 4; println(x); f2(x) * 2 }; f1(a)")
+    
+    val d = c rewrite {
+      case ir"(x: Double) => { println(x); val f = (x: Double) => x * 4; f(x) * 2 }" => ir"(x: Double) => x * 4"
+    }
+    assert(d =~= ir"val a = 11.toDouble; val f = (x: Double) => x * 4; f(a)")
   }
   
   test("Rewriting should happen at all occurences") {
