@@ -103,48 +103,79 @@ object MethodApp {
   }
   
   def toANF(self: Rep, mtd: MethodSymbol, targs: List[TypeRep], argss: ArgumentLists, typ0: TypeRep)(implicit base: FastANF): Rep = {
+    def processArgss(argss: ArgumentLists)(f: Rep => (Option[LetBinding], Rep)): (Option[LetBinding], ArgumentLists) = {
+      def processArgs(args: ArgumentList)(f: Rep => (Option[LetBinding], Rep)): (Option[LetBinding], ArgumentList) = {
+        def go(args: ArgumentList)(k: (Option[LetBinding], ArgumentList) => (Option[LetBinding], ArgumentList)): (Option[LetBinding], ArgumentList) = args match {
+          case NoArguments => k(None, NoArguments)
+          case ArgumentCons(h, t) =>
+            val (lb, ret) = f(h)
+            go(t) { case (lb0, args0) =>
+              val newLB = (lb0, lb) match {
+                case (Some(lb0), Some(lb)) => lb.last.body = lb0; Some(lb)
+                case (_, Some(lb)) => Some(lb)
+                case (Some(lb0), _) => Some(lb0)
+                case _ => None
+              }
+
+              k(newLB, ArgumentCons(ret, args0))
+            }
+          case SplicedArgument(arg) => k.tupled(f(arg))
+          case r: Rep => k.tupled(f(r))
+        }
+
+        go(args)((lb, args) => (lb, args))
+      }
+
+      def go(argss: ArgumentLists)(k: (Option[LetBinding], ArgumentLists) => (Option[LetBinding], ArgumentLists)): (Option[LetBinding], ArgumentLists) = argss match {
+        case NoArgumentLists => k(None, NoArgumentLists)
+        case NoArguments => k(None, NoArguments)
+        case a: ArgumentCons => processArgs(a)(f)
+        case s: SplicedArgument => processArgs(s)(f)
+        case ArgumentListCons(h, t) =>
+          val (lb, args) = processArgs(h)(f)
+          go(t) { case (lb0, argss0) =>
+            val newLB = (lb0, lb) match {
+              case (Some(lb0), Some(lb)) => lb.last.body = lb0; Some(lb)
+              case (_, Some(lb)) => Some(lb)
+              case (Some(lb0), _) => Some(lb0)
+              case _ => None
+            }
+            k(newLB, ArgumentListCons(args, argss0))
+          }
+        case r: Rep => k.tupled(f(r))
+      }
+
+      go(argss)((lb, argss) => (lb, argss))
+    }
+    
     def split(r: Rep): Option[LetBinding] -> Rep = r match {
       case lb: LetBinding => Some(lb) -> lb.last.body
       case _ => None -> r
     }
     
-    val self0 = self |> split
-    //val argss0 = argss.argssList map split // TODO loosing structure of ArgumentLists...
-    
-    def withANFSelf(argss0: ArgumentLists): Rep = self0 match {
-      case (Some(lb), ret) =>
-        val innerLB = new Symbol {
-          protected var _parent: SymbolParent = new LetBinding("tmp", this, MethodApp(ret, mtd, targs, argss0, typ0), this)
+    val (lb0, self0) = self |> split
+    val (lbFromArgss, argss0) = processArgss(argss)(split) alsoApply println
+
+    val newLB = (lb0, lbFromArgss) match {
+      case (Some(lb0), Some(lbFromArgss)) => lbFromArgss.last.body = lb0; Some(lbFromArgss)
+      case (_, Some(lbFromArgss)) => Some(lbFromArgss)
+      case (Some(lb0), _) => Some(lb0)
+      case _ => None
+    }
+
+    val ma = MethodApp(self0, mtd, targs, argss0, typ0)
+
+    newLB match {
+      case Some(lb) => 
+        lb.last.body = new Symbol {
+          protected var _parent: SymbolParent = new LetBinding("tmp", this, ma, this)
         }.owner.asInstanceOf[LetBinding]
-        
-        lb.last.body = innerLB
         lb
-        
-      case (None, ret) => new Symbol {
-        protected var _parent: SymbolParent = new LetBinding("tmp", this, MethodApp(ret, mtd, targs, argss0, typ0), this)
+
+      case None => new Symbol {
+        protected var _parent: SymbolParent = new LetBinding("tmp", this, ma, this)
       }.owner.asInstanceOf[LetBinding]
     }
-    
-    //val mergedArgss0 = argss0.foldRight((None: Option[LetBinding], List.empty[Rep])) {
-    //  case ((Some(lb), ret), (lbAcc, argssAcc)) => 
-    //    val lbAcc0 = lbAcc match {
-    //      case Some(lbAcc) => 
-    //        lb.last.body = lbAcc
-    //        lb
-    //      case None => lb
-    //    }
-    //    (Some(lbAcc0), ret :: argssAcc)
-    //    
-    //  case ((None, ret), (lbAcc, argssAcc)) => (lbAcc, ret :: argssAcc)
-    //}
-    
-    //val t = (None, argss) match {
-    //  case (Some(lb), argss0) => 
-    //    lb.last.body = withANFSelf(argss)//(argss0.foldRight(NoArguments: ArgumentList)(_ ~: _)) 
-    //    lb
-    //  case (None, argss0) => withANFSelf(argss)//(argss0.foldRight(NoArguments: ArgumentList)(_ ~: _))
-    //}
-    withANFSelf(argss)
   }
 }
 final case class SimpleMethodApp protected(self: Rep, mtd: MethodSymbol, targs: List[TypeRep], argss: ArgumentLists)(val typ: TypeRep) 

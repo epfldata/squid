@@ -144,6 +144,22 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
     }
   }
   
+  test("Rewriting should generate ANF valid code") {
+    val a = ir"List(1,2,3).foldLeft(0)((acc,x) => acc+x) + 4" rewrite {
+      case ir"($ls: List[Int]).foldLeft[Int]($init)($f)" =>
+        ir"var cur = $init; $ls.foreach(x => cur = $f(cur, x)); cur"
+    }
+    assert(a =~=
+      ir"val t = List(1, 2, 3); val f = ((acc: Int, x: Int) => acc+x); t.foldLeft(0)(f); var cur = 0; t.foreach(x => cur = f(cur, x)); cur + 4")
+
+    val b = ir"4 + List(1,2,3).foldLeft(0)((acc,x) => acc+x)" rewrite {
+      case ir"($ls: List[Int]).foldLeft[Int]($init)($f)" =>
+        ir"var cur = $init; $ls.foreach(x => cur = $f(cur, x)); cur"
+    }
+    assert(b =~=
+      ir"val t = List(1, 2, 3); val f = ((acc: Int, x: Int) => acc+x); t.foldLeft(0)(f); var cur = 0; t.foreach(x => cur = f(cur, x)); 4 + cur")
+  }
+  
   test("Squid paper") {
     
     // 3.4
