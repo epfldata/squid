@@ -48,6 +48,10 @@ sealed abstract class Rep extends RepOption with ArgumentList with FlatSom[Rep] 
   def argssList: List[Rep] = this :: Nil
 }
 
+final case class ByName(r: Rep) extends Rep {
+  val typ: TypeRep = r.typ
+} 
+
 final case class Constant(value: Any) extends Rep with CachedHashCode {
   // TODO impl and rm lazy
   lazy val typ = value match {

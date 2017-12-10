@@ -152,6 +152,16 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
       case ir"($h(readInt + 1): Int)" => assert(h =~= ir"(x: Int) => x + x")
     }
   }
+  
+  test("HOPHoles should correctly match impure statements") {
+    ir"val a = readInt; val b = readDouble; a + b" match {
+      case ir"($h(readInt + readDouble): Double)" => assert(h =~= ir"(x: Int) => x")
+    }
+
+    ir"val a = readInt; val b = readDouble; b + a" match {
+      case ir"($h(readInt + readDouble): Double)" => assert(h =~= ir"(x: Int) => { val a = readInt; val b = readDouble; b + a }")
+    }
+  }
 }
 
 object HigherOrderPatternVariables {

@@ -160,6 +160,20 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
       ir"val t = List(1, 2, 3); val f = ((acc: Int, x: Int) => acc+x); t.foldLeft(0)(f); var cur = 0; t.foreach(x => cur = f(cur, x)); 4 + cur")
   }
   
+  test("Rewriting a by-name argument rewrites inside it") {
+    import RewritingTests.f
+    
+    val a = ir"f({println(10.toDouble); 10.toDouble})" rewrite {
+      case ir"10.toDouble" => ir"42.toDouble"
+    }
+    assert(a =~= ir"f({val a = 10.toDouble; println(42.toDouble); val b = 10.toDouble; 42.toDouble})")
+
+    val b = ir"val a = 10.toDouble; f(a)" rewrite {
+      case ir"10.toDouble" => ir"42.toDouble"
+    }
+    assert(b =~= ir"val a = 10.toDouble; f(42.toDouble)")
+  }
+  
   test("Squid paper") {
     
     // 3.4
@@ -203,4 +217,6 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
 
 object RewritingTests {
   object Embedding extends FastANF
+  
+  def f(x: => Double) = x
 }

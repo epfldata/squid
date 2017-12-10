@@ -25,6 +25,8 @@ trait Effects {
     //}
     case _: Symbol => Pure
 
+    case ByName(r) => effect(r)
+
     case Ascribe(r, _) => effect(r)
 
     case Module(r, _, _) => effect(r)
