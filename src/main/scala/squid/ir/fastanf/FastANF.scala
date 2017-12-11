@@ -1,9 +1,9 @@
 package squid
 package ir.fastanf
 
-import utils._
-import lang.{Base, InspectableBase, ScalaCore}
 import squid.ir._
+import squid.lang.{Base, InspectableBase, ScalaCore}
+import squid.utils._
 
 import scala.collection.immutable.{ListMap, ListSet}
 
@@ -123,68 +123,62 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   def letbind(d: Def): Rep = currentScope += d
   def inlineBlock(r: Rep): Rep = r |>=? {
     case lb: LetBinding =>
-      println(s"INLINE: $lb --> $scopes")
       currentScope += lb
-      println(s"$scopes")
       inlineBlock(lb.body)
   }
 
-  override def letin(bound: BoundVal, value: Rep, body: => Rep, bodyType: TypeRep): Rep = {
-    println(s"letin: $value --> $bound")
-    value match {
-      case s: Symbol =>
-        s.owner |>? {
-          case lb: RebindableBinding =>
-            //println(s"LETIN $lb ")
-            lb.name = bound.name
-        }
-        s.owner |>? {
-          case lb: LetBinding =>
-            lb.isUserDefined = true
-        }
-        withSubs(bound, value)(body)
+  override def letin(bound: BoundVal, value: Rep, body: => Rep, bodyType: TypeRep): Rep = value match {
+    case s: Symbol =>
+      s.owner |>? {
+        case lb: RebindableBinding =>
+          lb.name = bound.name
+      }
+      s.owner |>? {
+        case lb: LetBinding =>
+          lb.isUserDefined = true
+      }
+      withSubs(bound, value)(body)
 
-      //s.owner |>? {
-      //  case lb: RebindableBinding =>
-      //    lb.name = bound.name
-      //}
-      //bound rebind s
-      //body
-      case lb: LetBinding =>
-        // conceptually, does like `inlineBlock`, but additionally rewrites `bound` and renames `lb`'s last binding
-        val last = lb.last
-        val boundName = bound.name
-        bound rebind last.bound
-        last.body = body
-        last.name = boundName // TODO make sure we're only renaming an automatically-named binding?
-        lb
-      // case c: Constant => bottomUpPartial(body) { case `bound` => c }
-      case h: Hole =>
-        //Wrap construct? How?
+    //s.owner |>? {
+    //  case lb: RebindableBinding =>
+    //    lb.name = bound.name
+    //}
+    //bound rebind s
+    //body
+    case lb: LetBinding =>
+      // conceptually, does like `inlineBlock`, but additionally rewrites `bound` and renames `lb`'s last binding
+      val last = lb.last
+      val boundName = bound.name
+      bound rebind last.bound
+      last.body = body
+      last.name = boundName // TODO make sure we're only renaming an automatically-named binding?
+      lb
+    // case c: Constant => bottomUpPartial(body) { case `bound` => c }
+    case h: Hole =>
+      //Wrap construct? How?
 
-        // letin(x, Hole, Constant(20)) => `val tmp = defHole; 20;`
+      // letin(x, Hole, Constant(20)) => `val tmp = defHole; 20;`
 
-        val dh = DefHole(h) |> letbind
+      val dh = DefHole(h) |> letbind
 
-        //(dh |>? {
-        //  case bv: BoundVal => bv.owner |>? {
-        //    case lb: LetBinding =>
-        //      lb.body = body
-        //      lb
-        //  }
-        //}).flatten.getOrElse(body)
+      //(dh |>? {
+      //  case bv: BoundVal => bv.owner |>? {
+      //    case lb: LetBinding =>
+      //      lb.body = body
+      //      lb
+      //  }
+      //}).flatten.getOrElse(body)
 
-        //new LetBinding(bound.name, bound, dh, body) alsoApply (currentScope += _) alsoApply (bound.rebind)
-        withSubs(bound -> dh)(body)
+      //new LetBinding(bound.name, bound, dh, body) alsoApply (currentScope += _) alsoApply (bound.rebind)
+      withSubs(bound -> dh)(body)
 
 
-      case (_:HOPHole) | (_:HOPHole2) | (_:SplicedHole) =>
-        ??? // TODO holes should probably be Def's; note that it's not safe to do a substitution for holes
-      case _ =>
-        withSubs(bound -> value)(body)
-      // ^ executing `body` will reify some statements into the reification scope, and likely return a symbol
-      // during this reification, we need all references to `bound` to be replaced by the actual `value`
-    }
+    case (_:HOPHole) | (_:HOPHole2) | (_:SplicedHole) =>
+      ??? // TODO holes should probably be Def's; note that it's not safe to do a substitution for holes
+    case _ =>
+      withSubs(bound -> value)(body)
+    // ^ executing `body` will reify some statements into the reification scope, and likely return a symbol
+    // during this reification, we need all references to `bound` to be replaced by the actual `value`
   }
 
   var curSub: Map[Symbol,Rep] = Map.empty
@@ -194,15 +188,12 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     try k finally curSub = oldSub
   }
 
-  override def tryInline(fun: Rep, arg: Rep)(retTp: TypeRep): Rep = {
-    println(s"tryInline $fun -- $arg")
-    fun match {
-      case lb: LetBinding => lb.value match {
-        case l: Lambda => letin(l.bound, arg, l.body, l.body.typ)
-        case _ => super.tryInline(fun, arg)(retTp)
-      }
+  override def tryInline(fun: Rep, arg: Rep)(retTp: TypeRep): Rep = fun match {
+    case lb: LetBinding => lb.value match {
+      case l: Lambda => letin(l.bound, arg, l.body, l.body.typ)
       case _ => super.tryInline(fun, arg)(retTp)
     }
+    case _ => super.tryInline(fun, arg)(retTp)
   }
 
   override def ascribe(self: Rep, typ: TypeRep): Rep = if (self.typ =:= typ) self else self match {
@@ -329,60 +320,122 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     case (k, v) => m + (k -> (m(k) + v))
   }
 
+  // * --- * --- * --- *  Extraction State  * --- * --- * --- *
+
+  /**
+    * Signals if the current extraction attempt has failed. `Left` it has failed, `Right` it succeeded.
+    */
   type ExtractState = Either[State, State]
   implicit def rightBias[A, B](e: Either[A, B]): Either.RightProjection[A,B] = e.right
-  
-  sealed trait Objective
-  case object PartialMatching extends Objective
-  case object CompleteMatching extends Objective
-  case class Lookup(done: State => Boolean) extends Objective
-  
-  case class State(ex: Extract, ctx: Ctx, flags: Flags, matchedImpureBVs: Set[BoundVal],
-                   failedMatches: Map[BoundVal, Set[BoundVal]], objective: Objective) {
-    private val _objective = objective
+
+  /**
+    * Represents the current of the state of the extraction.
+    * @param ex what has been extracted by holes.
+    * @param ctx discovered matchings between bound values in the `xtor` and the `xtee`.
+    * @param instructions 
+    * @param matchedImpureBVs
+    * @param failedMatches
+    * @param strategy
+    */
+  case class State(ex: Extract, ctx: Ctx, instructions: Instructions, matchedImpureBVs: Set[BoundVal],
+                   failedMatches: Map[BoundVal, Set[BoundVal]], strategy: Strategy) {
+    private val _strategy = strategy
     
     def withNewExtract(newEx: Extract): State = copy(ex = newEx)
     def withCtx(newCtx: Ctx): State = copy(ctx = newCtx)
     def withCtx(p: (BoundVal, BoundVal)): State = copy(ctx = ctx + p)
+
+    /**
+      * Adds all the BVs referencing impure statements in `r` to `matchedImpureBVs`.
+      */
     def withMatchedImpures(r: Rep): State = r match {
       case lb: LetBinding if !isPure(lb.value) => copy(matchedImpureBVs = matchedImpureBVs + lb.bound) withMatchedImpures lb.body
       case lb: LetBinding => this withMatchedImpures lb.body
       case bv: BoundVal => copy(matchedImpureBVs = matchedImpureBVs + bv)
       case _ => this // Everything else is pure so we ignore it
     } 
-    def withFailed(p: (BoundVal, BoundVal)): State = copy(failedMatches = updateWith(failedMatches)(p))
-    def withObjective(b: Objective): State = copy(objective = b)
-    def withDefaultObjective: State = copy(objective = _objective)
-    def withXtorFlagsOf(xtor: Rep): State = copy(flags = flags.copy(xtor = Flags.genFlags(xtor)))
+    
+    def withFailedMatch(p: (BoundVal, BoundVal)): State = copy(failedMatches = updateWith(failedMatches)(p))
+    def withStrategy(s: Strategy): State = copy(strategy = s)
+    def withDefaultStrategy: State = copy(strategy = _strategy)
+    def withInstructionsFor(r: Rep): State = copy(instructions = instructions.copy(flags = instructions.flags ++ Instructions.gen(r)))
     
     def updateExtractWith(e: Option[Extract]*)(implicit default: State): ExtractState = {
       mergeAll(Some(ex) +: e).fold[ExtractState](Left(default))(ex => Right(this withNewExtract ex))
     }
   }
+  
   object State {
     def forExtraction(xtor: Rep, xtee: Rep): State = apply(xtor, xtee, CompleteMatching)
     def forRewriting(xtor: Rep, xtee: Rep): State = apply(xtor, xtee, PartialMatching)
     
-    private def apply(xtor: Rep, xtee: Rep, objective: Objective): State = 
-      State(EmptyExtract, ListMap.empty, Flags(xtor, xtee), Set.empty, Map.empty.withDefaultValue(Set.empty), objective)
+    private def apply(xtor: Rep, xtee: Rep, strategy: Strategy): State = 
+      State(EmptyExtract, ListMap.empty, Instructions(xtor, xtee), Set.empty, Map.empty.withDefaultValue(Set.empty), strategy)
   }
 
-  sealed trait Flag
-  case object Start extends Flag
-  case object Skip extends Flag
+  
 
-  case class Flags(xtor: Set[BoundVal], xtee: Set[BoundVal]) {
-    private def flags(ls: Set[BoundVal])(bv: BoundVal) = if (ls contains bv) Start else Skip
-    def xtorFlag(bv: BoundVal): Flag = flags(xtor)(bv)
-    def xteeFlag(bv: BoundVal): Flag = flags(xtee)(bv)
+
+  // * --- * --- * --- *  Strategy  * --- * --- * --- *
+
+  /**
+    * Specifies the semantics of the extraction.
+    */
+  sealed trait Strategy
+
+  /**
+    * Allows the return value of the `xtor` to match anywhere in `xtee`. 
+    * This will potentially leave some of the statement of the `xtee` unmatched.
+    * For instance, this [[Strategy]] is necessary for rewriting as we may only be rewriting parts of the `xtee`.
+    */
+  case object PartialMatching extends Strategy
+
+  // TODO enforces?
+  /**
+    * Enforces the fact that `xtor` has to fully match the `xtee`.
+    * For instance, this [[Strategy]] is necessary for extraction as 
+    * the pattern `xtor` has to match the entire `xtee`.
+    */
+  case object CompleteMatching extends Strategy
+
+
+
+
+  // * --- * --- * --- *  Instructions  * --- * --- * --- *
+  
+  /**
+    * Specifies what the extraction should do.
+    */
+  sealed trait Instruction
+
+  /**
+    * Instructs the extraction has to look for a matching statements.
+    * This instruction is attached to impure statements as well as pure statements 
+    * that are not used by other statements.
+    */
+  case object Start extends Instruction
+
+  /**
+    * Instructs the extraction can ignore this statement.
+    * This instruction is attached to all pure statements that are used by the return value.
+    */
+  case object Skip extends Instruction
+  
+  
+  case class Instructions(flags: Set[BoundVal]) {
+    def get(bv: BoundVal): Instruction = if (flags contains bv) Start else Skip
   }
   
-  object Flags {
-    def apply(xtor: Rep, xtee: Rep): Flags = Flags(genFlags(xtor), genFlags(xtee))
+  object Instructions {
+    def apply(xtor: Rep, xtee: Rep): Instructions = Instructions(gen(xtor) ++ gen(xtee))
 
-    def genFlags(r: Rep): Set[BoundVal] = {
+    /**
+      * Generates the instructions that will be flagged with [[Start]].
+      * These will include the impure statements and the unused statements.
+      */
+    def gen(r: Rep): Set[BoundVal] = {
       def update(d: Def, unusedBVs: Set[BoundVal], impures: Set[BoundVal]): (Set[BoundVal], Set[BoundVal]) = d match {
-        case l: Lambda => genFlags0(l.body, unusedBVs, impures)
+        case l: Lambda => genInstructions0(l.body, unusedBVs, impures)
         
         case ma: MethodApp => ((ma.self :: ma.argss.argssList).foldLeft(unusedBVs) {
           case (acc, bv: BoundVal) => acc - bv
@@ -392,7 +445,11 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         case _ => (unusedBVs, impures)
       }
       
-      def genFlags0(r: Rep, unusedBVs: Set[BoundVal], impures: Set[BoundVal]): (Set[BoundVal], Set[BoundVal]) = r match {
+      /*
+       * The unused BVs are kept separate from the impures even thought both will be merged at the end in order to be
+       * able to keep track of the unused statements when recursing in `r`.
+       */
+      def genInstructions0(r: Rep, unusedBVs: Set[BoundVal], impures: Set[BoundVal]): (Set[BoundVal], Set[BoundVal]) = r match {
         case lb: LetBinding =>
           val updated = update(
             lb.value,
@@ -402,26 +459,17 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
               case Impure => impures + lb.bound
             }
           )
-          genFlags0(lb.body, updated._1, updated._2)
+          genInstructions0(lb.body, updated._1, updated._2)
         
         case bv: BoundVal => (unusedBVs - bv, impures)
 
-        case ByName(r) => genFlags0(r, unusedBVs, impures)
-
-        case HOPHole2(_, _, argss, _) =>
-          val updatedImpures = argss.flatten.foldLeft(impures) {
-            case (impures, arg) => arg match {
-              case lb: LetBinding if !isPure(lb.value) => impures + lb.bound
-              case _ => impures
-            }
-          }
-          (unusedBVs, updatedImpures)
-
+        case ByName(r) => genInstructions0(r, unusedBVs, impures)
+          
         case _ => (unusedBVs, impures)
       }
 
-      val flags = genFlags0(r, Set.empty, Set.empty)
-      flags._1 ++ flags._2
+      val instructions = genInstructions0(r, Set.empty, Set.empty)
+      instructions._1 ++ instructions._2
     }
   }
   
@@ -431,30 +479,42 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     def extractHOPHole(name: String, typ: TypeRep, argss: List[List[Rep]], visible: List[BoundVal])(implicit es: State): ExtractState = {
       println("EXTRACTINGHOPHOLE")
       
-      def hasUndeclaredBVs(r: Rep): Boolean = {
-        println(s"Checking $r")
-        def hasUndeclaredBVs0(r: Rep, declared: Set[BoundVal]): Boolean = r match {
+      def usesUndeclaredBVs(r: Rep): Boolean = {
+        def usesUndeclaredBVs0(r: Rep, declared: Set[BoundVal]): Boolean = r match {
           case bv: BoundVal => !(declared contains bv)
           case lb: LetBinding =>
             val declared0 = declared + lb.bound
-            hasUndeclaredBVsinDef(lb.value, declared0) || hasUndeclaredBVs0(lb.body, declared0)
+            defUsesUndeclaredBVs(lb.value, declared0) || usesUndeclaredBVs0(lb.body, declared0)
           case _ => false
         }
 
-        def hasUndeclaredBVsinDef(d: Def, declared: Set[BoundVal]): Boolean = d match {
-          case l: Lambda => hasUndeclaredBVs0(l.body, declared + l.bound)
-          case ma: MethodApp => (ma.self +: ma.argss.argssList) exists (hasUndeclaredBVs0(_, declared))
+        def defUsesUndeclaredBVs(d: Def, declared: Set[BoundVal]): Boolean = d match {
+          case l: Lambda => usesUndeclaredBVs0(l.body, declared + l.bound)
+          case ma: MethodApp => (ma.self +: ma.argss.argssList) exists (usesUndeclaredBVs0(_, declared))
           case _ => false
         }
 
-        hasUndeclaredBVs0(r, Set.empty)
+        usesUndeclaredBVs0(r, Set.empty)
       }
 
-      def extendFunc(args: List[Rep], maybeCurrFuncAndState: Option[(Rep, State)]): Option[(Rep, State)] = {
-        val hopArgs = args.map(arg => bindVal("hopArg", arg.typ, Nil))
-        val transformations = args zip hopArgs
-        
-        def body(r: Rep): Rep = {
+      /**
+        * Attemps to find the `xtors` in the body of the function and replaces them with newly generated arguments, 
+        * adding the new arguments to the function. Even if the `xtors` are not found in the body, 
+        * arguments representing them will be generated and added to it. They will simply be ignored when it is applied.
+        * 
+        * @param xtors 
+        * @param maybeFuncAndState the current function and the extraction state after its creation.
+        * @return
+        */
+      def extendFunc(xtors: List[Rep], maybeFuncAndState: Option[(Rep, State)]): Option[(Rep, State)] = {
+        val args = xtors.map(arg => bindVal("hopArg", arg.typ, Nil))
+        val transformations = xtors zip args
+
+        /**
+          * Returns the body of function. 
+          * This is the body of the most deeply nested [[Lambda]] as the function is curried. 
+          */
+        def body(func: Rep): Rep = {
           def body0(d: Def): Option[Rep] = d match {
             case l: Lambda => l.body match {
               case lb: LetBinding => Some(body(lb))
@@ -463,54 +523,62 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
             case _ => None
           }
           
-          
-          r match {
+          func match {
             case lb: LetBinding => body0(lb.value) getOrElse lb
-            case _ => r
+            case _ => func
           }
         }
         
         for {
-          (f, es) <- maybeCurrFuncAndState alsoApply println
+          (f, es) <- maybeFuncAndState
 
           newBodyAndState = transformations.foldLeft(body(f) -> es) {
-            case ((body, es), (arg, hopArg)) => arg match {
-              case bv: BoundVal => 
+            case ((body, es), (xtor, arg)) => xtor match {
+              case bv: BoundVal =>
+                /*
+                 * Assumes the bv is already in the context. 
+                 * This is enforced by how the instructions are chosen.
+                 */
                 val replace = es.ctx(bv)
-                replace rebind hopArg
+                replace rebind arg
                 body -> es
                 
-              case lb: LetBinding => 
-                val lbBVs = bvs(lb)
-                val done: State => Boolean = s => lbBVs forall (s.ctx.keySet contains _) // TODO Keep set of matched BVs in state?
-    
-                def replaceAllOccurences(r: Rep, body: Rep)(es: State): Rep -> State = {
-                  def replaceAllOccurences0(r: Rep, body: Rep)(implicit es: State): Rep -> State = {
+              case lb: LetBinding =>
+
+                /**
+                  * Replaces all occurrences of `lb` in the body by `arg`.
+                  */
+                def replaceAllOccurrences(body: Rep)(es: State): Rep -> State = {
+                  def replaceAllOccurrences0(body: Rep)(implicit es: State): Rep -> State = {
+
+                   /*
+                    * Extracts the function body with the xtor in order to be able to use the context `ctx` to know
+                    * what to replace with the new argument. 
+                    */
                     extractWithState(lb, body) map { es0 =>
-                      println(s"------------------")
                       val replace =  es0.ctx(lb.last.bound)
-                      val body0  = bottomUpPartial(filterLBs(body)(es0.ctx.values.toSet contains _.bound)) { case `replace` => hopArg }
-                      replaceAllOccurences0(r, body0)._1 -> es0
+                      val body0  = bottomUpPartial(filterLBs(body)(es0.ctx.values.toSet contains _.bound)) { case `replace` => arg }
+                      replaceAllOccurrences0(body0)
                     } getOrElse body -> es
                   }
                   
-                  replaceAllOccurences0(r, body)(es withXtorFlagsOf lb withObjective Lookup(done))
-                    .mapSecond(_.withXtorFlagsOf(xtor).withDefaultObjective)
+                  replaceAllOccurrences0(body)(es withInstructionsFor lb withStrategy PartialMatching)
+                    .mapSecond(_ withInstructionsFor xtor withDefaultStrategy)
                 }
                 
-                replaceAllOccurences(lb, body)(es)
+                replaceAllOccurrences(body)(es)
                 
-              case _ => bottomUpPartial(body) { case `arg` => hopArg } -> es
+              case _ => bottomUpPartial(body) { case `xtor` => arg } -> es
             }
           }
           
-          _ = bottomUpPartial(newBodyAndState._1) { case bv: BoundVal if visible contains bv => return None } // TODO is too early to check? If there are more args left
+          _ = bottomUpPartial(newBodyAndState._1) { case bv: BoundVal if visible contains bv => return None } // TODO is too early to check? If there are more xtors left
         } yield newBodyAndState match {
-          case (func0, es0) => wrapConstruct(lambda(hopArgs, func0)) -> es0
+          case (func0, es0) => wrapConstruct(lambda(args, func0)) -> es0
         }
       }
       
-      val oe = for {
+      val maybeES = for {
         es1 <- typ extract (xtee.typ, Covariant)
         m <- merge(es.ex, es1)
         argss0 = argss.map(_.map {
@@ -518,10 +586,10 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           case r => r
         })
         (f, es2) <- argss0.foldRight(Option(xtee -> (es withNewExtract m)))(extendFunc)
-        if !hasUndeclaredBVs(f)
+        if !usesUndeclaredBVs(f)
       } yield es2 updateExtractWith Some(repExtract(name -> f))
       
-      oe getOrElse Left(es)
+      maybeES getOrElse Left(es)
     }
 
     def extractLBs(lb1: LetBinding, lb2: LetBinding)(implicit es: State): ExtractState = {
@@ -530,9 +598,18 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         es2 <- extractWithState(lb1.body, lb2.body)(es1)
       } yield es2
       
-      (es.flags.xtorFlag(lb1.bound), es.flags.xteeFlag(lb2.bound)) match {
+      (es.instructions.get(lb1.bound), es.instructions.get(lb2.bound)) match {
         case (Start, Start) => extractAndContinue(lb1, lb2)
 
+        /**
+          * In the following case `aX` has to be extracted since when extracting the 
+          * HOPHole `h` the BV has to be matched before it (see reason in [[extractHOPHole]].
+          * 
+          * XTOR: ir"val aX = 10.toDouble; $h(aX)"
+          *          \-------Start------/
+          * XTEE: ir"val a = 10.toDouble; a + 1"
+          *          \------Skip------/
+          */
         case (Start, Skip) => for {
           es1 <- extractAndContinue(lb1, lb2).left
           es2 <- extractWithState(lb1, lb2.body)(es1).left
@@ -544,143 +621,147 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       }
     }
 
-    def extractHole(h: Hole, r: Rep)(implicit es: State): ExtractState = {
-      println(s"ExtractHole: $h --> $r")
-      
-      (h, r) match {
-        case (Hole(n, t), bv: BoundVal) =>
-          es.updateExtractWith(
-            t extract(xtee.typ, Covariant),
-            Some(repExtract(n -> bv))
-          )
+    def extractHole(h: Hole, r: Rep)(implicit es: State): ExtractState = (h, r) match {
+      case (Hole(n, t), bv: BoundVal) =>
+        es.updateExtractWith(
+          t extract(xtee.typ, Covariant),
+          Some(repExtract(n -> bv))
+        )
 
-        case (Hole(n, t), lb: LetBinding) =>
-          es.updateExtractWith(
-            t extract(lb.typ, Covariant),
-            Some(repExtract(n -> lb))
-          ) map (_ withMatchedImpures lb)
+      case (Hole(n, t), lb: LetBinding) =>
+        es.updateExtractWith(
+          t extract(lb.typ, Covariant),
+          Some(repExtract(n -> lb))
+        ) map (_ withMatchedImpures lb)
 
-        case (Hole(n, t), _) =>
-          es.updateExtractWith(
-            t extract(xtee.typ, Covariant),
-            Some(repExtract(n -> xtee))
-          )
-      }
+      case (Hole(n, t), _) =>
+        es.updateExtractWith(
+          t extract(xtee.typ, Covariant),
+          Some(repExtract(n -> xtee))
+        )
     }
 
-    def extractInside(bv: BoundVal, d: Def)(implicit es: State): ExtractState = 
-      bvs(d).foldLeft[ExtractState](Left(es)) { case (acc, bv2) => 
+    /**
+      * Attemps to extract `bv` by trying to match the BVs used in the [[MethodApp]] from left to right.
+      * It won't extract inside the [[ByName]] arguments. 
+      */
+    def extractInside(bv: BoundVal, ma: MethodApp)(implicit es: State): ExtractState =
+      collectBVs(ma).foldLeft[ExtractState](Left(es)) { case (acc, bv2) =>
         for {
           es1 <- acc.left
           es2 <- extractWithState(bv, bv2)(es1).left
         } yield es2
       }
 
-    def contentsOf(h: Hole)(implicit es: State): Option[Rep] = es.ex._1 get h.name // TODO check in ex._3, return Option[List[Rep]]
+    def extractedBy(h: Hole)(implicit es: State): Option[Rep] = es.ex._1 get h.name
 
     println(s"-----\nextractWithState: \n$xtor\n\n$xtee\n-----\n\n")
     
-    es.objective match {
-      case Lookup(done) if done(es) => Right(es)
-      
-      case _ => xtor -> xtee match {
-        case (h: Hole, lb: LetBinding) => contentsOf(h) match {
-          case Some(lb1: LetBinding) if lb1.value == lb.value => Right(es)
-          case Some(_) => Left(es)
-          case None => extractHole(h, xtee)
-        }
-
-        case (h: Hole, _) => contentsOf(h) match {
-          case Some(`xtee`) => Right(es)
-          case Some(_) => Left(es)
-          case None => extractHole(h, xtee)
-        }
-
-        case (HOPHole2(name, typ, argss, visible), _) => extractHOPHole(name, typ, argss, visible)
-
-        case (lb1: LetBinding, lb2: LetBinding) => extractLBs(lb1, lb2)
-
-        case (lb: LetBinding, _: Rep) => es.flags.xtorFlag(lb.bound) match {
-          case Start => Left(es)
-          case Skip => extractWithState(lb.body, xtee)
-        }
-
-        case (bv: BoundVal, lb: LetBinding) =>
-          if (es.ctx.keySet contains bv) Right(es)
-          else es.objective match {
-            case CompleteMatching => es.flags.xteeFlag(lb.bound) match {
-              case Skip => extractWithState(bv, lb.body)
-              case Start => Left(es)
-            }
-
-            case PartialMatching => es.flags.xteeFlag(lb.bound) match {
-              case Skip => for {
-                es1 <- extractWithState(bv, lb.bound).left
-                es2 <- extractInside(bv, lb.value)(es1).left
-                es3 <- extractWithState(bv, lb.body)(es2).left
-              } yield es3
-              case Start => Left(es)
-            }
-
-            case Lookup(_) => for {
-              es1 <- extractWithState(bv, lb.bound).left
-              es2 <- extractInside(bv, lb.value)(es1).left
-              es3 <- extractWithState(bv, lb.body)(es2).left
-            } yield es3
-          }
-
-        case (_: Rep, lb: LetBinding) if es.matchedImpureBVs contains lb.bound => es.objective match {
-          case PartialMatching | Lookup(_) => extractWithState(xtor, lb.body)
-          case CompleteMatching => Left(es)
-        }
-
-        case (ByName(r1), ByName(r2)) => extractWithState(r1, r2)
-
-        case (_, Ascribe(s, _)) => extractWithState(xtor, s)
-
-        case (Ascribe(s, t), _) => for {
-          es1 <- es.updateExtractWith(t extract(xtee.typ, Covariant))
-          es2 <- extractWithState(s, xtee)(es1)
-        } yield es2
-
-        case (HOPHole(name, typ, argss, visible), _) => extractHOPHole(name, typ, argss, visible)
-
-        case (bv1: BoundVal, bv2: BoundVal) =>
-          println(s"OWNERS: ${bv1.owner} -- ${bv2.owner}")
-          println(s"STATE: $es")
-
-          es.ctx.get(bv1) map { bv =>
-            if (bv != bv2) Left(es)
-            else Right(es)
-          } getOrElse {
-            if (bv1 == bv2) Right(es)
-            else if (es.failedMatches(bv1) contains bv2) Left(es)
-            else (bv1.owner, bv2.owner) match {
-              case (lb1: LetBinding, lb2: LetBinding) => extractDefs(lb1.value, lb2.value) match {
-                case Right(es) => effect(lb2.value) match {
-                  case Pure => Right(es withCtx lb1.bound -> lb2.bound)
-                  case Impure => Right(es withCtx lb1.bound -> lb2.bound withMatchedImpures lb2.bound)
-                }
-                case Left(es) => Left(es withFailed lb1.bound -> lb2.bound)
-              }
-              case (l1: Lambda, l2: Lambda) => extractDefs(l1, l2) map (_ withCtx l1.bound -> l2.bound) // TODO handle failed extract?
-              case _ => Left(es withFailed bv1 -> bv2)
-            }
-          }
-
-        case (Constant(v1), Constant(v2)) if v1 == v2 => es updateExtractWith (xtor.typ extract(xtee.typ, Covariant))
-
-        // Assuming if they have the same name the type is the same
-        case (StaticModule(fn1), StaticModule(fn2)) if fn1 == fn2 => Right(es)
-
-        // Assuming if they have the same name and prefix the type is the same
-        case (Module(p1, n1, _), Module(p2, n2, _)) if n1 == n2 => extractWithState(p1, p2)
-
-        case (NewObject(t1), NewObject(t2)) => es updateExtractWith (t1 extract(t2, Covariant))
-
-        case _ => Left(es)
+    xtor -> xtee match {
+      case (h: Hole, _) => extractedBy(h) match {
+        case Some(`xtee`) => Right(es)
+        case Some(_) => Left(es) // Something has gone wrong
+        case None => extractHole(h, xtee)
       }
-    }
+
+      case (HOPHole2(name, typ, argss, visible), _) => extractHOPHole(name, typ, argss, visible)
+
+      case (lb1: LetBinding, lb2: LetBinding) => extractLBs(lb1, lb2)
+
+      case (lb: LetBinding, _) => es.instructions.get(lb.bound) match {
+        case Start => Left(es) // The `xtor` has more impure statements than the `xtee`.
+        case Skip => extractWithState(lb.body, xtee)
+      }
+
+      case (bv: BoundVal, lb: LetBinding) =>
+        if (es.ctx.keySet contains bv) Right(es) // `bv` has already been extracted
+        else es.strategy match {
+          case CompleteMatching => es.instructions.get(lb.bound) match {
+            
+            // The `xtee` has more impure statements or dead-ends than the `xtor`
+            case Start => Left(es) 
+            
+            // The skipped statements of the `xtee` will be matched later 
+            // when extracting its return value or the `Start` ones. 
+            case Skip => extractWithState(bv, lb.body) 
+          }
+
+          // Attempts to extract the return value `bv` by trying
+          // 1. The current let-binding
+          // 2. The BVs of the value of the let-binding if it's a [[MethodApp]] (see `extractInside`)
+          // 3. (1. and then 2.) on the next statement  
+          case PartialMatching => for {
+            es1 <- extractWithState(bv, lb.bound).left
+            es2 <- (lb.value match {
+              case ma: MethodApp => extractInside(bv, ma)(es1)
+              case _ => Left(es)
+            }).left
+            es3 <- extractWithState(bv, lb.body)(es2).left
+          } yield es3
+        }
+
+      case (Constant(()), lb: LetBinding) => es.strategy match {
+        // Unit return doesn't have to matched
+        case PartialMatching => Right(es)
+        case CompleteMatching => Left(es)
+      }
+
+        
+      case (_: Rep, lb: LetBinding) => es.strategy match {
+        // `xtor` cannot be a let-binding or BV in this case so it only makes sense to extract the body.
+        case PartialMatching => extractWithState(xtor, lb.body)
+        case CompleteMatching => Left(es)
+      }
+        
+      // Only a [[ByName]] can extract a [[ByName]] so that 
+      // the rewriting will rewrite inside the [[ByName]].
+      case (ByName(r1), ByName(r2)) => extractWithState(r1, r2)
+        
+      case (_, Ascribe(s, _)) => extractWithState(xtor, s)
+
+      case (Ascribe(s, t), _) => for {
+        es1 <- es.updateExtractWith(t extract(xtee.typ, Covariant))
+        es2 <- extractWithState(s, xtee)(es1)
+      } yield es2
+
+      case (HOPHole(name, typ, argss, visible), _) => extractHOPHole(name, typ, argss, visible)
+
+      // The actual extraction happens here.  
+      case (bv1: BoundVal, bv2: BoundVal) =>
+        println(s"OWNERS: ${bv1.owner} -- ${bv2.owner}")
+        println(s"STATE: $es")
+
+        es.ctx.get(bv1) map { bv =>
+          if (bv != bv2) Left(es) // `bv1` has already extracted something else
+          else Right(es) 
+        } getOrElse {
+          if (bv1 == bv2) Right(es)
+          else if (es.failedMatches(bv1) contains bv2) Left(es) // Previously failed to extract `bv1` with `bv2`
+          else (bv1.owner, bv2.owner) match {
+            case (lb1: LetBinding, lb2: LetBinding) => extractDefs(lb1.value, lb2.value) match {
+              case Right(es) => effect(lb2.value) match {
+                case Pure => Right(es withCtx lb1.bound -> lb2.bound)
+                case Impure => Right(es withCtx lb1.bound -> lb2.bound withMatchedImpures lb2.bound)
+              }
+              case Left(es) => Left(es withFailedMatch lb1.bound -> lb2.bound)
+            }
+            case (l1: Lambda, l2: Lambda) => extractDefs(l1, l2) map (_ withCtx l1.bound -> l2.bound)
+            case _ => Left(es withFailedMatch bv1 -> bv2)
+          }
+        }
+
+      case (Constant(v1), Constant(v2)) if v1 == v2 => es updateExtractWith (xtor.typ extract(xtee.typ, Covariant))
+
+      // Assuming if they have the same name the type is the same
+      case (StaticModule(fn1), StaticModule(fn2)) if fn1 == fn2 => Right(es)
+
+      // Assuming if they have the same name and prefix the type is the same
+      case (Module(p1, n1, _), Module(p2, n2, _)) if n1 == n2 => extractWithState(p1, p2)
+
+      case (NewObject(t1), NewObject(t2)) => es updateExtractWith (t1 extract(t2, Covariant))
+
+      case _ => Left(es)
+      }
   } alsoApply (res => println(s"Extract: $res"))
   
   protected def spliceExtract(xtor: Rep, args: Args): Option[Extract] = xtor match {
@@ -702,72 +783,70 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     case _ => throw IRException(s"Trying to splice-extract with invalid extractor $xtor")
   }
 
-  def extractDefs(v1: Def, v2: Def)(implicit es: State): ExtractState = {
-    println(s"VALUES: \n\t$v1\n\t$v2 with $es \n\n")
-    (v1, v2) match {
-      case (l1: Lambda, l2: Lambda) =>
-        for {
-          es1 <- es updateExtractWith (l1.boundType extract(l2.boundType, Covariant))
-          es2 <- extractWithState(l1.body, l2.body)(es1 withCtx l1.bound -> l2.bound withObjective CompleteMatching)
-        } yield es2 withDefaultObjective
+  def extractDefs(v1: Def, v2: Def)(implicit es: State): ExtractState = (v1, v2) match {
+    case (l1: Lambda, l2: Lambda) =>
+      for {
+        es1 <- es updateExtractWith (l1.boundType extract(l2.boundType, Covariant))
+        es2 <- extractWithState(l1.body, l2.body)(es1 withCtx l1.bound -> l2.bound withStrategy CompleteMatching)
+      } yield es2 withDefaultStrategy
 
-      case (ma1: MethodApp, ma2: MethodApp) if ma1.mtd == ma2.mtd =>
-        def targExtract(es0: State): ExtractState =
-          es0.updateExtractWith(
-            (for {
-              (e1, e2) <- ma1.targs zip ma2.targs
-            } yield e1 extract(e2, Invariant)): _*
-          )
+    case (ma1: MethodApp, ma2: MethodApp) if ma1.mtd == ma2.mtd =>
+      def targExtract(es0: State): ExtractState =
+        es0.updateExtractWith(
+          (for {
+            (e1, e2) <- ma1.targs zip ma2.targs
+          } yield e1 extract(e2, Invariant)): _*
+        )
 
-        def extractArgss(argss1: ArgumentLists, argss2: ArgumentLists)(implicit es: State): ExtractState = {
-          def extractArgss0(argss1: ArgumentLists, argss2: ArgumentLists, acc: List[Rep])(implicit es: State): ExtractState = (argss1, argss2) match {
-            case (ArgumentListCons(h1, t1), ArgumentListCons(h2, t2)) => for {
-              es0 <- extractArgss0(h1, h2, acc)
-              es1 <- extractArgss0(t1, t2, acc)(es0)
-            } yield es1
+      def extractArgss(argss1: ArgumentLists, argss2: ArgumentLists)(implicit es: State): ExtractState = {
+        def extractArgss0(argss1: ArgumentLists, argss2: ArgumentLists, acc: List[Rep])(implicit es: State): ExtractState = (argss1, argss2) match {
+          case (ArgumentListCons(h1, t1), ArgumentListCons(h2, t2)) => for {
+            es0 <- extractArgss0(h1, h2, acc)
+            es1 <- extractArgss0(t1, t2, acc)(es0)
+          } yield es1
 
-            case (ArgumentCons(h1, t1), ArgumentCons(h2, t2)) => for {
-              es0 <- extractArgss0(h1, h2, acc)
-              es1 <- extractArgss0(t1, t2, acc)(es0)
-            } yield es1
+          case (ArgumentCons(h1, t1), ArgumentCons(h2, t2)) => for {
+            es0 <- extractArgss0(h1, h2, acc)
+            es1 <- extractArgss0(t1, t2, acc)(es0)
+          } yield es1
 
-            case (SplicedArgument(arg1), SplicedArgument(arg2)) => extractWithState(arg1, arg2)
-            case (sa: SplicedArgument, ArgumentCons(h, t)) => extractArgss0(sa, t, h :: acc)
-            case (sa: SplicedArgument, r: Rep) => extractArgss0(sa, NoArguments, r :: acc)
-            case (SplicedArgument(arg), NoArguments) => es updateExtractWith spliceExtract(arg, Args(acc.reverse: _*))
-            case (r1: Rep, r2: Rep) => extractWithState(r1, r2)
-            case (NoArguments, NoArguments) => Right(es)
-            case (NoArgumentLists, NoArgumentLists) => Right(es)
-            case _ => Left(es)
-          }
-
-          extractArgss0(argss1, argss2, Nil)
+          case (SplicedArgument(arg1), SplicedArgument(arg2)) => extractWithState(arg1, arg2)
+          case (sa: SplicedArgument, ArgumentCons(h, t)) => extractArgss0(sa, t, h :: acc)
+          case (sa: SplicedArgument, r: Rep) => extractArgss0(sa, NoArguments, r :: acc)
+          case (SplicedArgument(arg), NoArguments) => es updateExtractWith spliceExtract(arg, Args(acc.reverse: _*))
+          case (r1: Rep, r2: Rep) => extractWithState(r1, r2)
+          case (NoArguments, NoArguments) => Right(es)
+          case (NoArgumentLists, NoArgumentLists) => Right(es)
+          case _ => Left(es)
         }
 
-        for {
-          es1 <- extractWithState(ma1.self, ma2.self)
-          es2 <- targExtract(es1)
-          es3 <- extractArgss(ma1.argss, ma2.argss)(es2)
-          es4 <- es3.updateExtractWith(ma1.typ extract (ma2.typ, Covariant))
-        } yield es4
+        extractArgss0(argss1, argss2, Nil)
+      }
 
-      case (DefHole(h), _) if !isPure(v2) => extractWithState(h, wrapConstruct(letbind(v2)))
+      for {
+        es1 <- extractWithState(ma1.self, ma2.self)
+        es2 <- targExtract(es1)
+        es3 <- extractArgss(ma1.argss, ma2.argss)(es2)
+        es4 <- es3.updateExtractWith(ma1.typ extract (ma2.typ, Covariant))
+      } yield es4
 
-      case _ => Left(es)
-    }
+    // Assuming a [[DefHole]] only extracts impure statements  
+    case (DefHole(h), _) if !isPure(v2) => extractWithState(h, wrapConstruct(letbind(v2)))
+
+    case _ => Left(es)
   }
   
   override def rewriteRep(xtor: Rep, xtee: Rep, code: Extract => Option[Rep]): Option[Rep] = 
-    rewriteRep0(xtor, xtee, code)(false)(State.forRewriting(xtor, xtee))
+    rewriteRep0(xtor, xtee, code)(State.forRewriting(xtor, xtee))
 
-  def rewriteRep0(xtor: Rep, xtee: Rep, code: Extract => Option[Rep])(internalRec: Boolean)(implicit es: State): Option[Rep] = {
+  def rewriteRep0(xtor: Rep, xtee: Rep, code: Extract => Option[Rep])(implicit es: State): Option[Rep] = {
     def rewriteRepWithState(xtor: Rep, xtee: Rep)(implicit es: State): ExtractState = {
       println(s"rewriteRepWithState(\n\t$xtor\n\t$xtee)($es)")
 
       (xtor, xtee) match {
-        case (lb1: LetBinding, lb2: LetBinding) if !internalRec => 
-          ((effect(lb1.value), es.flags.xtorFlag(lb1.bound)), (effect(lb2.value), es.flags.xteeFlag(lb2.bound))) match {
-            case ((Pure, Skip), (Pure, Skip)) => Left(es)
+        case (lb1: LetBinding, lb2: LetBinding) => 
+          (es.instructions.get(lb1.bound), es.instructions.get(lb2.bound)) match {
+            case (Skip, Skip) => Left(es)
             case _ => extractWithState(lb1, lb2)
           }
         case _ => extractWithState(xtor, xtee)
@@ -844,8 +923,10 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         case lb: LetBinding if remove contains lb.bound => cleanup(lb.body, remove)(ctx)
         
         case lb: LetBinding if isPure(lb.value) =>
-          val bvsInValue = bvs(lb.value)
-
+          val bvsInValue = lb.value |>? {
+            case ma: MethodApp => collectBVs(ma)
+          } getOrElse ListSet.empty
+          
           if (bvsInValue exists (remove contains)) {
             cleanup(lb.body, remove ++ bvsInValue.toSet)(ctx)
           } else {
@@ -918,21 +999,20 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     case _ => r
   }
 
-  def bvs(r: Rep): List[BoundVal] = {
-    def bvs0(r: Rep, acc: List[BoundVal]): List[BoundVal] = r match {
-      case lb: LetBinding => bvs0(lb.body, lb.bound :: acc)
+  def collectLBBounds(r: Rep): ListSet[BoundVal] = {
+    def collectLBBounds0(r: Rep, acc: ListSet[BoundVal]): ListSet[BoundVal] = r match {
+      case lb: LetBinding => collectLBBounds0(lb.body, acc + lb.bound)
       case _ => acc
     }
 
-    bvs0(r, List.empty)
+    collectLBBounds0(r, ListSet.empty)
   }
-  def bvs(d: Def): List[BoundVal] = d match {
-    case ma: MethodApp => (ma.self :: ma.argss.argssList).foldRight(List.empty[BoundVal]) {
-      case (bv: BoundVal, acc) => bv :: acc
-      case (_, acc) => acc
+  
+  def collectBVs(ma: MethodApp): ListSet[BoundVal] =
+    (ma.self :: ma.argss.argssList).foldLeft(ListSet.empty[BoundVal]) {
+      case (acc, bv: BoundVal) => acc + bv
+      case (acc, _) => acc
     }
-    case _ => Nil
-  }
 
   // * --- * --- * --- *  Implementations of `QuasiBase` methods  * --- * --- * --- *
 
@@ -943,13 +1023,11 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   override def hopHole2(name: String, typ: TypeRep, args: List[List[Rep]], visible: List[BoundVal]) =
     HOPHole2(name, typ, args, visible filterNot (args.flatten contains _))
   def substitute(r: => Rep, defs: Map[String, Rep]): Rep = {
-    println(s"Subs: $r with $defs")
     val r0 = 
       if (defs isEmpty) r
       else bottomUp(r) {
         case h@Hole(n, _) => defs getOrElse(n, h)
         case h@SplicedHole(n, _) => defs getOrElse(n, h)
-        //case h: BoundVal => defs getOrElse(h.name, h) // TODO FVs in lambda become BVs too early, this should be changed!!
         case h => h
       } 
     
@@ -959,13 +1037,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     // TODO for now we do nothing to r. Later make sure that after applying the defs it is still valid in ANF!
     require(defs.isEmpty)
     r
-    
-    //if (defs isEmpty) r
-    //else bottomUp(r) {
-    //  case h@Hole(n, _) => defs getOrElse(n, h)
-    //  case h@SplicedHole(n, _) => defs getOrElse(n, h)
-    //  case h => h
-    //}
   }
 
 

@@ -163,15 +163,10 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
   test("Rewriting a by-name argument rewrites inside it") {
     import RewritingTests.f
     
-    val a = ir"f({println(10.toDouble); 10.toDouble})" rewrite {
+    val a = ir"f({val a = 10.toDouble; println(10.toDouble); a})" rewrite {
       case ir"10.toDouble" => ir"42.toDouble"
     }
     assert(a =~= ir"f({val a = 10.toDouble; println(42.toDouble); val b = 10.toDouble; 42.toDouble})")
-
-    val b = ir"val a = 10.toDouble; f(a)" rewrite {
-      case ir"10.toDouble" => ir"42.toDouble"
-    }
-    assert(b =~= ir"val a = 10.toDouble; f(42.toDouble)")
   }
   
   test("Squid paper") {
