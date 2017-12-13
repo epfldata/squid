@@ -12,13 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+val scala211Version = "2.11.11"
+val scala212Version = "2.12.5"
+
 val paradiseVersion = "2.1.0"
 val squidVersion = "0.3.0-SNAPSHOT"
 val squidIsSnapshot: Boolean = squidVersion endsWith "-SNAPSHOT"
 
 lazy val commonSettings = Seq(
   version := squidVersion,
-  scalaVersion := "2.11.11",
+  scalaVersion := scala212Version, // default Scala version
+  crossScalaVersions := Seq(scala211Version, scala212Version),
   organization := "ch.epfl.data",
   autoCompilerPlugins := true,
   scalacOptions ++= Seq("-feature", "-language:implicitConversions", "-language:higherKinds", "-language:postfixOps"
@@ -27,25 +31,19 @@ lazy val commonSettings = Seq(
   incOptions := incOptions.value.withLogRecompileOnMacro(false), // silences macro-related recompilation messages (cf. https://github.com/sbt/zinc/issues/142)
   resolvers += Resolver.sonatypeRepo("snapshots"),
   resolvers += Resolver.sonatypeRepo("releases"),
-  addCompilerPlugin("org.scalamacros" % "paradise" % paradiseVersion cross CrossVersion.full),
-  libraryDependencies ++= Seq(
-    "junit" % "junit-dep" % "4.10" % "test",
-    "org.scalatest" % "scalatest_2.11" % "2.2.0" % "test"
-  ),
-  libraryDependencies ++= (
-      if (scalaVersion.value.startsWith("2.10")) List("org.scalamacros" %% "quasiquotes" % paradiseVersion)
-      else Nil
-    ),
-  libraryDependencies += "com.lihaoyi" % "ammonite" % "1.0.3" % "test" cross CrossVersion.full,
-  // For the ammonite REPL:
-  sourceGenerators in Test += Def.task {
-    val file = (sourceManaged in Test).value / "amm.scala"
-    IO.write(file, """object amm extends App { ammonite.Main().run() }""")
-    Seq(file)
-  }.taskValue
+  addCompilerPlugin("org.scalamacros" % "paradise" % paradiseVersion cross CrossVersion.full)
+, libraryDependencies += "org.scalactic" %% "scalactic" % "3.0.5"
+, libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.5" % "test"
+  
+//, libraryDependencies += "com.lihaoyi" % "ammonite" % "1.0.3" % "test" cross CrossVersion.full
+//  // For the ammonite REPL:
+//, sourceGenerators in Test += Def.task {
+//    val file = (sourceManaged in Test).value / "amm.scala"
+//    IO.write(file, """object amm extends App { ammonite.Main().run() }""")
+//    Seq(file)
+//  }.taskValue
+  
 ) ++ publishSettings
-lazy val scalaReflect = Def.setting { "org.scala-lang" % "scala-reflect" % scalaVersion.value }
-lazy val scalaCompiler = Def.setting { "org.scala-lang" % "scala-compiler" % scalaVersion.value }
 
 lazy val main = (project in file(".")).
   dependsOn(core).
@@ -60,9 +58,6 @@ lazy val core = (project in file("core")).
   settings(commonSettings: _*).
   settings(
     name := "squid-core",
-    libraryDependencies += scalaReflect.value,
-    libraryDependencies += scalaCompiler.value,
-    // other settings here
     //libraryDependencies += "ch.epfl.lamp" % "scala-yinyang_2.11" % "0.2.0-SNAPSHOT",
     libraryDependencies += scalaVersion("org.scala-lang" % "scala-reflect" % _).value,
     libraryDependencies += scalaVersion("org.scala-lang" % "scala-library" % _).value,
@@ -116,7 +111,6 @@ val developers =
       </developers>
 
 lazy val publishSettings = Seq(
-  // resolvers += Resolver.sonatypeRepo("releases"),
   publishMavenStyle := true,
   isSnapshot := squidIsSnapshot,
   publishTo := {

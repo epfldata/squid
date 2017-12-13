@@ -34,6 +34,16 @@ object BaseInterpreterMacros {
           (pq"$v", q"val $p: Any", q"$v.value = $p")
         }).unzip3
         cq"List(..${vars}) => (..$params) => {..$assigns; body}"
+        /* ^ In Scala 2.12, lambdas are encoded as a special class that Scala's runtime reflection does not seem to be
+             able to recognize and load, making it crash with an assertion error;
+             we can still create old-fashioned instances of FunctionN using the `new` syntax as below, but this is not a
+             general solution, as lambdas could come from any place in the application, not just from the `lambda`
+             factory. */
+        //cq"""List(..${vars}) =>
+        //  new _root_.scala.${TypeName("Function"+i)}[..${(0 to i).map(_ => tq"Any")}] {
+        //    def apply(..$params) = {..$assigns; body}
+        //  }
+        //"""
       }
     }}"
     //println(result)

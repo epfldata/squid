@@ -337,6 +337,12 @@ class VariableSymbolTests extends MyFunSuite {
     
     val p = code"val a = 1; val b = 2; val c = 3; a + b + c"
     
+    val Succeeded = ()
+    // ^ Since Scala 2.12.5, I got errors from the `assertDoesNotCompile` below, due to Scalatest emitting a
+    //   non-qualifiedreference to org.scalatest.Succeeded.type by way of `reify { Succeeded }`; this is a problem
+    //   because the `rewrite` macro untypechecks the body of match cases and removes symbols attached to identifiers.
+    //   No idea why this was not triggered in Scala 2.11...
+    
     p rewrite {
       case code"val $v: $vt = $init; $body:$bt" =>
         val w = Variable[MutVar[vt.Typ]]()
@@ -358,8 +364,7 @@ class VariableSymbolTests extends MyFunSuite {
       
     }
     
-     p transformWith R eqt code"var a = 1; var b = 2; var c = 3; a + b + c"
-    
+    p transformWith R eqt code"var a = 1; var b = 2; var c = 3; a + b + c"
     
   }
   

@@ -104,14 +104,46 @@ class BaseInterpreter extends Base with CrossStageEnabled with RuntimeSymbols wi
     }
     
     self match {
+        
       case New(cls) =>
         return srum.reflectClass(cls).reflectConstructor(_mtd).apply(args:_*)
+        
+      // We handle function values specially because since Scala 2.12, we can't introspect lambda classes anymore
+      // Here we assume no other methods than `apply` is ever called on function values... obviously incomplete
+      case _ if _mtd.name.toString != "apply" || !(_mtd.fullName startsWith "scala.Function") =>
+      case f: (() => Any) @unchecked => return f()
+      case f: ((Any) => Any) @unchecked =>
+        val Args(a0) = argss.head
+        return f(a0)
+      case f: ((Any,Any) => Any) @unchecked =>
+        val Args(a0,a1) = argss.head
+        return f(a0,a1)
+      case f: ((Any,Any,Any) => Any) @unchecked =>
+        val Args(a0,a1,a2) = argss.head
+        return f(a0,a1,a2)
+      case f: ((Any,Any,Any,Any) => Any) @unchecked =>
+        val Args(a0,a1,a2,a3) = argss.head
+        return f(a0,a1,a2,a3)
+      case f: ((Any,Any,Any,Any,Any) => Any) @unchecked =>
+        val Args(a0,a1,a2,a3,a4) = argss.head
+        return f(a0,a1,a2,a3,a4)
       case _ =>
+        
     }
     
-    val cls = srum.classSymbol(if (self == null) classOf[Null] else self.getClass)
+    val selfClass = self.getClass
+    /* // this was to try and use a class different from the generated Java lambda class, but the scheme does not work
+       // because down the line, when we do `srum.reflect(self)(tag)`, Scala reflection actually tries to get the class
+       // from .getClass by itself, which ends in misery; instead we specially handle invocations of
+       // scala.FunctionN.apply above.
+    val selfClass = if (self.getClass.getName.contains("$$Lambda$")) {
+      println(self.getClass.getInterfaces.filterNot(_ == classOf[Serializable]).toList)
+      self.getClass.getInterfaces.filterNot(_ == classOf[Serializable]).head alsoApply println
+    } else self.getClass
+    */
+    val cls = srum.classSymbol(if (self == null) classOf[Null] else selfClass)
     if (cls.isJava && cls.isModuleClass) {
-      reflect.runtime.ScalaReflectSurgeon.cache.enter(self.getClass, cls.companion.asClass)
+      reflect.runtime.ScalaReflectSurgeon.cache.enter(selfClass, cls.companion.asClass)
     }
     
     debug(s"Cls $cls ${cls.isModuleClass}") // object Var true

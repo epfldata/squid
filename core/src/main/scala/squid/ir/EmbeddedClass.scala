@@ -29,8 +29,11 @@ abstract class EmbeddedClass[B <: Base](val base: B) {
   
   def mtd(sym: Mtd) = defs get sym
   
+  // Stopped working in 2.12: overriding value Class in class EmbeddedClass of type AnyRef{val Defs: Any};
+  /*
   val Object: { val Defs: Any }
   val Class: { val Defs: Any }
+  */
   
 }
 

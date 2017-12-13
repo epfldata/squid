@@ -119,6 +119,8 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
     /** Executes the code at runtime using Java reflection */
     def run(implicit ev: {} <:< Ctx): Typ = {
       val Inter = new ir.BaseInterpreter
+      // ^ Note: making a new one each time is wasteful, but because it extends RuntimeSymbols, which has mutable
+      //         caches, the BaseInterpreter is not thread-safe... (and Squid tests are ran in parallel)
       reinterpret(self.rep, Inter)().asInstanceOf[Typ]
     }
     

@@ -122,7 +122,11 @@ trait MetaBases {
     
     def annot(a: Annot) = q"${a._1} -> ${mkNeatList(a._2 map argList)}"
     
-    def lambda(params: List[BoundVal], body: => Rep): Rep = q"""
+    def lambda(params: List[BoundVal], body: => Rep): Rep = lamImpl(params, body)
+    // ^ if we don't factor out the implementation of `lambda` into a function whose name does not include "lambda",
+    //   we get the Scala 2.12.4/5 compilers crashing with an assertion error...
+    //   Bug reported there: https://github.com/scala/bug/issues/10857
+    private def lamImpl(params: List[BoundVal], body: => Rep): Rep = q"""
       ..${params collect { case New(on, vn, vt, anns) => q"val $vn = $Base.bindVal($on, $vt, ${mkNeatList(anns map annot)})" }}
       $Base.lambda(${mkNeatList(params map (_.tree))}, $body)
     """
@@ -290,7 +294,8 @@ trait MetaBases {
       case cls: Class[_] => q"_root_.scala.Predef.classOf[${ruh.srum.classSymbol(cls).asInstanceOf[u.Symbol]}]" // FIXME
       case _ => Literal(Constant(value))
     }
-    def lambda(params: List[BoundVal], body: => Rep): Rep = q"""
+    def lambda(params: List[BoundVal], body: => Rep): Rep = lamImpl(params,body)
+    private def lamImpl(params: List[BoundVal], body: => Rep): Rep = q"""
       (..${params map { case (vn, vt) => q"val $vn: $vt" }}) => $body
     """
     

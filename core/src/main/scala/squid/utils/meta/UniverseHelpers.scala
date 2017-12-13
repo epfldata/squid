@@ -159,16 +159,33 @@ trait UniverseHelpers[U <: scala.reflect.api.Universe] {
   }
   
   def transformer(rec_pf: (Tree => Tree) => PartialFunction[Tree, Tree]) = {
+    // Scala 2.12 bug reported there: https://github.com/scala/bug/issues/10856
+    /*
     new Transformer {
-      val pf: PartialFunction[Tree, Tree] = rec_pf(transform)
+      val pf: PartialFunction[Tree, Tree] = rec_pf(transform) // on Scala 2.12, this raises: java.lang.NoSuchMethodError: squid.utils.meta.UniverseHelpers$$anon$5.pf()Lscala/PartialFunction
+      // ^ solved if we make it a def
       override def transform(x: Tree) = pf.applyOrElse(x, super.transform)
     } transform _
+    */
+    val t = new Transformer {
+      val pf: PartialFunction[Tree, Tree] = rec_pf(transform)
+      override def transform(x: Tree) = pf.applyOrElse(x, super.transform)
+    }
+    t transform _
   }
   def analyser(rec_pf: (Tree => Unit) => PartialFunction[Tree, Unit]) = {
+    // cf Scala 2.12 bug:
+    /*
     new Traverser {
       val pf: PartialFunction[Tree, Unit] = rec_pf(traverse)
       override def traverse(x: Tree) = pf.applyOrElse(x, super.traverse)
     } traverse _
+    */
+    val t = new Traverser {
+      val pf: PartialFunction[Tree, Unit] = rec_pf(traverse)
+      override def traverse(x: Tree) = pf.applyOrElse(x, super.traverse)
+    }
+    t traverse _
   }
   
   

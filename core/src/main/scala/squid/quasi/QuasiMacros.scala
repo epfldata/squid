@@ -574,7 +574,10 @@ class QuasiMacros(val c: whitebox.Context) {
     val name -> term = s match {
       case q"scala.this.Predef.ArrowAssoc[$_](scala.Symbol.apply(${Literal(Constant(name: String))})).->[$_]($term)" =>
         name -> term
-      case _ => c.abort(s.pos, "Illegal syntax for `subs`; Expected: `term0.subs 'name -> term1`")
+      // In Scala 2.12, we don't get the weird `this` anymore:
+      case q"scala.Predef.ArrowAssoc[$_](scala.Symbol.apply(${Literal(Constant(name: String))})).->[$_]($term)" =>
+        name -> term
+      case _ => c.abort(s.pos, s"Illegal syntax for `subs`; Expected: `term0.subs 'name -> term1`, found: `${showCode(s)}`")
     }
     
     //debug(name, term)
