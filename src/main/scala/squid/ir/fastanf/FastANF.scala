@@ -887,32 +887,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         val invCtx = reverse(es.ctx)
         (ex._1.values ++ ex._3.values.flatten).forall(preCheckRep(Set.empty, invCtx, _))
       }
-
-      /**
-        * Final check after rewriting the program.
-        * Checks if all the BVs are declared and that the removed 
-        * let-binding are not referenced anymore in the code.
-        */
-      def check(declaredBVs: Set[BoundVal], matchedImpureBVs: Set[BoundVal])(r: Rep): Boolean = {
-        def checkDef(declaredBVs: Set[BoundVal], matchedImpureBVs: Set[BoundVal])(d: Def): Boolean = d match {
-          case ma: MethodApp => (ma.self :: ma.argss.argssList) forall {
-            case bv: BoundVal => (declaredBVs contains bv) || !(matchedImpureBVs contains bv)
-            case lb: LetBinding => check(declaredBVs + lb.bound, matchedImpureBVs)(lb)
-            case _ => true
-          }
-          case l: Lambda => 
-            ((declaredBVs contains l.bound) || 
-            !(matchedImpureBVs contains l.bound)) && 
-              check(declaredBVs, matchedImpureBVs)(l.body)
-          case _ => true
-        }
-
-        r match {
-          case lb: LetBinding => checkDef(declaredBVs + lb.bound, matchedImpureBVs)(lb.value)
-          case bv: BoundVal => (declaredBVs contains bv) || !(matchedImpureBVs contains bv)
-          case _ => true
-        }
-      }
       
       def cleanup(r: Rep, remove: Set[BoundVal])(ctx: Ctx): Rep = r match {
         case lb: LetBinding if remove contains lb.bound => cleanup(lb.body, remove)(ctx)
@@ -973,9 +947,9 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       
       if (preCheck(es.ex)) for {
         code <- code(es.ex) alsoApply(c => println(s"CODE: $c"))
-        code0 = finalize(code, xtor, xtee)(es.ctx) alsoApply (c => println(s"CODE0: $c"))
-        if check(Set.empty, es.matchedImpureBVs)(cleanup(code0, es.matchedImpureBVs)(es.ctx))
-      } yield code0
+        code0 = finalize(code, xtor, xtee)(es.ctx) alsoApply (c => println(s"CODE0: $c")) 
+        cleanCode = cleanup(code0, es.matchedImpureBVs)(es.ctx)
+      } yield cleanCode
       else None
     }
     
