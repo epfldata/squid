@@ -482,23 +482,23 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     
     def extractHOPHole(name: String, typ: TypeRep, argss: List[List[Rep]], visible: List[BoundVal])(implicit es: State): ExtractState = {
       println("EXTRACTINGHOPHOLE")
-      
-      def usesUndeclaredBVs(r: Rep): Boolean = {
-        def usesUndeclaredBVs0(r: Rep, declared: Set[BoundVal]): Boolean = r match {
-          case bv: BoundVal => !(declared contains bv)
+
+      def hasNoUndeclaredUsages(r: Rep): Boolean = {
+        def hasNoUndeclaredUsages0(r: Rep, declared: Set[BoundVal]): Boolean = r match {
+          case bv: BoundVal => declared contains bv
           case lb: LetBinding =>
             val declared0 = declared + lb.bound
-            defUsesUndeclaredBVs(lb.value, declared0) || usesUndeclaredBVs0(lb.body, declared0)
-          case _ => false
+            defHasNoUndeclaredUsages(lb.value, declared0) && hasNoUndeclaredUsages0(lb.body, declared0)
+          case _ => true
         }
 
-        def defUsesUndeclaredBVs(d: Def, declared: Set[BoundVal]): Boolean = d match {
-          case l: Lambda => usesUndeclaredBVs0(l.body, declared + l.bound)
-          case ma: MethodApp => (ma.self +: ma.argss.argssList) exists (usesUndeclaredBVs0(_, declared))
-          case _ => false
+        def defHasNoUndeclaredUsages(d: Def, declared: Set[BoundVal]): Boolean = d match {
+          case l: Lambda => hasNoUndeclaredUsages0(l.body, declared + l.bound)
+          case ma: MethodApp => (ma.self :: ma.argss.argssList) forall (hasNoUndeclaredUsages0(_, declared))
+          case _ => true
         }
 
-        usesUndeclaredBVs0(r, Set.empty)
+        hasNoUndeclaredUsages0(r, Set.empty)
       }
 
       /**
@@ -593,7 +593,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         
         (f, es2) <- argss0.foldRight(Option(xtee -> (es withNewExtract m)))(buildFunc)
         
-        if !usesUndeclaredBVs(f)
+        if hasNoUndeclaredUsages(f)
       } yield es2 updateExtractWith Some(repExtract(name -> f))
       
       maybeES getOrElse Left(es)
