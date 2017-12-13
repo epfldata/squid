@@ -4,8 +4,8 @@ package fastir
 
 import scala.util.Try
 
-class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVariables.Embedding) {
-  import HigherOrderPatternVariables.Embedding.Predef._
+class HOPVTests extends MyFunSuiteBase(HOPVTests.Embedding) {
+  import HOPVTests.Embedding.Predef._
 
   test("Matching lambda bodies") {
     val id = ir"(z:Int) => z"
@@ -62,7 +62,7 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
 
   test("Matching let-binding bodies") {
     // Not implemented error in `letin`
-    //ir"val a = 0; val b = 1; a + b" matches {
+    //ir"val a = ${ir"0"}; val b = 1; a + b" match {
     //  case ir"val x: Int = $v; $body(x):Int" =>
     //    assert(v == ir"0")
     //    body matches {
@@ -164,6 +164,6 @@ class HigherOrderPatternVariables extends MyFunSuiteBase(HigherOrderPatternVaria
   }
 }
 
-object HigherOrderPatternVariables {
+object HOPVTests {
   object Embedding extends FastANF
 }
