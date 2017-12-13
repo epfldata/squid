@@ -793,29 +793,29 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           } yield e1 extract(e2, Invariant)): _*
         )
 
-      def extractArgss(argss1: ArgumentLists, argss2: ArgumentLists)(implicit es: State): ExtractState = {
-        def extractArgss0(argss1: ArgumentLists, argss2: ArgumentLists, acc: List[Rep])(implicit es: State): ExtractState = (argss1, argss2) match {
-          case (ArgumentListCons(h1, t1), ArgumentListCons(h2, t2)) => for {
-            es0 <- extractArgss0(h1, h2, acc)
-            es1 <- extractArgss0(t1, t2, acc)(es0)
-          } yield es1
+      def extractArgss(argss1: ArgumentLists, argss2: ArgumentLists)(implicit es: State): ExtractState = (argss1, argss2) match {
+        case (ArgumentListCons(h1, t1), ArgumentListCons(h2, t2)) => for {
+          es0 <- extractArgss(h1, h2)
+          es1 <- extractArgss(t1, t2)(es0)
+        } yield es1
 
-          case (ArgumentCons(h1, t1), ArgumentCons(h2, t2)) => for {
-            es0 <- extractArgss0(h1, h2, acc)
-            es1 <- extractArgss0(t1, t2, acc)(es0)
-          } yield es1
+        case (ArgumentCons(h1, t1), ArgumentCons(h2, t2)) => for {
+          es0 <- extractArgss(h1, h2)
+          es1 <- extractArgss(t1, t2)(es0)
+        } yield es1
 
-          case (SplicedArgument(arg1), SplicedArgument(arg2)) => extractWithState(arg1, arg2)
-          case (sa: SplicedArgument, ArgumentCons(h, t)) => extractArgss0(sa, t, h :: acc)
-          case (sa: SplicedArgument, r: Rep) => extractArgss0(sa, NoArguments, r :: acc)
-          case (SplicedArgument(arg), NoArguments) => es updateExtractWith spliceExtract(arg, Args(acc.reverse: _*))
-          case (r1: Rep, r2: Rep) => extractWithState(r1, r2)
-          case (NoArguments, NoArguments) => Right(es)
-          case (NoArgumentLists, NoArgumentLists) => Right(es)
-          case _ => Left(es)
-        }
-
-        extractArgss0(argss1, argss2, Nil)
+        case (SplicedArgument(arg1), SplicedArgument(arg2)) => extractWithState(arg1, arg2)
+        case (SplicedArgument(arg), ac: ArgumentCons) => es updateExtractWith spliceExtract(arg, Args(ac.argssList: _*))
+        case (SplicedArgument(arg), r: Rep) => es updateExtractWith spliceExtract(arg, Args(r))
+        case (SplicedArgument(_), NoArguments) => Right(es)
+        
+        case (r1: Rep, r2: Rep) => extractWithState(r1, r2)
+        
+        case (NoArguments, NoArguments) => Right(es)
+        
+        case (NoArgumentLists, NoArgumentLists) => Right(es)
+        
+        case _ => Left(es)
       }
 
       for {
