@@ -169,6 +169,20 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
     assert(a =~= ir"f({val a = 10.toDouble; println(42.toDouble); val b = 10.toDouble; 42.toDouble})")
   }
   
+  test("Rewriting with unused statements should inline them") {
+    val a = ir"val r = readDouble; val a = readInt; val b = r.toInt; b" rewrite {
+      case ir"readDouble" => ir"val r = readInt; val a = r + 1; 20d"
+    }
+    assert(a =~= ir"val r = readInt; val a2 = r + 1; val a1 = readInt; val b = 20d.toInt; b")
+  }
+  
+  test("Rewriting should not duplicate effects") {
+    val a = ir"val r = readDouble; val b = r.toInt; val c = r.toDouble; b + c" rewrite {
+      case ir"readDouble" => ir"val r = readInt; val a = r + 1; 20d"
+    }
+    assert(a =~= ir"val r = readInt; val a = r + 1; 20d.toInt + 20d.toDouble")
+  }
+  
   test("Squid paper") {
     
     // 3.4
