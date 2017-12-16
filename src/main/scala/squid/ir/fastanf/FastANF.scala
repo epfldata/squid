@@ -989,16 +989,9 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
             case xtorRet: BoundVal => code match {
               case codeLB: LetBinding =>
                 val codeLast = codeLB.last
-                codeLast.body match {
-                  case codeRet: BoundVal =>
-                    val bv = ctx(xtorRet)
-                    codeLast.body = bottomUpPartial(xtee) { case `bv` => codeRet }
-
-                  // When code: `ir"val a = readInt; 20"`, 
-                  case _ =>
-                    val bv = ctx(xtorRet)
-                    codeLast.body = bottomUpPartial(xtee) { case `bv` => codeLast.body }
-                }
+                val codeRet = codeLast.body
+                val bv = ctx(xtorRet)
+                codeLast.body = bottomUpPartial(xtee) { case `bv` => codeRet }
                 code
 
               case _ =>
@@ -1006,17 +999,14 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
                 bottomUpPartial(xtee) { case `bv` => code }
             }
 
-            // Hole?  
             case _ => code
           }
 
         case _ => code match {
           case codeLB: LetBinding =>
             val codeLast = codeLB.last
-            codeLast.body |>? {
-              case codeRet: BoundVal =>
-                codeLast.body = bottomUpPartial(xtee) { case `xtor` => codeRet }
-            }
+            val codeRet = codeLast.body
+            codeLast.body = bottomUpPartial(xtee) { case `xtor` => codeRet }
             code
 
           case _ => bottomUpPartial(xtee) { case `xtor` => code }

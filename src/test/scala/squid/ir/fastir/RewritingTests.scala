@@ -183,6 +183,18 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
     assert(a =~= ir"val r = readInt; val a = r + 1; 20d.toInt + 20d.toDouble")
   }
   
+  test("Rewriting a non-letbinding with a let-binding") {
+    val a = ir"val a = 20.toDouble; a + 1" rewrite {
+      case ir"20" => ir"readInt"
+    }
+    assert(a =~= ir"val r = readInt; val a = r.toDouble; a + 1")
+
+    val b = ir"val a = 20.toDouble; a + 1" rewrite {
+      case ir"20" => ir"val t = readInt; 40"
+    }
+    assert(b =~= ir"val t = readInt; val a = 40.toDouble; a + 1")
+  }
+  
   test("Squid paper") {
     
     // 3.4
