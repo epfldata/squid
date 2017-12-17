@@ -7,6 +7,10 @@ import squid.utils._
 
 import scala.collection.immutable.{ListMap, ListSet}
 
+/**
+  * ANF representation of the code. 
+  * The IR is mutable in order to be able to do O(1) substitutions.
+  */
 class FastANF extends InspectableBase with CurryEncoding with StandardEffects with ScalaCore {
   private[this] implicit val base = this
   
@@ -100,9 +104,9 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   def module(prefix: Rep, name: String, typ: TypeRep): Rep = Module(prefix, name, typ)
   def newObject(typ: TypeRep): Rep = NewObject(typ)
   def methodApp(self: Rep, mtd: MtdSymbol, targs: List[TypeRep], argss: List[ArgList], tp: TypeRep): Rep = mtd match {
+    // Converts the call to `Imperative` to let-bindings
     case MethodSymbol(TypeSymbol("squid.lib.package$"), "Imperative") => argss match {
       case List(h, t) =>
-        val firstArgss = h.reps
         val holes = h.reps.filter {
           case Hole(_, _) => true
           case _ => false
@@ -115,18 +119,25 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         }
     }
 
-
     case _ => MethodApp(self |> inlineBlock, mtd, targs, argss |> toArgumentLists, tp) |> letbind
   }
   def byName(mkArg: => Rep): Rep = ByName(wrapNest(mkArg))
   
   def letbind(d: Def): Rep = currentScope += d
+
+  /**
+    * Adds all the statements of `r` to the current reification context.
+    * Returns the final non-statement unchanged.
+    */
   def inlineBlock(r: Rep): Rep = r |>=? {
     case lb: LetBinding =>
       currentScope += lb
       inlineBlock(lb.body)
   }
 
+  /**
+    * Let binds `value` to `bound` in the `body`.
+    */
   override def letin(bound: BoundVal, value: Rep, body: => Rep, bodyType: TypeRep): Rep = value match {
     case s: Symbol =>
       s.owner |>? {
@@ -311,7 +322,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
   protected def extract(xtor: Rep, xtee: Rep): Option[Extract] = {
     println(s"Extract(\n$xtor, \n$xtee)")
-    extractWithState(xtor, xtee)(State.forExtraction(xtor, xtee)).fold(_ => None, Some(_)) map (_.ex)
+    extractWithState(xtor, xtee)(State.forExtraction(xtor, xtee)).toOption map (_.ex)
   }
 
   type Ctx = Map[BoundVal, BoundVal]
@@ -332,10 +343,10 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     * Represents the current of the state of the extraction.
     * @param ex what has been extracted by holes.
     * @param ctx discovered matchings between bound values in the `xtor` and the `xtee`.
-    * @param instructions 
-    * @param matchedImpureBVs
-    * @param failedMatches
-    * @param strategy
+    * @param instructions what has to be done for each let-binding
+    * @param matchedImpureBVs impure statements that have been matched
+    * @param failedMatches statements that do not match
+    * @param strategy see [[Strategy]]
     */
   case class State(ex: Extract, ctx: Ctx, instructions: Instructions, matchedImpureBVs: Set[BoundVal],
                    failedMatches: Map[BoundVal, Set[BoundVal]], strategy: Strategy) {
@@ -481,8 +492,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     println(es)
     
     def extractHOPHole(name: String, typ: TypeRep, argss: List[List[Rep]], visible: List[BoundVal])(implicit es: State): ExtractState = {
-      println("EXTRACTINGHOPHOLE")
-
       def hasNoUndeclaredUsages(r: Rep): Boolean = {
         def hasNoUndeclaredUsages0(r: Rep, declared: Set[BoundVal]): Boolean = r match {
           case bv: BoundVal => declared contains bv
@@ -696,7 +705,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           } yield es3
         }
 
-      case (Constant(()), lb: LetBinding) => es.strategy match {
+      case (Constant(()), _: LetBinding) => es.strategy match {
         // Unit return doesn't have to matched
         case PartialMatching => Right(es)
         case CompleteMatching => Left(es)
@@ -726,13 +735,9 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case (HOPHole(name, typ, argss, visible), _) => extractHOPHole(name, typ, argss, visible)
 
       // The actual extraction happens here.  
-      case (bv1: BoundVal, bv2: BoundVal) =>
-        println(s"OWNERS: ${bv1.owner} -- ${bv2.owner}")
-        println(s"STATE: $es")
-
-        es.ctx.get(bv1) map { bv =>
-          if (bv != bv2) Left(es) // `bv1` has already extracted something else
-          else Right(es) 
+      case (bv1: BoundVal, bv2: BoundVal) => es.ctx.get(bv1) map { extractedByBV1 =>
+          if (extractedByBV1 == bv2) Right(es)
+          else Left(es) 
         } getOrElse {
           if (bv1 == bv2) Right(es)
           else if (es.failedMatches(bv1) contains bv2) Left(es) // Previously failed to extract `bv1` with `bv2`
@@ -939,23 +944,31 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           * Adds all the pure statements referencing removed ones.
           * TODO add mathematical term
           */
-        def buildToRemove(r: Rep, remove: Set[BoundVal]): Set[BoundVal] = r match {
-          case lb: LetBinding if remove contains lb.bound => buildToRemove(lb.body, remove)
-
-          case lb: LetBinding if isPure(lb.value) =>
-            val bvsInValue = lb.value |>? {
-              case ma: MethodApp => collectBVs(ma)
-            } getOrElse ListSet.empty
-
-            if (bvsInValue exists (remove contains)) {
-              buildToRemove(lb.body, remove + lb.bound)
-            } else {
-              buildToRemove(lb.body, remove)
+        def buildToRemove(r: Rep, remove: Set[BoundVal]): Set[BoundVal] = {
+          def collectBVs(ma: MethodApp): ListSet[BoundVal] =
+            (ma.self :: ma.argss.argssList).foldLeft(ListSet.empty[BoundVal]) {
+              case (acc, bv: BoundVal) => acc + bv
+              case (acc, _) => acc
             }
+          
+          r match {
+            case lb: LetBinding if remove contains lb.bound => buildToRemove(lb.body, remove)
 
-          case lb: LetBinding => buildToRemove(lb.body, remove)
+            case lb: LetBinding if isPure(lb.value) =>
+              val bvsInValue = lb.value |>? {
+                case ma: MethodApp => collectBVs(ma)
+              } getOrElse ListSet.empty
 
-          case _ => remove
+              if (bvsInValue exists (remove contains)) {
+                buildToRemove(lb.body, remove + lb.bound)
+              } else {
+                buildToRemove(lb.body, remove)
+              }
+
+            case lb: LetBinding => buildToRemove(lb.body, remove)
+
+            case _ => remove
+          }
         }
 
         def filterNot0(remove: Set[BoundVal])(r: Rep): Rep = r match {
@@ -1035,22 +1048,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       lb
     case _ => r
   }
-
-  def collectLBBounds(r: Rep): ListSet[BoundVal] = {
-    def collectLBBounds0(r: Rep, acc: ListSet[BoundVal]): ListSet[BoundVal] = r match {
-      case lb: LetBinding => collectLBBounds0(lb.body, acc + lb.bound)
-      case _ => acc
-    }
-
-    collectLBBounds0(r, ListSet.empty)
-  }
   
-  def collectBVs(ma: MethodApp): ListSet[BoundVal] =
-    (ma.self :: ma.argss.argssList).foldLeft(ListSet.empty[BoundVal]) {
-      case (acc, bv: BoundVal) => acc + bv
-      case (acc, _) => acc
-    }
-
   // * --- * --- * --- *  Implementations of `QuasiBase` methods  * --- * --- * --- *
 
   def hole(name: String, typ: TypeRep) = Hole(name, typ)

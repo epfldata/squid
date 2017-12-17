@@ -105,7 +105,10 @@ object MethodApp {
       case _ => SimpleMethodApp(self: Rep, mtd: MethodSymbol, targs: List[TypeRep], argss)(typ)
     }
   }
-  
+
+  /**
+    * Inlines `self` and the arguments `argss` if they are let-bindings in order to transform it into valid ANF.
+    */
   def toANF(self: Rep, mtd: MethodSymbol, targs: List[TypeRep], argss: ArgumentLists, typ0: TypeRep)(implicit base: FastANF): Rep = {
     def processArgss(argss: ArgumentLists)(f: Rep => (Option[LetBinding], Rep)): (Option[LetBinding], ArgumentLists) = {
       def processArgs(args: ArgumentList)(f: Rep => (Option[LetBinding], Rep)): (Option[LetBinding], ArgumentList) = {
@@ -295,6 +298,9 @@ class LetBinding(var name: String, var bound: Symbol, var value: Def, private va
   override def toString: String = s"val $bound = $value; $body"
 }
 object LetBinding {
+  /**
+    * Inlines the `value` to transform it into valid ANF.
+    */
   def withRepValue(name: String, bound: Symbol, value: Rep, mkBody: => Rep): Rep = value match {
     case lb: LetBinding =>
       val last = lb.last
