@@ -563,11 +563,19 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
                   */
                 def replaceAllOccurrences(body: Rep)(es: State): Rep -> State = {
                   def replaceAllOccurrences0(body: Rep)(implicit es: State): Rep -> State = {
+                    def filterLBs(r: Rep)(p: LetBinding => Boolean): Rep = r match {
+                      case lb: LetBinding if p(lb) =>
+                        filterLBs(lb.body)(p)
+                      case lb: LetBinding =>
+                        lb.body = filterLBs(lb.body)(p)
+                        lb
+                      case _ => r
+                    }
 
-                   /*
-                    * Extracts the function body with the xtor in order to be able to use the context `ctx` to know
-                    * what to replace with the new argument. 
-                    */
+                    /*
+                     * Extracts the function body with the xtor in order to be able to use the context `ctx` to know
+                     * what to replace with the new argument. 
+                     */
                     extractWithState(lb, body) map { es0 =>
                       val replace =  es0.ctx(lb.last.bound)
                       val body0  = bottomUpPartial(filterLBs(body)(es0.ctx.values.toSet contains _.bound)) { case `replace` => arg }
@@ -1038,15 +1046,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case Right(es) => genCode(es) alsoApply(c => println(s"GEN: $c"))
       case Left(_) => None
     }
-  }
-
-  def filterLBs(r: Rep)(p: LetBinding => Boolean): Rep = r match {
-    case lb: LetBinding if p(lb) =>
-      filterLBs(lb.body)(p)
-    case lb: LetBinding =>
-      lb.body = filterLBs(lb.body)(p)
-      lb
-    case _ => r
   }
   
   // * --- * --- * --- *  Implementations of `QuasiBase` methods  * --- * --- * --- *
