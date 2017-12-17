@@ -938,6 +938,14 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         (ex._1.values ++ ex._3.values.flatten).forall(preCheckRep(Set.empty, invCtx, _))
       }
 
+      def collectBVs(d: Def): Set[BoundVal] = d match {
+        case ma: MethodApp =>  (ma.self :: ma.argss.argssList).foldLeft(ListSet.empty[BoundVal]) {
+          case (acc, bv: BoundVal) => acc + bv
+          case (acc, _) => acc
+        }
+        case _ => Set.empty
+      }
+
       /**
         * Removes all the statements referencing elements from `remove`. 
         * Also takes care of statements referencing removed statements.
@@ -952,31 +960,21 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           * Adds all the pure statements referencing removed ones.
           * TODO add mathematical term
           */
-        def buildToRemove(r: Rep, remove: Set[BoundVal]): Set[BoundVal] = {
-          def collectBVs(ma: MethodApp): ListSet[BoundVal] =
-            (ma.self :: ma.argss.argssList).foldLeft(ListSet.empty[BoundVal]) {
-              case (acc, bv: BoundVal) => acc + bv
-              case (acc, _) => acc
+        def buildToRemove(r: Rep, remove: Set[BoundVal]): Set[BoundVal] = r match {
+          case lb: LetBinding if remove contains lb.bound => buildToRemove(lb.body, remove)
+
+          case lb: LetBinding if isPure(lb.value) =>
+            val bvsInValue = collectBVs(lb.value)
+
+            if (bvsInValue exists (remove contains)) {
+              buildToRemove(lb.body, remove + lb.bound)
+            } else {
+              buildToRemove(lb.body, remove)
             }
-          
-          r match {
-            case lb: LetBinding if remove contains lb.bound => buildToRemove(lb.body, remove)
 
-            case lb: LetBinding if isPure(lb.value) =>
-              val bvsInValue = lb.value |>? {
-                case ma: MethodApp => collectBVs(ma)
-              } getOrElse ListSet.empty
+          case lb: LetBinding => buildToRemove(lb.body, remove)
 
-              if (bvsInValue exists (remove contains)) {
-                buildToRemove(lb.body, remove + lb.bound)
-              } else {
-                buildToRemove(lb.body, remove)
-              }
-
-            case lb: LetBinding => buildToRemove(lb.body, remove)
-
-            case _ => remove
-          }
+          case _ => remove
         }
 
         def filterNot0(remove: Set[BoundVal])(r: Rep): Rep = r match {
@@ -1001,36 +999,86 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       /**
         * Merges the generated `code` with the `xtee` 
         */
-      def merge(code: Rep, xtee: Rep)(xtor: Rep, ctx: Ctx): Rep = xtor match {
-        // Find what the return value of `xtor` matched in `xtee` and
-        // replace that by the return value of `code`.
-        case xtorLB: LetBinding =>
-          val xtorLast = xtorLB.last
-          xtorLast.body match {
-            case xtorRet: BoundVal => code match {
-              case codeLB: LetBinding =>
-                val codeLast = codeLB.last
-                val codeRet = codeLast.body
-                val bv = ctx(xtorRet)
-                codeLast.body = bottomUpPartial(xtee) { case `bv` => codeRet }
-                code
-
-              case _ =>
-                val bv = ctx(xtorRet)
-                bottomUpPartial(xtee) { case `bv` => code }
+      def merge(code: Rep, xtee: Rep)(xtor: Rep, ctx: Ctx): Rep = {
+        /**
+          * Puts `code` in the right position in `xtee`.
+          */
+        def mergeLBs(code: LetBinding, xtee: LetBinding)(es: State): Rep = {
+          def collectAllBVs(r: Rep): Set[BoundVal] = {
+            def collectAllBVs0(r: Rep, acc: Set[BoundVal]): Set[BoundVal] = r match {
+              case lb: LetBinding => collectAllBVs0(lb.body, acc ++ collectBVs(lb.value))
+              case _ => acc
             }
-
-            case _ => code
+            collectAllBVs0(r, Set.empty)
           }
 
-        case _ => code match {
-          case codeLB: LetBinding =>
-            val codeLast = codeLB.last
-            val codeRet = codeLast.body
-            codeLast.body = bottomUpPartial(xtee) { case `xtor` => codeRet }
-            code
+          def findPos(r: LetBinding, lookFor: Set[BoundVal]): Option[LetBinding] = {
+            if (lookFor.isEmpty) None
+            else r match {
+              case lb: LetBinding =>
+                val lookFor0 = lookFor -- collectBVs(lb.value)
+                if (lookFor0.isEmpty) Some(lb)
+                else lb.body match {
+                  case innerLB: LetBinding => findPos(innerLB, lookFor0)
+                  case _ => None
+                }
+              case _ => None
+            }
+          }
 
-          case _ => bottomUpPartial(xtee) { case `xtor` => code }
+          // All usages of BVs that come from the xtee
+          val lookFor = collectAllBVs(code).filter((es.ex._1.values ++ es.ex._3.values).toSet contains)
+
+          findPos(xtee, lookFor) match {
+            case Some(pos) =>
+              code.last.body = pos.body
+              pos.body = code
+              xtee
+            case None =>
+              code.last.body = xtee
+              code
+          }
+        }
+
+        xtor match {
+          // Find what the return value of `xtor` matched in `xtee` and
+          // replace that by the return value of `code`.
+          case xtorLB: LetBinding =>
+            val xtorLast = xtorLB.last
+            xtorLast.body match {
+              case xtorRet: BoundVal => code match {
+                case codeLB: LetBinding =>
+                  val codeLast = codeLB.last
+                  val codeRet = codeLast.body
+                  val bv = ctx(xtorRet)
+                  bottomUpPartial(xtee) { case `bv` => codeRet } match {
+                    case xteeLB: LetBinding => mergeLBs(codeLB, xteeLB)(es)
+                    case r =>
+                      codeLast.body = r
+                      code
+                  }
+
+                case _ =>
+                  val bv = ctx(xtorRet)
+                  bottomUpPartial(xtee) { case `bv` => code }
+              }
+
+              case _ => code
+            }
+
+          case _ => code match {
+            case codeLB: LetBinding =>
+              val codeLast = codeLB.last
+              val codeRet = codeLast.body
+              bottomUpPartial(xtee) { case `xtor` => codeRet } match {
+                case xteeLB: LetBinding => mergeLBs(codeLB, xteeLB)(es)
+                case r =>
+                  codeLast.body = r
+                  code
+              }
+
+            case _ => bottomUpPartial(xtee) { case `xtor` => code }
+          }
         }
       }
       

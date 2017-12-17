@@ -83,4 +83,5 @@ trait StandardEffects extends Effects {
   addPureMtd(MethodSymbol(TypeSymbol("squid.lib.package$"),"uncurried2"))
   addPureMtd(MethodSymbol(TypeSymbol("scala.collection.LinearSeqOptimized"),"foldLeft"))
   addPureMtd(MethodSymbol(TypeSymbol("scala.collection.immutable.List$"),"apply"))
+  addPureMtd(MethodSymbol(TypeSymbol("scala.collection.immutable.List$"),"canBuildFrom"))
 }
