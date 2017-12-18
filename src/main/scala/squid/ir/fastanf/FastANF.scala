@@ -27,7 +27,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   // * --- * --- * --- *  Reification  * --- * --- * --- *
   
   var scopes: List[ReificationContext] = Nil
-  
+
+  // TODO what happens here? It looks like `finalize` doesn't anything but run the thunk `r`. But if I remove `scp` it doesn't work 
   @inline final def wrap(r: => Rep, inXtor: Bool): Rep = {
     val scp = new ReificationContext(inXtor)
     scopes ::= scp
@@ -122,7 +123,10 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     case _ => MethodApp(self |> inlineBlock, mtd, targs, argss |> toArgumentLists, tp) |> letbind
   }
   def byName(mkArg: => Rep): Rep = ByName(wrapNest(mkArg))
-  
+
+  /**
+    * Let-bind `d` and add it the current reification scope.
+    */
   def letbind(d: Def): Rep = currentScope += d
 
   /**
@@ -156,6 +160,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     //}
     //bound rebind s
     //body
+      
     case lb: LetBinding =>
       // conceptually, does like `inlineBlock`, but additionally rewrites `bound` and renames `lb`'s last binding
       val last = lb.last
@@ -164,25 +169,20 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       last.body = body
       last.name = boundName // TODO make sure we're only renaming an automatically-named binding?
       lb
-    // case c: Constant => bottomUpPartial(body) { case `bound` => c }
+
     case h: Hole =>
-      //Wrap construct? How?
-
-      // letin(x, Hole, Constant(20)) => `val tmp = defHole; 20;`
-
       val dh = DefHole(h) |> letbind
-
-      //(dh |>? {
-      //  case bv: BoundVal => bv.owner |>? {
-      //    case lb: LetBinding =>
-      //      lb.body = body
-      //      lb
-      //  }
-      //}).flatten.getOrElse(body)
-
-      //new LetBinding(bound.name, bound, dh, body) alsoApply (currentScope += _) alsoApply (bound.rebind)
       withSubs(bound -> dh)(body)
 
+    //(dh |>? {
+    //  case bv: BoundVal => bv.owner |>? {
+    //    case lb: LetBinding =>
+    //      lb.body = body
+    //      lb
+    //  }
+    //}).flatten.getOrElse(body)
+
+    //new LetBinding(bound.name, bound, dh, body) alsoApply (currentScope += _) alsoApply (bound.rebind)
 
     case (_:HOPHole) | (_:HOPHole2) | (_:SplicedHole) =>
       ??? // TODO holes should probably be Def's; note that it's not safe to do a substitution for holes
@@ -193,6 +193,10 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   }
 
   var curSub: Map[Symbol,Rep] = Map.empty
+
+  /**
+    * Substitutes the [[Symbol]]s in `k` with the based on the mappings in [[curSub]] and `subs`. 
+    */
   def withSubs[R](subs: Symbol -> Rep)(k: => R): R = {
     val oldSub = curSub
     curSub += subs
@@ -220,9 +224,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case _ => None
     }
   }
-
-  //   /** Artifact of a term extraction: map from hole name to terms, types and spliced term lists */
-
+  
   def repEq(a: Rep, b: Rep): Boolean =
     (a extractRep b) === Some(EmptyExtract) && (b extractRep a) === Some(EmptyExtract)
 
@@ -316,7 +318,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case ByName(r) => ByName(transformRep0(r))
       case Ascribe(s, t) => Ascribe(transformRep0(s), t)
       case Module(p, n, t) => Module(transformRep0(p), n, t)
-      case r @ ((_:Constant) | (_:Hole) | (_:Symbol) | (_:SplicedHole) | (_:HOPHole) | (_:HOPHole2) | (_:NewObject) | (_:StaticModule)) => r
+      case r => r
     })
   }
 
@@ -325,11 +327,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     extractWithState(xtor, xtee)(State.forExtraction(xtor, xtee)).toOption map (_.ex)
   }
 
+  // Context is mapping from xtor BVs to xtee BVs
   type Ctx = Map[BoundVal, BoundVal]
-  def reverse[A, B](m: Map[A, B]): Map[B, Set[A]] = m.groupBy(_._2).mapValues(_.keys.toSet)
-  def updateWith(m: Map[BoundVal, Set[BoundVal]])(u: (BoundVal, BoundVal)): Map[BoundVal, Set[BoundVal]] = u match {
-    case (k, v) => m + (k -> (m(k) + v))
-  }
 
   // * --- * --- * --- *  Extraction State  * --- * --- * --- *
 
@@ -378,6 +377,11 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     def updateExtractWith(e: Option[Extract]*)(implicit default: State): ExtractState = {
       mergeAll(Some(ex) +: e).fold[ExtractState](Left(default))(ex => Right(this withNewExtract ex))
     }
+
+    // Add the entry `u` to the immutable multimap `m` 
+    private def updateWith(m: Map[BoundVal, Set[BoundVal]])(u: (BoundVal, BoundVal)): Map[BoundVal, Set[BoundVal]] = u match {
+      case (k, v) => m + (k -> (m.getOrElse(k, Set.empty) + v))
+    }
   }
   
   object State {
@@ -386,6 +390,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     
     private def apply(xtor: Rep, xtee: Rep, strategy: Strategy): State = 
       State(EmptyExtract, ListMap.empty, Instructions(xtor, xtee), Set.empty, Map.empty.withDefaultValue(Set.empty), strategy)
+      //                                                                                \_ Assumed by `extractWithState`
   }
 
   
@@ -426,7 +431,9 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   /**
     * Instructs the extraction has to look for a matching statements.
     * This instruction is attached to impure statements as well as pure statements 
-    * that are not used by other statements.
+    * that are not used by other statements. Giving this instructions to those two cases
+    * means that the unused statements are handled the same way. So, even though they are pure, 
+    * unused statements will be matched in order.
     */
   case object Start extends Instruction
 
@@ -552,8 +559,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
                  * Assumes the bv is already in the context. 
                  * This is enforced by how the instructions are chosen.
                  */
-                val replace = es.ctx(bv)
-                replace rebind arg
+                es.ctx(bv) rebind arg
                 body -> es
                 
               case lb: LetBinding =>
@@ -564,8 +570,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
                 def replaceAllOccurrences(body: Rep)(es: State): Rep -> State = {
                   def replaceAllOccurrences0(body: Rep)(implicit es: State): Rep -> State = {
                     def filterLBs(r: Rep)(p: LetBinding => Boolean): Rep = r match {
-                      case lb: LetBinding if p(lb) =>
-                        filterLBs(lb.body)(p)
+                      case lb: LetBinding if p(lb) => filterLBs(lb.body)(p)
                       case lb: LetBinding =>
                         lb.body = filterLBs(lb.body)(p)
                         lb
@@ -573,8 +578,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
                     }
 
                     /*
-                     * Extracts the function body with the xtor in order to be able to use the context `ctx` to know
-                     * what to replace with the new argument. 
+                     * Replaces every occurrence of `lb` in the body with `arg`.
                      */
                     extractWithState(lb, body) map { es0 =>
                       val replace =  es0.ctx(lb.last.bound)
@@ -583,17 +587,22 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
                     } getOrElse body -> es
                   }
                   
+                  // We only want to extract `lb` and not rewrite it so the strategy is changed to `PartialMatching`.
                   replaceAllOccurrences0(body)(es withInstructionsFor lb withStrategy PartialMatching)
-                    .mapSecond(_.withDefaultInstructions.withDefaultStrategy)
+                    .mapSecond(_.withDefaultInstructions.withDefaultStrategy) // Reset the strategy so it resume doing a `CompleteMatching`.
                 }
                 
                 replaceAllOccurrences(body)(es)
+
+              // TODO implement this when we allow holes in HOPHoles
+              // case Hole(n, t) => ???
                 
               case _ => bottomUpPartial(body) { case `xtor` => arg } -> es
             }
           }
           
-          _ = bottomUpPartial(newBodyAndState._1) { case bv: BoundVal if visible contains bv => return None } // TODO is too early to check? If there are more xtors left
+          // The body of the extracted function should not contains any references to elements of `visible`.
+          _ = bottomUpPartial(newBodyAndState._1) { case bv: BoundVal if visible contains bv => return None }
         } yield newBodyAndState match {
           case (func0, es0) => wrapConstruct(lambda(args, func0)) -> es0
         }
@@ -604,7 +613,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         m <- merge(es.ex, es1)
         
         argss0 = argss.map(_.map {
-          case ByName(r) => r
+          case ByName(r) => r // TODO is it ok to unwrap by-name arguments?
           case r => r
         })
         
@@ -799,19 +808,16 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   }
 
   def extractDefs(v1: Def, v2: Def)(implicit es: State): ExtractState = (v1, v2) match {
-    case (l1: Lambda, l2: Lambda) =>
-      for {
-        es1 <- es updateExtractWith (l1.boundType extract(l2.boundType, Covariant))
-        es2 <- extractWithState(l1.body, l2.body)(es1 withCtx l1.bound -> l2.bound withStrategy CompleteMatching)
-      } yield es2 withDefaultStrategy
+    case (l1: Lambda, l2: Lambda) => for {
+      es1 <- es updateExtractWith (l1.boundType extract(l2.boundType, Covariant))
+      es2 <- extractWithState(l1.body, l2.body)(es1 withCtx l1.bound -> l2.bound withStrategy CompleteMatching)
+    } yield es2 withDefaultStrategy
 
     case (ma1: MethodApp, ma2: MethodApp) if ma1.mtd == ma2.mtd =>
       def targExtract(es0: State): ExtractState =
-        es0.updateExtractWith(
-          (for {
-            (e1, e2) <- ma1.targs zip ma2.targs
-          } yield e1 extract(e2, Invariant)): _*
-        )
+        es0.updateExtractWith((for {
+          (e1, e2) <- ma1.targs zip ma2.targs
+        } yield e1 extract(e2, Invariant)): _*)
 
       def extractArgss(argss1: ArgumentLists, argss2: ArgumentLists)(implicit es: State): ExtractState = (argss1, argss2) match {
         case (ArgumentListCons(h1, t1), ArgumentListCons(h2, t2)) => for {
@@ -828,12 +834,11 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         case (SplicedArgument(arg), ac: ArgumentCons) => es updateExtractWith spliceExtract(arg, Args(ac.argssList: _*))
         case (SplicedArgument(arg), r: Rep) => es updateExtractWith spliceExtract(arg, Args(r))
         case (SplicedArgument(_), NoArguments) => Right(es)
+
+        case (NoArguments, NoArguments) => Right(es)
+        case (NoArgumentLists, NoArgumentLists) => Right(es)
         
         case (r1: Rep, r2: Rep) => extractWithState(r1, r2)
-        
-        case (NoArguments, NoArguments) => Right(es)
-        
-        case (NoArgumentLists, NoArgumentLists) => Right(es)
         
         case _ => Left(es)
       }
@@ -874,14 +879,17 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
             *   
             */
           (es.instructions.get(lb1.bound), es.instructions.get(lb2.bound)) match {
+            
             /**
               * The traversal of the code is done externally by [[transformRep()]]. 
               * Hence, if the current statements don't have to be extracted at this point (both are pure and not return values)
               * we simply skip the extraction of the current `xtee`. 
               */
             case (Skip, Skip) => Left(es)  
+              
             case _ => extractWithState(lb1, lb2)
           }
+          
         case _ => extractWithState(xtor, xtee)
       }
     }
@@ -934,15 +942,14 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           }
         }
 
+        def reverse[A, B](m: Map[A, B]): Map[B, Set[A]] = m.groupBy(_._2).mapValues(_.keys.toSet)
+
         val invCtx = reverse(es.ctx)
-        (ex._1.values ++ ex._3.values.flatten).forall(preCheckRep(Set.empty, invCtx, _))
+        ex._1.values ++ ex._3.values.flatten forall (preCheckRep(Set.empty, invCtx, _))
       }
 
       def collectBVs(d: Def): Set[BoundVal] = d match {
-        case ma: MethodApp =>  (ma.self :: ma.argss.argssList).foldLeft(ListSet.empty[BoundVal]) {
-          case (acc, bv: BoundVal) => acc + bv
-          case (acc, _) => acc
-        }
+        case ma: MethodApp => ma.self :: ma.argss.argssList collect { case bv: BoundVal => bv } toSet
         case _ => Set.empty
       }
 
@@ -1000,6 +1007,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         * Merges the generated `code` with the `xtee` 
         */
       def merge(code: Rep, xtee: Rep)(xtor: Rep, ctx: Ctx): Rep = {
+        
         /**
           * Puts `code` in the right position in `xtee`.
           */
@@ -1012,6 +1020,10 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
             collectAllBVs0(r, Set.empty)
           }
 
+          /**
+            * Returns the statement in `r` at which point all the BVs from `lookFor` have been declared, 
+            * if it exists. 
+            */
           def findPos(r: LetBinding, lookFor: Set[BoundVal]): Option[LetBinding] = {
             if (lookFor.isEmpty) None
             else r match {
@@ -1027,7 +1039,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           }
 
           // All usages of BVs that come from the xtee
-          val lookFor = collectAllBVs(code).filter((es.ex._1.values ++ es.ex._3.values).toSet contains)
+          val lookFor = collectAllBVs(code).filter((es.ex._1.values ++ es.ex._3.values.flatten).toSet contains)
 
           findPos(xtee, lookFor) match {
             case Some(pos) =>
@@ -1062,7 +1074,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
                   val bv = ctx(xtorRet)
                   bottomUpPartial(xtee) { case `bv` => code }
               }
-
               case _ => code
             }
 
@@ -1084,9 +1095,9 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       
       if (preCheck(es.ex)) for {
         code <- code(es.ex) alsoApply(c => println(s"CODE: $c"))
-        code0 = merge(code, xtee)(xtor, es.ctx) alsoApply (c => println(s"CODE0: $c"))
-        cleanCode <- filterNot(es.matchedImpureBVs)(code0)
-      } yield cleanCode
+        mergedCode = merge(code, xtee)(xtor, es.ctx) alsoApply (c => println(s"CODE0: $c"))
+        finalCode <- filterNot(es.matchedImpureBVs)(mergedCode)
+      } yield finalCode
       else None
     }
     
@@ -1150,6 +1161,10 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 class ReificationContext(val inExtractor: Bool) { reif =>
   var firstLet: FlatOpt[LetBinding] = Non
   var curLet: FlatOpt[LetBinding] = Non
+
+  /**
+    * Updates the current let-binding with `lb`.
+   */
   def += (lb: LetBinding): Unit = {
     curLet match {
       case Non => firstLet = lb.som
@@ -1157,10 +1172,15 @@ class ReificationContext(val inExtractor: Bool) { reif =>
     }
     curLet = lb.som
   }
+
+  /**
+    * Let-binds `d` and updates the current let-binding with it.
+    */
   def += (d: Def): Symbol = new Symbol {
     protected var _parent: SymbolParent = new LetBinding("tmp", this, d, this) alsoApply (reif += _)
   }
-  def finalize(r: Rep) = {
+  
+  def finalize(r: Rep): Rep = {
     firstLet match {
       case Non => 
         assert(curLet.isEmpty)
