@@ -318,7 +318,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case ByName(r) => ByName(transformRep0(r))
       case Ascribe(s, t) => Ascribe(transformRep0(s), t)
       case Module(p, n, t) => Module(transformRep0(p), n, t)
-      case r => r
+      case r @ (_: Constant | _: Hole | _: Symbol | _: SplicedHole | _: HOPHole | _: HOPHole2 | _: NewObject | _: StaticModule) => r
     })
   }
 
@@ -611,10 +611,13 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       val maybeES = for {
         es1 <- typ extract (xtee.typ, Covariant)
         m <- merge(es.ex, es1)
-        
+
+        /**
+          * The arguments of HOPHoles are _always_ passed by-name
+          */
         argss0 = argss.map(_.map {
-          case ByName(r) => r // TODO is it ok to unwrap by-name arguments?
-          case r => r
+          case ByName(r) => r 
+          case _ => die // All HOPHole args have to be by-name!
         })
         
         (f, es2) <- argss0.foldRight(Option(xtee -> (es withNewExtract m)))(buildFunc)
