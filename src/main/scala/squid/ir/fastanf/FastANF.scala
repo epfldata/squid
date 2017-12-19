@@ -333,9 +333,29 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   // * --- * --- * --- *  Extraction State  * --- * --- * --- *
 
   /**
-    * Signals if the current extraction attempt has failed. `Left` it has failed, `Right` it succeeded.
+    * Mapping of failed matches between xtor BVs and xtee BVs.
     */
-  type ExtractState = Either[State, State]
+  type Failed = Map[BoundVal, Set[BoundVal]]
+  
+  /**
+    * Signals if the current extraction attempt has failed. `Left` returns all the failed matchings at this point,
+    * `Right` the update state after a successful extraction.
+    */
+  type ExtractState = Either[Failed, State]
+  
+  val fail = Left(Map.empty[BoundVal, Set[BoundVal]])
+  
+  def failWith(currentFailed: Failed)(failed: (BoundVal, BoundVal)): ExtractState = {
+    // Add the entry `u` to the immutable multimap `m` 
+    def updateWith(m: Failed)(u: (BoundVal, BoundVal)): Failed = u match {
+      case (k, v) => m + (k -> (m.getOrElse(k, Set.empty) + v))
+    }
+    
+    Left(updateWith(currentFailed)(failed))
+  }
+  
+
+  
   implicit def rightBias[A, B](e: Either[A, B]): Either.RightProjection[A,B] = e.right
 
   /**
@@ -344,11 +364,11 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     * @param ctx discovered matchings between bound values in the `xtor` and the `xtee`.
     * @param instructions what has to be done for each let-binding
     * @param matchedImpureBVs impure statements that have been matched
-    * @param failedMatches statements that do not match
+    * @param failed statements that do not match
     * @param strategy see [[Strategy]]
     */
   case class State(ex: Extract, ctx: Ctx, instructions: Instructions, matchedImpureBVs: Set[BoundVal],
-                   failedMatches: Map[BoundVal, Set[BoundVal]], strategy: Strategy) {
+                   failed: Failed, strategy: Strategy) {
     private val _strategy = strategy
     private val _instructions = instructions
     
@@ -366,7 +386,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     } 
     def withMatchedImpure(bv: BoundVal): State = copy(matchedImpureBVs = matchedImpureBVs + bv)
     
-    def withFailedMatch(p: (BoundVal, BoundVal)): State = copy(failedMatches = updateWith(failedMatches)(p))
+    def withFailed(failed: Failed): State = copy(failed = failed)
     
     def withStrategy(s: Strategy): State = copy(strategy = s)
     def withDefaultStrategy: State = copy(strategy = _strategy)
@@ -375,12 +395,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     def withDefaultInstructions: State = copy(instructions = _instructions)
     
     def updateExtractWith(e: Option[Extract]*)(implicit default: State): ExtractState = {
-      mergeAll(Some(ex) +: e).fold[ExtractState](Left(default))(ex => Right(this withNewExtract ex))
-    }
-
-    // Add the entry `u` to the immutable multimap `m` 
-    private def updateWith(m: Map[BoundVal, Set[BoundVal]])(u: (BoundVal, BoundVal)): Map[BoundVal, Set[BoundVal]] = u match {
-      case (k, v) => m + (k -> (m.getOrElse(k, Set.empty) + v))
+      mergeAll(Some(ex) +: e).fold[ExtractState](fail)(ex => Right(this withNewExtract ex))
     }
   }
   
@@ -389,8 +404,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     def forRewriting(xtor: Rep, xtee: Rep): State = apply(xtor, xtee, PartialMatching)
     
     private def apply(xtor: Rep, xtee: Rep, strategy: Strategy): State = 
-      State(EmptyExtract, ListMap.empty, Instructions(xtor, xtee), Set.empty, Map.empty.withDefaultValue(Set.empty), strategy)
-      //                                                                                \_ Assumed by `extractWithState`
+      State(EmptyExtract, ListMap.empty, Instructions(xtor, xtee), Set.empty, Map.empty, strategy)
   }
 
   
@@ -625,7 +639,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         if hasNoUndeclaredUsages(f)
       } yield es2 updateExtractWith Some(repExtract(name -> f))
       
-      maybeES getOrElse Left(es)
+      maybeES getOrElse fail
     }
 
     def extractLBs(lb1: LetBinding, lb2: LetBinding)(implicit es: State): ExtractState = {
@@ -647,9 +661,9 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           *          \------Skip------/
           */
         case (Start, Skip) => for {
-          es1 <- extractAndContinue(lb1, lb2).left
-          es2 <- extractWithState(lb1, lb2.body)(es1).left
-        } yield es2
+          failed1 <- extractAndContinue(lb1, lb2).left
+          failed2 <- extractWithState(lb1, lb2.body)(es withFailed failed1).left
+        } yield failed2
 
         case (Skip, Start) => extractWithState(lb1.body, lb2)
         
@@ -671,13 +685,13 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       * It won't extract inside the [[ByName]] arguments. 
       */
     def extractInside(r: Rep, d: Def)(implicit es: State): ExtractState = d match {
-      case ma: MethodApp => (ma.self :: ma.argss.argssList).foldLeft[ExtractState](Left(es)) { case (acc, arg) =>
+      case ma: MethodApp => (ma.self :: ma.argss.argssList).foldLeft[ExtractState](Left(es.failed)) { case (acc, arg) =>
           for {
-            es1 <- acc.left
-            es2 <- extractWithState(r, arg)(es1).left
-          } yield es2
+            failed1 <- acc.left
+            failed2 <- extractWithState(r, arg)(es withFailed failed1).left
+          } yield failed2
         }
-      case _ => Left(es)
+      case _ => fail
     }
      
 
@@ -688,7 +702,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     xtor -> xtee match {
       case (h: Hole, _) => extractedBy(h) match {
         case Some(`xtee`) => Right(es)
-        case Some(_) => Left(es) // Something has gone wrong
+        case Some(_) => fail // Something has gone wrong
         case None => extractHole(h, xtee)
       }
 
@@ -697,7 +711,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       case (lb1: LetBinding, lb2: LetBinding) => extractLBs(lb1, lb2)
 
       case (lb: LetBinding, _) => es.instructions.get(lb.bound) match {
-        case Start => Left(es) // The `xtor` has more impure statements than the `xtee`.
+        case Start => fail // The `xtor` has more impure statements than the `xtee`.
         case Skip => extractWithState(lb.body, xtee)
       }
 
@@ -707,7 +721,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           case CompleteMatching => es.instructions.get(lb.bound) match {
             
             // The `xtee` has more impure statements or dead-ends than the `xtor`
-            case Start => Left(es) 
+            case Start => fail 
             
             // The skipped statements of the `xtee` will be matched later 
             // when extracting its return value or the `Start` ones. 
@@ -719,26 +733,26 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
           // 2. The components of the let-bindings value
           // 3. (1. and then 2.) on the next statement  
           case PartialMatching => for {
-            es1 <- extractWithState(bv, lb.bound).left
-            es2 <- extractInside(bv, lb.value)(es1).left
-            es3 <- extractWithState(bv, lb.body)(es2).left
-          } yield es3
+            failed1 <- extractWithState(bv, lb.bound).left
+            failed2 <- extractInside(bv, lb.value)(es withFailed failed1).left
+            failed3 <- extractWithState(bv, lb.body)(es withFailed failed2).left
+          } yield failed3
         }
 
       case (Constant(()), _: LetBinding) => es.strategy match {
         // Unit return doesn't have to matched
         case PartialMatching => Right(es)
-        case CompleteMatching => Left(es)
+        case CompleteMatching => fail
       }
 
         
       case (_: Rep, lb: LetBinding) => es.strategy match {
         case PartialMatching => for {
-          es1 <- extractInside(xtor, lb.value).left
-          es2 <- extractWithState(xtor, lb.body)(es1).left
-        } yield es2
+          failed1 <- extractInside(xtor, lb.value).left
+          failed2 <- extractWithState(xtor, lb.body)(es withFailed failed1).left
+        } yield failed2
           
-        case CompleteMatching => Left(es)
+        case CompleteMatching => fail
       }
         
       // Only a [[ByName]] can extract a [[ByName]] so that 
@@ -757,23 +771,23 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       // The actual extraction happens here.  
       case (bv1: BoundVal, bv2: BoundVal) => es.ctx.get(bv1) map { extractedByBV1 =>
           if (extractedByBV1 == bv2) Right(es)
-          else Left(es) 
+          else fail
         } getOrElse {
           if (bv1 == bv2) Right(es)
-          else if (es.failedMatches(bv1) contains bv2) Left(es) // Previously failed to extract `bv1` with `bv2`
+          else if (es.failed.getOrElse(bv1, Set.empty) contains bv2) fail // Previously failed to extract `bv1` with `bv2`
           else (bv1.owner, bv2.owner) match {
             case (lb1: LetBinding, lb2: LetBinding) => extractDefs(lb1.value, lb2.value) match {
               case Right(es) => effect(lb2.value) match {
                 case Pure => Right(es withCtx lb1.bound -> lb2.bound)
                 case Impure => Right(es withCtx lb1.bound -> lb2.bound withMatchedImpure lb2.bound)
               }
-              case Left(es) => Left(es withFailedMatch lb1.bound -> lb2.bound)
+              case Left(failed) => failWith(failed)(lb1.bound -> lb2.bound)
             }
             case (l1: Lambda, l2: Lambda) => 
               // We cannot know the owner of the [[Lambda]] 
               // so in case of a failure to extract there's nothing to do.
               extractDefs(l1, l2) map (_ withCtx l1.bound -> l2.bound)
-            case _ => Left(es withFailedMatch bv1 -> bv2)
+            case _ => failWith(es.failed)(bv1 -> bv2)
           }
         }
 
@@ -787,7 +801,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
       case (NewObject(t1), NewObject(t2)) => es updateExtractWith (t1 extract(t2, Covariant))
 
-      case _ => Left(es)
+      case _ => fail
       }
   } alsoApply (res => println(s"Extract: $res"))
   
@@ -843,7 +857,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         
         case (r1: Rep, r2: Rep) => extractWithState(r1, r2)
         
-        case _ => Left(es)
+        case _ => fail
       }
 
       for {
@@ -856,7 +870,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     // Assuming a [[DefHole]] only extracts impure statements  
     case (DefHole(h), _) if !isPure(v2) => extractWithState(h, wrapConstruct(letbind(v2)))
 
-    case _ => Left(es)
+    case _ => fail
   }
   
   override def rewriteRep(xtor: Rep, xtee: Rep, code: Extract => Option[Rep]): Option[Rep] = 
@@ -888,7 +902,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
               * Hence, if the current statements don't have to be extracted at this point (both are pure and not return values)
               * we simply skip the extraction of the current `xtee`. 
               */
-            case (Skip, Skip) => Left(es)  
+            case (Skip, Skip) => fail  
               
             case _ => extractWithState(lb1, lb2)
           }
