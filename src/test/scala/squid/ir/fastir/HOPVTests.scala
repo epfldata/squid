@@ -105,6 +105,11 @@ class HOPVTests extends MyFunSuiteBase(HOPVTests.Embedding) {
       case ir"$foldLeft(List(0, 1, 2, 3), 0, (acc: Int, x: Int) => acc + x)" => 
         assert(foldLeft =~= ir"(l: List[Int], z: Int, f: (Int, Int) => Int) => l.foldLeft(z)(f)")
     }
+
+    ir"List(0,1,2,3).foldLeft(0)((acc,x) => acc+x)" match {
+      case ir"$foldLeft(0, List(0, 1, 2, 3), (acc: Int, x: Int) => acc + x)" => 
+        assert(foldLeft =~= ir"(z: Int, _: List[Int], f: (Int, Int) => Int) => List(z, 1, 2, 3).foldLeft(z)(f)")
+    }
   }
 
   test("Match letbindings") {

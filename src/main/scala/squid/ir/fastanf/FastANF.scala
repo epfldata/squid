@@ -28,7 +28,10 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   
   var scopes: List[ReificationContext] = Nil
 
-  // TODO what happens here? It looks like `finalize` doesn't anything but run the thunk `r`. But if I remove `scp` it doesn't work 
+  /**
+    * Runs the thunk `r`, appends it to the the last let-binding in the reification context,
+    * and returns the first let-binding.
+    */ 
   @inline final def wrap(r: => Rep, inXtor: Bool): Rep = {
     val scp = new ReificationContext(inXtor)
     scopes ::= scp
@@ -353,8 +356,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     
     Left(updateWith(currentFailed)(failed))
   }
-  
-
   
   implicit def rightBias[A, B](e: Either[A, B]): Either.RightProjection[A,B] = e.right
 
@@ -978,11 +979,13 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         * For instance in {{{filterNot(ir"val a = readInt; a", Set(a)}}}
         */
       def filterNot(remove: Set[BoundVal])(r: Rep): Option[Rep] = {
+        
         /**
           * Returns the statements to remove based on the initial `remove` set.
           * 
           * Adds all the pure statements referencing removed ones.
-          * TODO add mathematical term
+          * In essence, computes the the transitive closures of pure statements that depend on the BVs in `remove` 
+          * and adds it to `remove`.
           */
         def buildToRemove(r: Rep, remove: Set[BoundVal]): Set[BoundVal] = r match {
           case lb: LetBinding if remove contains lb.bound => buildToRemove(lb.body, remove)

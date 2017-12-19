@@ -48,6 +48,10 @@ sealed abstract class Rep extends RepOption with ArgumentList with FlatSom[Rep] 
   def argssList: List[Rep] = this :: Nil
 }
 
+// TODO check that it only contains args
+/**
+  * Wraps _arguments_ to make them by-name arguments.
+  */
 final case class ByName(r: Rep) extends Rep {
   val typ: TypeRep = r.typ
 } 
@@ -115,16 +119,16 @@ object MethodApp {
         def go(args: ArgumentList)(k: (Option[LetBinding], ArgumentList) => (Option[LetBinding], ArgumentList)): (Option[LetBinding], ArgumentList) = args match {
           case NoArguments => k(None, NoArguments)
           case ArgumentCons(h, t) =>
-            val (lb, ret) = f(h)
+            val (maybeLB, r) = f(h)
             go(t) { case (lb0, args0) =>
-              val newLB = (lb0, lb) match {
+              val maybeNewLB = (lb0, maybeLB) match {
                 case (Some(lb0), Some(lb)) => lb.last.body = lb0; Some(lb)
                 case (_, Some(lb)) => Some(lb)
                 case (Some(lb0), _) => Some(lb0)
                 case _ => None
               }
 
-              k(newLB, ArgumentCons(ret, args0))
+              k(maybeNewLB, ArgumentCons(r, args0))
             }
           case SplicedArgument(arg) => k.tupled(f(arg))
           case r: Rep => k.tupled(f(r))
@@ -154,33 +158,38 @@ object MethodApp {
 
       go(argss)((lb, argss) => (lb, argss))
     }
-    
+
+    /**
+      * Splits `r` at before the point of its return value
+      */
     def split(r: Rep): Option[LetBinding] -> Rep = r match {
       case lb: LetBinding => Some(lb) -> lb.last.body
       case _ => None -> r
     }
     
-    val (lb0, self0) = self |> split
-    val (lbFromArgss, argss0) = processArgss(argss)(split) alsoApply println
+    val (maybeSelfLB, selfBV) = self |> split
+    val (maybeArgssLB, argssBVs) = processArgss(argss)(split)
 
-    val newLB = (lb0, lbFromArgss) match {
-      case (Some(lb0), Some(lbFromArgss)) => lbFromArgss.last.body = lb0; Some(lbFromArgss)
+    // Merge `maybeSelfLB` and `maybeArgssLB`
+    val maybeNewLB = (maybeSelfLB, maybeArgssLB) match {
+      case (Some(selfLB), Some(lbFromArgss)) => lbFromArgss.last.body = selfLB; Some(lbFromArgss)
       case (_, Some(lbFromArgss)) => Some(lbFromArgss)
-      case (Some(lb0), _) => Some(lb0)
+      case (Some(selfLB), _) => Some(selfLB)
       case _ => None
     }
 
-    val ma = MethodApp(self0, mtd, targs, argss0, typ0)
+    val maWithBVs = MethodApp(selfBV, mtd, targs, argssBVs, typ0)
 
-    newLB match {
-      case Some(lb) => 
-        lb.last.body = new Symbol {
-          protected var _parent: SymbolParent = new LetBinding("tmp", this, ma, this)
+    // Set `maWithBVs` as the body of `maybeNewLB`
+    maybeNewLB match {
+      case Some(newLB) => 
+        newLB.last.body = new Symbol {
+          protected var _parent: SymbolParent = new LetBinding("tmp", this, maWithBVs, this)
         }.owner.asInstanceOf[LetBinding]
-        lb
+        newLB
 
       case None => new Symbol {
-        protected var _parent: SymbolParent = new LetBinding("tmp", this, ma, this)
+        protected var _parent: SymbolParent = new LetBinding("tmp", this, maWithBVs, this)
       }.owner.asInstanceOf[LetBinding]
     }
   }

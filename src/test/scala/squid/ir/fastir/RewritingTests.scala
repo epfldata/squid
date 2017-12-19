@@ -202,9 +202,9 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
     assert(a =~= ir"val f1 = (x: Int) => x + 1; val f2 = (x: Int) => x * 2; val f3 = f1 compose f2; f3(5)")
 
     val b = ir"List(1,2,3).map(_ * 2).map(_ * 4)" rewrite {
-      case ir"($l: List[Int]).map($f1: Int => Int).map($f2: Int => Int)" => ir"$l.map($f1 compose $f2)"
+      case ir"($l: List[Int]).map($f1: Int => Int).map($f2: Int => Int)" => ir"$l.map($f2 compose $f1)"
     }
-    assert(b =~= ir"val l = List(1, 2, 3); val f1 = (x: Int) => x * 2; val cbf1 = List.canBuildFrom; val f2 = (x: Int) => x * 4; val cbf2 = List.canBuildFrom; val f3 = f1 compose f2; l.map(f3)")
+    assert(b =~= ir"val l = List(1, 2, 3); val f1 = (x: Int) => x * 2; val cbf1 = List.canBuildFrom; val f2 = (x: Int) => x * 4; val cbf2 = List.canBuildFrom; val f3 = f2 compose f1; l.map(f3)")
   }
   
   test("Squid paper") {
