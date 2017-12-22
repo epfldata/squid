@@ -224,6 +224,7 @@ abstract class PardisIR(val sc: pardis.ir.Base) extends Base with squid.ir.Runti
   
   def boundValUniqueName(bv: BoundVal): String = s"$bv"
   
+  def extractVal(r: Rep): Option[BoundVal] = r |>? { case bv: BoundVal => bv }
   
   // Helpers
   
@@ -627,11 +628,10 @@ abstract class PardisIR(val sc: pardis.ir.Base) extends Base with squid.ir.Runti
         val trial1 = for {
           e <- extractDef(e0, e1)
           e <- merge(e, ex)
-          e <- if (b0.name endsWith XTED_BINDER_SUFFIX) merge(e, repExtract(b0.name.dropRight(XTED_BINDER_SUFFIX.length) -> b1))
-               else Some(e)
-          hExtr = toHole(b1, b0)
-          e <- merge(e, hExtr)
-          
+          e <- merge(e,
+            if (b0.name endsWith XTED_BINDER_SUFFIX) repExtract(b0.name.dropRight(XTED_BINDER_SUFFIX.length) -> b1)
+            else toHole(b1, b0)
+          )
           // Try to match the current xtor binding with the corresponding xtee binding, and proceed with the rest
           r <- rec(e, b0 -> b1 :: matchedVals, pureStms)(es0 -> r0, es1 -> r1)
           
@@ -674,7 +674,8 @@ abstract class PardisIR(val sc: pardis.ir.Base) extends Base with squid.ir.Runti
           // The extracted scrutinee is the returned expression – here the whole remaining block:
           e <- merge(e, repExtract(SCRUTINEE_KEY -> block))
           () = debug(s"${Console.GREEN}Constructing bin-rewritten code with $e${Console.RESET}")
-          bindings = matchedVals collect {
+          matchedNonExtractedVals = matchedVals.filterNot(_._1.name endsWith XTED_BINDER_SUFFIX)
+          bindings = matchedNonExtractedVals collect {
             case a -> b if a.name contains NAME_SUFFIX =>
               b -> Hole(a.name splitAt (a.name indexOf NAME_SUFFIX) _1, b.tp, Some(b))
           }
@@ -682,8 +683,8 @@ abstract class PardisIR(val sc: pardis.ir.Base) extends Base with squid.ir.Runti
           b <- withSubs(bindings:_*) {codeBlock(e)} // TODO do that in other cases too!
           
           //pureStmsR = pureStms.reverse  // makes typechecking fail with arcane error...
-          _ <- removeStmts(Nil)(matchedVals.unzip._2.toSet, pureStms/*.reverse*/ ++ b.stmts.asInstanceOf[List[AStm]], b.res)
-          newPureStms <- removeStmts(Nil)(matchedVals.unzip._2.toSet, pureStms.reverse, b.res)
+          _ <- removeStmts(Nil)(matchedNonExtractedVals.unzip._2.toSet, pureStms/*.reverse*/ ++ b.stmts.asInstanceOf[List[AStm]], b.res)
+          newPureStms <- removeStmts(Nil)(matchedNonExtractedVals.unzip._2.toSet, pureStms.reverse, b.res)
           // ^ Note: `pureStms` passed here are not correctly ordered and may refer to things bound later,
           // but they'll be ignored and only reintroduced if necessary at the end of the rewriteRep algo (TODO)
           

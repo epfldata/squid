@@ -112,20 +112,40 @@ class Matching extends MyFunSuite {
     */
   }
   
-  test("Extracted Binders") {
+  test("Nominal and Extracted Binders") {
     
-    code"val x = 42; x + 1" match {
+    val p = code"val x = 42; x + 1"
+    
+    p match {
+      case code"val y: Int = $v; $b" =>
+        
+        val y = code"?y: Int"
+        
+        var t : Int Code Any{val y: Int} = null
+        t = b // 'b' has ^ this exact type
+        t = y // 'y' has ^ this exact type
+        
+        eqt(b, code"$y + 1") // 'b' has a FV equivalent to 'y'
+        eqt(b, code"(?y:Int) + 1")
+        //b match { case code"$$y + 1" => } // FIXME this syntax 
+        b match { case code"(${`y`}:Int) + 1" => } // TODO infer type from pattern type... 
+        b match { case code"(${`y`}:Int) + ($c: Int)" => eqt(c, code"1") }
+        code"readInt + 1" match { case code"(${`y`}:Int) + 1" => fail  case code"($y:Int) + 1" => eqt(y, code"readInt") }
+        
+        val newB = code"$y + 2"
+        newB match { case code"(${`y`}:Int) + 2" => }
+        
+    }
+    
+    p match {
       case code"val $y: Int = $v; $b" =>
         
-        // (???) Note:
-        //y [ Int IR Any{val y: Int} ] // Error:(95, 19) No TypeTag available for scp.TestDSL2.IR[Int,Any{val y: Int}]
-        
-        var yt : Int Code Any{val y: Int} = null
-        yt = y // 'y' has ^ this exact type
+        var yt : Int Code y.Ctx = null
+        yt = y.toCode // 'y.toCode' has ^ this exact type
         
         eqt(y, code"?y: Int", false) // 'y' is not a mere hole/FV, it's a term that will only extract exactly the corresponding original binder
-        eqt(b, code"$y + 1", false) // 'b' really has a FV instead of a bound reference to 'y'
-        eqt(b, code"(?y:Int) + 1")
+        eqt(b, code"$y + 1") // 'b' really has a FV instead of a bound reference to 'y'
+        eqt(b, code"(?y:Int) + 1", false)
         b match { case code"$$y + 1" => } // but the FV in 'b' remebers its original binder 
         b match { case code"$$y + ($c: Int)" => eqt(c, code"1") }
         code"readInt + 1" match { case code"$$y + 1" => fail  case code"($y:Int) + 1" => eqt(y, code"readInt") }
@@ -151,7 +171,7 @@ class Matching extends MyFunSuite {
     val q = code"val x = 42; x + 1"
     
     q match {
-      case code"val ${y @ Code(RepDef(bv @ BoundVal(name)))}: $t = $v; $b" =>
+      case code"val ${y @ AnyCode(RepDef(bv @ BoundVal(name)))}: $t = $v; $b" =>
         same(name, "x")
         //eqt(bv.typ, constType(42)) // No more the case -- now the type of let bindings is not narrowed from the value in ModularEmbedding
         eqt(bv.typ, typeRepOf[Int])
@@ -182,7 +202,7 @@ class Matching extends MyFunSuite {
         // ^ Not working because of mergign of -String with +Null(null) from the arg; cf. ScalaTyping 
         eqtBy(t, codeTypeOf[String], false)(_ =:= _)
     } and {
-      case code"val ${x @ Code(RepDef(bv:BoundVal))}: $t = $v; $body: Int" =>
+      case code"val ${x @ AnyCode(RepDef(bv:BoundVal))}: $t = $v; $body: Int" =>
         eqt(bv.typ, typeRepOf[String]) // Not working because of mergign of -String with +Null(null) from the arg; cf. ScalaTyping 
     }
     
@@ -195,7 +215,7 @@ class Matching extends MyFunSuite {
         // ^ Not working because of mergign of -String with +Null(null) from the arg; cf. ScalaTyping 
         eqtBy(t, codeTypeOf[String], false)(_ =:= _)
     } and {
-      case code"val ${x @ Code(RepDef(bv:BoundVal))}: $t = $v; $body: Int" =>
+      case code"val ${x @ AnyCode(RepDef(bv:BoundVal))}: $t = $v; $body: Int" =>
         eqt(bv.typ, typeRepOf[String]) // Not working because of mergign of -String with +Null(null) from the arg; cf. ScalaTyping 
     }
     
@@ -242,8 +262,45 @@ class Matching extends MyFunSuite {
   
 }
 
+class LegacyMatching extends MyFunSuite(LegacyTestDSL) {
+  import DSL.Predef._
+  
+  test("Extracted Binders") {
+    
+    code"val x = 42; x + 1" match {
+      case code"val $y0: Int = $v; $b" =>
+        /* ^ LegacyTestDSL will extrude `b` the old way, by substituting references to y0 with holes (that have memory) */
+        
+        val y = y0.toCode.asInstanceOf[Code[Int,Any{val y:Int}]]
+        /* ^ the QQ macro used to extract such a term, with this type */
+        
+        // (???) Note:
+        //y [ Int IR Any{val y: Int} ] // Error:(95, 19) No TypeTag available for scp.TestDSL2.IR[Int,Any{val y: Int}]
+        
+        var yt : Int Code Any{val y: Int} = null
+        yt = y // 'y' has ^ this exact type
 
+        eqt(y, code"?y0: Int", false) // 'y' is not a mere hole/FV, it's a term that will only extract exactly the corresponding original binder
+        eqt(b, code"$y + 1", false) // 'b' really has a FV instead of a bound reference to 'y'
+        eqt(b, code"(?y0:Int) + 1")
+        b match { case code"$$y + 1" => } // but the FV in 'b' remebers its original binder 
+        b match { case code"$$y + ($c: Int)" => eqt(c, code"1") }
+        code"readInt + 1" match { case code"$$y + 1" => fail  case code"($y:Int) + 1" => eqt(y, code"readInt") }
 
+        val newB = code"$y + 2"
+        newB match { case code"$$y + 2" => }
+        
+    }
+    
+    code"(x: Int) => x + 1" match {
+      case code"($y0: Int) => $b" =>
+        val y = y0.toCode.asInstanceOf[Code[Int,Any{val y:Int}]]
+        b match { case code"$$y + 1" => }
+    }
+    
+  }
+  
+}
 
 
 

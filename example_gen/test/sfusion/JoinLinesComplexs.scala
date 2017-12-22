@@ -2,22 +2,22 @@
 
 // === Init ===
 
-// Transfo time: 0ms  Stringifying time: 46ms
+// Transfo time: 0ms  Stringifying time: 25ms
 
 ((x$2_0: scala.collection.Iterable[java.lang.String]) => {
   val x_1 = sfusion.algo.`package`.joinLinesComplex$default$2;
   val x_3 = new sfusion.Sequence[java.lang.String]((() => {
     val x_2 = x$2_0.iterator;
     sfusion.impl.`package`.fromIterator[java.lang.String](x_2)
-  }), scala.`package`.Right.apply[Nothing, scala.Boolean](false));
+  }), scala.`package`.Right.apply[scala.Nothing, scala.Boolean](false));
   val x_12 = x_3.flatMap[scala.Char](((str_4: java.lang.String) => {
     val sch_5 = scala.`package`.Left;
     val x_6 = scala.Predef.wrapString(x_1);
     val x_7 = ((x_6): scala.collection.IndexedSeq[scala.Char]).size;
-    val x_8 = new sfusion.Sequence[scala.Char]((() => sfusion.impl.`package`.fromIndexed[scala.Char](((x_6): scala.collection.IndexedSeq[scala.Char]))), sch_5.apply[scala.Int, Nothing](x_7));
+    val x_8 = new sfusion.Sequence[scala.Char]((() => sfusion.impl.`package`.fromIndexed[scala.Char](((x_6): scala.collection.IndexedSeq[scala.Char]))), sch_5.apply[scala.Int, scala.Nothing](x_7));
     val x_9 = scala.Predef.wrapString(str_4);
     val x_10 = ((x_9): scala.collection.IndexedSeq[scala.Char]).size;
-    val x_11 = new sfusion.Sequence[scala.Char]((() => sfusion.impl.`package`.fromIndexed[scala.Char](((x_9): scala.collection.IndexedSeq[scala.Char]))), sch_5.apply[scala.Int, Nothing](x_10));
+    val x_11 = new sfusion.Sequence[scala.Char]((() => sfusion.impl.`package`.fromIndexed[scala.Char](((x_9): scala.collection.IndexedSeq[scala.Char]))), sch_5.apply[scala.Int, scala.Nothing](x_10));
     x_8.++[scala.Char](x_11)
   }));
   val x_13 = x_12.drop(x_1.length());
@@ -30,13 +30,13 @@
 
 // === HL ===
 
-// Transfo time: 1ms  Stringifying time: 9ms
+// Transfo time: 0ms  Stringifying time: 6ms
 
 // Same as above.
 
 // === Impl ===
 
-// Transfo time: 21ms  Stringifying time: 70ms
+// Transfo time: 17ms  Stringifying time: 43ms
 
 ((x$2_0: scala.collection.Iterable[java.lang.String]) => {
   val sch_1 = scala.`package`.Right;
@@ -44,7 +44,7 @@
   val x_4 = new sfusion.Sequence[java.lang.String]((() => {
     val x_3 = x$2_0.iterator;
     sfusion.impl.`package`.fromIterator[java.lang.String](x_3)
-  }), sch_1.apply[Nothing, scala.Boolean](false));
+  }), sch_1.apply[scala.Nothing, scala.Boolean](false));
   val x_23 = new sfusion.Sequence[scala.Char]((() => {
     val x_5 = x_4.under;
     val x_6 = x_5.apply();
@@ -52,10 +52,10 @@
       val sch_8 = scala.`package`.Left;
       val x_9 = scala.Predef.wrapString(x_2);
       val x_10 = ((x_9): scala.collection.IndexedSeq[scala.Char]).size;
-      val x_11 = new sfusion.Sequence[scala.Char]((() => sfusion.impl.`package`.fromIndexed[scala.Char](((x_9): scala.collection.IndexedSeq[scala.Char]))), sch_8.apply[scala.Int, Nothing](x_10));
+      val x_11 = new sfusion.Sequence[scala.Char]((() => sfusion.impl.`package`.fromIndexed[scala.Char](((x_9): scala.collection.IndexedSeq[scala.Char]))), sch_8.apply[scala.Int, scala.Nothing](x_10));
       val x_12 = scala.Predef.wrapString(x_7);
       val x_13 = ((x_12): scala.collection.IndexedSeq[scala.Char]).size;
-      val x_14 = new sfusion.Sequence[scala.Char]((() => sfusion.impl.`package`.fromIndexed[scala.Char](((x_12): scala.collection.IndexedSeq[scala.Char]))), sch_8.apply[scala.Int, Nothing](x_13));
+      val x_14 = new sfusion.Sequence[scala.Char]((() => sfusion.impl.`package`.fromIndexed[scala.Char](((x_12): scala.collection.IndexedSeq[scala.Char]))), sch_8.apply[scala.Int, scala.Nothing](x_13));
       val x_15 = x_11.size;
       val x_16 = x_14.size;
       val x_21 = new sfusion.Sequence[scala.Char]((() => {
@@ -68,13 +68,13 @@
       val x_22 = x_21.under;
       x_22.apply()
     }))
-  }), sch_1.apply[Nothing, scala.Boolean](true));
+  }), sch_1.apply[scala.Nothing, scala.Boolean](true));
   val x_24 = x_23.size;
   val x_27 = new sfusion.Sequence[scala.Char]((() => {
     val x_25 = x_23.under;
     val x_26 = x_25.apply();
     sfusion.impl.`package`.drop[scala.Char](x_26)(x_2.length())
-  }), sfusion.`package`.minSize(x_24, scala.`package`.Left.apply[scala.Int, Nothing](x_2.length())));
+  }), sfusion.`package`.minSize(x_24, scala.`package`.Left.apply[scala.Int, scala.Nothing](x_2.length())));
   val x_28 = x_27.under;
   val x_29 = x_28.apply();
   sfusion.impl.`package`.fold[scala.Char, java.lang.String](x_29)("")(((x$10_30: java.lang.String, x$11_31: scala.Char) => {
@@ -86,7 +86,7 @@
 
 // === CtorInline ===
 
-// Transfo time: 15ms  Stringifying time: 31ms
+// Transfo time: 14ms  Stringifying time: 18ms
 
 ((x$2_0: scala.collection.Iterable[java.lang.String]) => {
   val x_1 = sfusion.algo.`package`.joinLinesComplex$default$2;
@@ -113,13 +113,13 @@
 
 // === ImplOptim ===
 
-// Transfo time: 0ms  Stringifying time: 6ms
+// Transfo time: 0ms  Stringifying time: 4ms
 
 // Same as above.
 
 // === Imperative ===
 
-// Transfo time: 25ms  Stringifying time: 149ms
+// Transfo time: 23ms  Stringifying time: 69ms
 
 ((x$2_0: scala.collection.Iterable[java.lang.String]) => {
   val x_1 = sfusion.algo.`package`.joinLinesComplex$default$2;
@@ -244,7 +244,7 @@
 
 // === FlatMapFusion ===
 
-// Transfo time: 335ms  Stringifying time: 271ms
+// Transfo time: 345ms  Stringifying time: 166ms
 
 ((x$2_0: scala.collection.Iterable[java.lang.String]) => {
   val x_1 = sfusion.algo.`package`.joinLinesComplex$default$2;
@@ -418,13 +418,13 @@
 
 // === LateImperative ===
 
-// Transfo time: 0ms  Stringifying time: 134ms
+// Transfo time: 0ms  Stringifying time: 87ms
 
 // Same as above.
 
 // === VarFlattening ===
 
-// Transfo time: 377ms  Stringifying time: 187ms
+// Transfo time: 674ms  Stringifying time: 99ms
 
 ((x$2_0: scala.collection.Iterable[java.lang.String]) => {
   val sch_1 = squid.lib.`package`.uncheckedNullValue[scala.Int];
@@ -609,7 +609,7 @@
 
 // === Low-Level Norm ===
 
-// Transfo time: 96ms  Stringifying time: 192ms
+// Transfo time: 179ms  Stringifying time: 98ms
 
 ((x$2_0: scala.collection.Iterable[java.lang.String]) => {
   val sch_1 = ((null): scala.collection.immutable.WrappedString);
@@ -794,6 +794,6 @@
 
 // === ReNorm (should be the same) ===
 
-// Transfo time: 43ms  Stringifying time: 82ms
+// Transfo time: 20ms  Stringifying time: 80ms
 
 // Same as above.

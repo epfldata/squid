@@ -33,6 +33,19 @@ class PrettyPrinting extends MyFunSuite {
     
   }
   
+  test("Bindings") {
+    
+    same(code"(x: Int) => x+1"
+      .rep |> showRep, """((x_0: scala.Int) => x_0.+(1))""".stripMargin)
+    
+    same(code"val x = 123; x+1"
+      .rep |> showRep, """{
+      |  val x_0 = 123;
+      |  x_0.+(1)
+      |}""".stripMargin)
+    
+  }
+  
   test("Null variables") {
     
     same(code"var x: Int = ${nullValue[Int]}; x+1"
@@ -73,6 +86,20 @@ class PrettyPrinting extends MyFunSuite {
   test("Free variables") {
     
     same(code"(?x:Int)+1".toString, """code"?x.+(1)"""")
+    
+  }
+  
+  test("First-Class Variable Symbols") {
+    
+    val v = new Variable[Int]
+    
+    // These are potentially tricky cases demonstrating shadowing of a symbol
+    
+    same(code"($v:Int) => ($v:Int) => ($v:Int)+1".toString, """code"((x_0: scala.Int) => ((x_1: scala.Int) => x_1.+(1)))"""")
+    
+    // FIXME pretty-printing of shadowed bindings:
+    //same(code"($v:Int) => (($v:Int) => ($v:Int)+1, $v)".toString, 
+    //  """code"((x_0: scala.Int) => scala.Tuple2.apply[scala.Function1[scala.Int, scala.Int], scala.Int](((x_1: scala.Int) => x_1.+(1)), x_0))""""")
     
   }
   

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 val paradiseVersion = "2.1.0"
-val squidVersion = "0.2.1"
+val squidVersion = "0.3.0-SNAPSHOT"
 val squidIsSnapshot: Boolean = squidVersion endsWith "-SNAPSHOT"
 
 lazy val commonSettings = Seq(

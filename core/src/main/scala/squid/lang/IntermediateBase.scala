@@ -47,6 +47,9 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
   
   def boundValUniqueName(bv: BoundVal): String
   
+  def extractVal(r: Rep): Option[BoundVal]
+  
+  
   implicit class IntermediateRepOps(private val self: Rep) {
     def typ = repType(self)
   }
@@ -96,6 +99,10 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
       override val markHolesWith_? : Boolean = markHoles
     }, rep, extrudedHandle)
   
+  
+  def mkVariable[T](r: BoundVal): Variable[T] =
+    // Note: the reason we make the class hierarchy so awkward is so users can write `new Vairable[Int]("someName")`
+    new Variable[T]()(CodeType(boundValType(r))) { override protected val bound = r }
   
 }
 

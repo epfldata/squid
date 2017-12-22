@@ -29,6 +29,8 @@ import scala.collection.mutable
   **/
 trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with RuntimeSymbols with ClassEmbedder with ASTHelpers { self =>
   
+  val newExtractedBindersSemantics = true
+  
   
   /* --- --- --- Required defs --- --- --- */
   
@@ -107,6 +109,8 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
   }
   
   def boundValUniqueName(bv: BoundVal): String = s"${bv.name}$$${System.identityHashCode(bv)}"
+  
+  def extractVal(r: Rep): Option[BoundVal] = r |>? { case RepDef(bv:BoundVal) => bv }
   
   
   override def traverseTopDown(f: Rep => Unit)(r: Rep): Unit = traverse(f(_) thenReturn true)(r)
@@ -430,6 +434,7 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
           // Before we had `matchedSymbol`, matching extracted binders could cause problems if we did not check the type; it's probably not necessary anymore
           typ.extract(d.typ, Covariant)
           
+        // Q: really still needed?
         case (bv: BoundVal, h: Hole) if h.originalSymbol exists (_ === bv) => // This is needed when we match an extracted binder with a hole that comes from that binder
           Some(EmptyExtract)
           
@@ -458,7 +463,12 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
             pt <- a1.ptyp extract (a2.ptyp, Contravariant)
             //b <- a1.body.extract(a2.inline(rep(a2.param.toHole(a1.param.name))))
             (hExtr,h) = a2.param.toHole(a1.param)
-            b <- a1.body.extract(a2.inline(rep(h))) flatMap (merge(hExtr, _)) // 'a2.param.toHole' is a free variable that 'retains' the memory that it was bound to 'a2.param'
+            b <-
+              if (a1.param.isExtractedBinder && newExtractedBindersSemantics) 
+                   a1.inline(a2.param|>readVal).extract(a2.body) flatMap (merge(hExtr, _))
+                   // ^ (generates warning cf type change)  TODO: thread extraction context with var mapping instead
+              else a1.body.extract(a2.inline(rep(h))) flatMap (merge(hExtr, _))
+                   // ^ 'a2.param.toHole' is a free variable that 'retains' the memory that it was bound to 'a2.param'
             m <- merge(pt, b)
           } yield m
           

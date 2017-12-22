@@ -2,31 +2,31 @@
 
 // === Init ===
 
-// Transfo time: 0ms  Stringifying time: 55ms
+// Transfo time: 0ms  Stringifying time: 67ms
 
 {
   val x_0 = scala.Predef.intWrapper(1);
   val x_1 = x_0.to(10);
   val x_2 = ((x_1): scala.collection.IndexedSeq[scala.Int]).size;
-  val x_3 = new sfusion.Sequence[scala.Int]((() => sfusion.impl.`package`.fromIndexed[scala.Int](((x_1): scala.collection.IndexedSeq[scala.Int]))), scala.`package`.Left.apply[scala.Int, Nothing](x_2));
+  val x_3 = new sfusion.Sequence[scala.Int]((() => sfusion.impl.`package`.fromIndexed[scala.Int](((x_1): scala.collection.IndexedSeq[scala.Int]))), scala.`package`.Left.apply[scala.Int, scala.Nothing](x_2));
   x_3.show(10)
 }
 
 // === HL ===
 
-// Transfo time: 1ms  Stringifying time: 6ms
+// Transfo time: 1ms  Stringifying time: 12ms
 
 // Same as above.
 
 // === Impl ===
 
-// Transfo time: 24ms  Stringifying time: 58ms
+// Transfo time: 31ms  Stringifying time: 50ms
 
 {
   val x_0 = scala.Predef.intWrapper(1);
   val x_1 = x_0.to(10);
   val x_2 = ((x_1): scala.collection.IndexedSeq[scala.Int]).size;
-  val x_3 = new sfusion.Sequence[scala.Int]((() => sfusion.impl.`package`.fromIndexed[scala.Int](((x_1): scala.collection.IndexedSeq[scala.Int]))), scala.`package`.Left.apply[scala.Int, Nothing](x_2));
+  val x_3 = new sfusion.Sequence[scala.Int]((() => sfusion.impl.`package`.fromIndexed[scala.Int](((x_1): scala.collection.IndexedSeq[scala.Int]))), scala.`package`.Left.apply[scala.Int, scala.Nothing](x_2));
   val x_4 = scala.StringContext.apply("Sequence(", ")");
   var truncated_5: scala.Boolean = true;
   val x_6 = x_3.under;
@@ -51,7 +51,7 @@
 
 // === CtorInline ===
 
-// Transfo time: 14ms  Stringifying time: 37ms
+// Transfo time: 24ms  Stringifying time: 29ms
 
 {
   val x_0 = scala.Predef.intWrapper(1);
@@ -81,7 +81,7 @@
 
 // === ImplOptim ===
 
-// Transfo time: 25ms  Stringifying time: 40ms
+// Transfo time: 21ms  Stringifying time: 35ms
 
 {
   val x_0 = scala.Predef.intWrapper(1);
@@ -116,7 +116,7 @@
 
 // === Imperative ===
 
-// Transfo time: 55ms  Stringifying time: 68ms
+// Transfo time: 67ms  Stringifying time: 48ms
 
 {
   val x_0 = scala.Predef.intWrapper(1);
@@ -183,25 +183,25 @@
 
 // === FlatMapFusion ===
 
-// Transfo time: 0ms  Stringifying time: 28ms
+// Transfo time: 0ms  Stringifying time: 32ms
 
 // Same as above.
 
 // === LateImperative ===
 
-// Transfo time: 0ms  Stringifying time: 30ms
+// Transfo time: 0ms  Stringifying time: 34ms
 
 // Same as above.
 
 // === VarFlattening ===
 
-// Transfo time: 1ms  Stringifying time: 22ms
+// Transfo time: 3ms  Stringifying time: 25ms
 
 // Same as above.
 
 // === Low-Level Norm ===
 
-// Transfo time: 44ms  Stringifying time: 55ms
+// Transfo time: 56ms  Stringifying time: 76ms
 
 {
   val x_0 = scala.Predef.intWrapper(1);
@@ -266,6 +266,6 @@
 
 // === ReNorm (should be the same) ===
 
-// Transfo time: 16ms  Stringifying time: 18ms
+// Transfo time: 32ms  Stringifying time: 42ms
 
 // Same as above.

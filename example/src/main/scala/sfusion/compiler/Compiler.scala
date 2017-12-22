@@ -118,7 +118,10 @@ class Compiler extends Optimizer {
           case code"$$s.under" => underFV
           case code"$$s.size" => sizeFV
         }
-        val body3 = body2 subs 's -> Abort()
+        
+        //val body3 = body2 subs 's -> Abort()
+        val body3 = s.substitute[bt.Typ, s.OuterCtx & underFV.Ctx & sizeFV.Ctx](body2, Abort())
+        
         code"val under = $under; val size = $size; $body3"
     }
   }

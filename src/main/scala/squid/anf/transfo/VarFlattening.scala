@@ -39,13 +39,14 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
     // Removal of Var[Unit]
     case code"var $v: Unit = (); $body: $t" => // Note that Unit <: AnyVal and cannot take value `null`
       //body subs 'v -> ir"()"  // No, wrong type! (Error:(22, 23) Cannot substitute free variable `v: squid.lib.Var[Unit]` with term of type `Unit`)
-      body rewrite { case code"$$v.!" => code"()" case code"$$v:=(())" => code"()" } subs 'v -> Abort()
+      //body rewrite { case code"$$v.!" => code"()" case code"$$v:=(())" => code"()" } subs 'v -> Abort()
+      v.substitute[t.Typ,v.OuterCtx](body rewrite { case code"$$v.!" => code"()" case code"$$v:=(())" => code"()" }, Abort())
     
     
     // Removal of Var[Option[_]]
     case code"var $v: Option[$t] = $init; $body: $bt" =>
-      val isDefined = code"?isDefined: Var[Bool]"
-      val optVal = code"?optVal: Var[$t]"
+      val isDefined = code"?isDefined: Var[Bool]" // More hygienic would be to use first-class variable symbol here
+      val optVal = code"?optVal: Var[$t]" // More hygienic would be to use first-class variable symbol here
       
       // Note: applying sub-rewritings sch as `case ir"$$v.!.isDefined" =>` is not going to work well, because it will
       // not rewrite cases such as `var a = Option(42); val v = a; (v.isDefined, v.isDefined)`...
@@ -64,7 +65,8 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
           }
           //println("RW1 "+sbody)
           //println("RW2 "+sbody2)
-          sbody2 subs 'x -> Abort()
+          //sbody2 subs 'x -> Abort()
+          x.substitute[bt.Typ,x.OuterCtx & isDefined.Ctx & optVal.Ctx](sbody2, Abort())
         case code"$$v := None" => code"$isDefined := false"
           
         case code"$$v := Some($x:$$t)" => code"$optVal := $x; $isDefined := true"
@@ -79,7 +81,8 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
       
       //println("RW "+body2)
       
-      val body3 = body2 subs 'v -> Abort()
+      //val body3 = body2 subs 'v -> Abort()
+      val body3 = v.substitute[bt.Typ, v.OuterCtx & isDefined.Ctx & optVal.Ctx](body2, Abort())
       //val body3 = body2 subs 'v -> {
       //  println(s"REMAINING 'v' IN $body2")
       //  Abort()}
@@ -100,8 +103,8 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
       
     // Removal of Var[Tuple2[_]]
     case code"var $v: ($ta,$tb) = $init; $body: $bt" =>
-      val lhs = code"?lhs: Var[$ta]"
-      val rhs = code"?rhs: Var[$tb]"
+      val lhs = code"?lhs: Var[$ta]" // More hygienic would be to use first-class variable symbol here
+      val rhs = code"?rhs: Var[$tb]" // More hygienic would be to use first-class variable symbol here
       
       val body2 = body rewrite {
         case code"val $x = $$v.! ; $sbody: $bt" =>
@@ -111,12 +114,14 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
             //case ir"($$x:Any) == ($y:$t)" =>
               //ir"$lhs.! == $y._1 && "
           }
-          sbody2 subs 'x -> Abort()
+          //sbody2 subs 'x -> Abort()
+          x.substitute[bt.Typ,x.OuterCtx & lhs.Ctx & rhs.Ctx](sbody2, Abort())
         case code"$$v := ($a:$$ta,$b:$$tb)" => code"$lhs := $a; $rhs := $b"
         case code"$$v := $x" => Abort() // TODO?
       }
       
-      val body3 = body2 subs 'v -> Abort()
+      //val body3 = body2 subs 'v -> Abort()
+      val body3 = v.substitute[bt.Typ,v.OuterCtx with lhs.Ctx with rhs.Ctx](body2, Abort())
       
       if (init =~= code"uncheckedNullValue[($ta,$tb)]")
         code" val lhs = Var(uncheckedNullValue[$ta]);  val rhs = Var(uncheckedNullValue[$tb]);  $body3 "
@@ -130,7 +135,7 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
       
     // Removal of Var[Var[_]] in some special cases
     case code"var $v: Var[$t] = $init; $body: $bt" =>
-      val flatVar = code"?flatVar: Var[$t]"
+      val flatVar = code"?flatVar: Var[$t]" // More hygienic would be to use first-class variable symbol here
       
       val body2 = body rewrite {
         case code"$$v.!.!" => code"$flatVar.!" // TODO genlze?
@@ -138,7 +143,8 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
         case code"$$v.! := $x" => code"$flatVar := $x"
       }
       
-      val body3 = body2 subs 'v -> Abort()
+      //val body3 = body2 subs 'v -> Abort()
+      val body3 = v.substitute[bt.Typ,v.OuterCtx with flatVar.Ctx](body2, Abort())
       //val body3 = body2 subs 'v -> {
       //  System.err.println(s"Variable v=$v still in $body2")
       //  Abort()}

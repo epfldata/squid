@@ -68,6 +68,8 @@ class SimpleANF extends AST with CurryEncoding with SimpleEffects { anf =>
   case class Rep(dfn: Def) extends Code[Any,Nothing] {
     val rep = this
     
+    def withUnderlyingTyp = this.asInstanceOf[Code[Typ,Nothing]]
+    
     def isTrivial = !effect.immediate
     
     lazy val hasImmediateHoles = anf.hasImmediateHoles(this)

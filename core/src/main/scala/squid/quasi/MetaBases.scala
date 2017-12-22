@@ -52,8 +52,15 @@ trait MetaBases {
     
     
     type Rep = Tree
-    /** (originalName, valName[in gen'd code], type) */
-    type BoundVal = (String, TermName, TypeRep, List[Annot])
+    
+    /** BoundVal can be a new symbol to be instantiated by the MirrorBase code generator, or a reference to a
+      * pre-existing symbol instantiated somewhere else. This became important with the support for first-class variable symbols. */
+    sealed trait BoundVal { def tree: Tree }
+    case class Existing(tree: Tree) extends BoundVal
+    case class New(originalName: String, valName/*(in gen'd code)*/: TermName, typRep: TypeRep, annots: List[Annot]) extends BoundVal {
+      def tree = Ident(valName)
+    }
+    
     type TypeRep = Tree
     
     type MtdSymbol = Tree
@@ -92,22 +99,26 @@ trait MetaBases {
     }
     
     def bindVal(name: String, typ: TypeRep, annots: List[Annot]): BoundVal =
-      //TermName(name) -> typ // We assume it's find without a fresh name, since the binding structure should reflect that of the encoded program
-      (name, TermName("_$"+name), typ, annots) // Assumption: nobody else uses names of this form... (?)
-    def readVal(v: BoundVal): Rep = q"$Base.readVal(${v._2})"
+      //TermName(name) -> typ // We assume it's fine without a fresh name, since the binding structure should reflect that of the encoded program
+      New(name, TermName("_$"+name), typ, annots) // Assumption: nobody else uses names of this form... (?)
+    
+    def readVal(v: BoundVal): Rep = q"$Base.readVal(${v.tree})"
     
     def const(value: Any): Rep = q"$Base.const(${Constant(value)})"
     
     def annot(a: Annot) = q"${a._1} -> ${mkNeatList(a._2 map argList)}"
     
     def lambda(params: List[BoundVal], body: => Rep): Rep = q"""
-      ..${params map { case (on, vn, vt, anns) => q"val $vn = $Base.bindVal($on, $vt, ${mkNeatList(anns map annot)})" }}
-      $Base.lambda(${mkNeatList(params map (_._2) map Ident.apply)}, $body)
+      ..${params collect { case New(on, vn, vt, anns) => q"val $vn = $Base.bindVal($on, $vt, ${mkNeatList(anns map annot)})" }}
+      $Base.lambda(${mkNeatList(params map (_.tree))}, $body)
     """
     
     override def letin(bound: BoundVal, value: Rep, body: => Rep, bodyType: TypeRep): Rep = q"""
-      val ${bound._2} = $Base.bindVal(${bound._1}, ${bound._3}, ${mkNeatList(bound._4 map annot)})
-      $Base.letin(${bound._2}, $value, $body, $bodyType)
+      ..${bound |> {
+        case Existing(_) => q""
+        case New(_1,_2,_3,_4) => q"val ${_2} = $Base.bindVal(${_1}, ${_3}, ${mkNeatList(_4 map annot)})"
+      }}
+      $Base.letin(${bound.tree}, $value, $body, $bodyType)
     """
     
     override def tryInline(fun: Rep, arg: Rep)(retTp: TypeRep): Rep =
@@ -183,7 +194,7 @@ trait MetaBases {
     
     def hole(name: String, typ: TypeRep): Rep = q"$Base.hole($name, $typ)"
     def hopHole(name: String, typ: TypeRep, yes: List[List[BoundVal]], no: List[BoundVal]): Rep =
-      q"$Base.hopHole($name, $typ, ${yes map (_ map (_._2))}, ${no map (_._2)})"
+      q"$Base.hopHole($name, $typ, ${yes map (_ map (_.tree))}, ${no map (_.tree)})"
     def splicedHole(name: String, typ: TypeRep): Rep = q"$Base.splicedHole($name, $typ)"
     
     def substitute(r: => Rep, defs: Map[String, Rep]): Rep =
@@ -324,7 +335,7 @@ trait MetaBases {
       typeApp(path, () => tp, targs)
     }
     
-    def recordType(fields: List[(String, TypeRep)]): TypeRep = ??? // TODO
+    def recordType(fields: List[(String, TypeRep)]): TypeRep = ??? // TODO rm
     
     def repType(r: Rep): TypeRep = ??? // TODO impl (store types using internal)
     

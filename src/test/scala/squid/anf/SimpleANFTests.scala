@@ -278,7 +278,7 @@ class SimpleANFTests extends MyFunSuite(SimpleANFTests.DSL) {
     }
     x match {
       case code"($x: Int) => $bo" =>
-        bo eqt code"println(?x: Int)"
+        bo eqt code"println($x: Int)"
         bo match { case code"println($$x)" => }
     }
     

@@ -56,14 +56,31 @@ trait RuleBasedTransformer extends Transformer {
 
 import reflect.macros.whitebox
 class RuleBasedTransformerMacros(val c: whitebox.Context) {
+  import c.universe._
   
   val debug = { val mc = MacroDebugger(c); mc[MacroDebug] }
   
   object Helpers extends {val uni: c.universe.type = c.universe} with quasi.ScopeAnalyser[c.universe.type]
   import Helpers._
   
+  val VariableSymbol = Lazy(c.symbolOf[QuasiBase#Variable[Any]])
+  
+  
+  /** Hack to work around local variables defined on the right-hand side of a rewrite rule, which path-dependent types
+    * get messed up when the local variable's symbol is recomputed from scratch, which is a problem when these PDTs are
+    * involved in the context of quoted code.
+    * `variableSymbols` saves the association from fresh names to old symbols, and `putBackVariableSymbols`
+    * re-associates val-bindings with these symbols (presumably after they have been lost due to c.untypecheck).
+    * Currently we only do this for val-bindings of the shape `val v = new Variable[T]` */
+  def putBackVariableSymbols(pgrm: Tree) = TreeOps(pgrm).transform {
+    case v @ ValDef(mods, name, tpt, rhs) if variableSymbols isDefinedAt name =>
+        val sym = variableSymbols(name)
+        q"$mods val ${sym.name} = $rhs.asInstanceOf[$sym.type]"
+  }
+  val variableSymbols = mutable.Map.empty[c.TermName,c.universe.TermSymbol]
+  
+  
   def termRewrite(tr: c.Tree) = {
-    import c.universe._
     
     val (baseTree,termTree,typ,ctx) = c.macroApplication match {
       case q"$base.InspectableCodeOps[$t,$c]($term).$_($_)" =>
@@ -105,13 +122,15 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
     //val $transName: _root_.scp.ir.Transformer{val base: ${base.tpe} } = new _root_.scp.ir.SimpleTransformer {
     //object $transName extends _root_.scp.ir.SimpleRuleBasedTransformer with _root_.scp.ir.TopDownTransformer {  // Note: when erroneous, raises weird "no progress" compiler error that a `val _ = new _` would not
     // TODO give possibility to chose transformer (w/ implicit?)
-    val res = q""" 
+    var res = q"""
     object $transName extends ..$RuleBasedTrans {  // Note: when erroneous, raises weird "no progress" compiler error that a `val _ = new _` would not
       val base: ${base.tpe} = $base
     }
     ${rwTree}
     $base.`internal Code`[$typ,$outputContext]($transName.optimizeRep($termTree.rep.asInstanceOf[$transName.base.Rep]).asInstanceOf[$base.Rep])
     """
+    
+    res = putBackVariableSymbols(res)
     
     debug("Generated: " + showCode(res))
     
@@ -127,7 +146,6 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
   
   
   def rewrite(tr: c.Tree) = {
-    import c.universe._
     
     val trans = c.macroApplication match {
       case q"$trans.rewrite($_)" => trans
@@ -151,16 +169,18 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
             else s"Cannot rewrite a term of context $extractedCtx to an unrelated context $constructedCtx")
     }
     
-    debug("Generated: " + showCode(res))
+    val finalRes = c.untypecheck(putBackVariableSymbols(res))
+    /* it looks like doing this before or after untypecheck does not have any incidence on the result */
+    //val finalRes = putBackVariableSymbols(c.untypecheck(res))
     
-    c.untypecheck(res)
+    debug("Generated: " + showCode(finalRes))
+    
+    finalRes
   }
-  
   
   /** Returns the result rewrite-registering tree plus a list of tuples of the extracted context,
     * the constructed context, and the constructed context tree position */
   def rewriteImpl(tr: c.Tree, trans: c.Tree, base: c.Tree): (c.Tree, List[(c.Type,c.Type,c.Position)]) = {
-    import c.universe._
     
     val cases = tr match {
       case Function(ValDef(_, name, _, _) :: Nil, q"$_ match { case ..$cases }") => cases
@@ -247,6 +267,17 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
             if (processEarlyReturn(b,tp,cx,r.pos)) q"$b.`internal return transforming`[..$ts](...$as)" else t
           case t @ q"${r @ q"$b.Predef.Return"}.recursing[$tp,$cx]($cont)" if b.tpe <:< typeOf[InspectableBase] =>
             if (processEarlyReturn(b,tp,cx,r.pos)) q"$b.`internal return recursing`[$tp,$cx]($cont)" else t
+            
+          // cf. documentation of `putBackVariableSymbols`
+          // I tried doing this for general value bindings (with conditions such as
+          //   `if rhs.nonEmpty && v.symbol.isTerm && v.symbol.asTerm.isStable && v.symbol.typeSignature <:< AnyRef`),
+          // but it usually does not work... even if we manually type-check the tree and abort on type checking errors
+          case v @ ValDef(mods, name, tpt, rhs @ q"new $base.Variable[$typ]($nam)($typev)") => // TODO check base
+            val fn = c.freshName(name)
+            variableSymbols += (fn -> v.symbol.asTerm)
+            ValDef(mods, fn, tpt, rhs)
+            // ^ Note: not recursing into the subtrees... move this to `val gen0 = TreeOps(res).transformRec` if need arises
+            
         }
         
         debug("XC",extractedCtx,"CC",constructedCtx)
@@ -277,7 +308,7 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
             tn -> name
         }
         
-        assert(subPatterns.size == patNames.size)
+        assert(subPatterns.size == patNames.size, s"$subPatterns did not coincide in size with $patNames")
         
         /** Rewrites UnApply trees introduced by typechecking to normal trees recursively, so we can typecheck again later. */
         // Q: with nested rewrite rules, doesn't this virtualizes pattern matching several times, 
@@ -332,7 +363,13 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
               else q"..$patAlias; if ($cond) _root_.scala.Some($exprRep) else _root_.scala.None") ) {
             
             case ((pat, (mapName @ TermName("_1"), name)), acc) =>
-              patMat(q"__b__.`internal Code`(__extr__.$mapName($name))", pat, acc)
+              // Here, there are two possible cases to consider:
+              //  - either the retrieved term is used as a normal Code term
+              //  - or it is used as a Variable (cf: extracted binders syntax `val $a = ...` or `($a:T) => ...`)
+              pat.tpe.baseType(VariableSymbol.value) match { // here we distinguish in which case we are, based on expected pattern type
+                case NoType => patMat(q"__b__.`internal Code`(__extr__.$mapName($name))", pat, acc)
+                case TypeRef(_,_,_) => patMat(q"__b__.Variable(__b__.extractVal(__extr__.$mapName($name)).get).asInstanceOf[${pat.tpe}]", pat, acc)
+              }
               
             case ((pat, (mapName @ TermName("_2"), name)), acc) =>
               patMat(q"__b__.`internal CodeType`(__extr__.$mapName($name))", pat, acc)

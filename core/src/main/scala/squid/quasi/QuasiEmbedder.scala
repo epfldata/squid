@@ -26,7 +26,7 @@ import squid.lang.Base
 import scala.reflect.macros.whitebox
 
 
-case class QuasiException(msg: String) extends Exception(msg)
+case class QuasiException(msg: String, pos: Option[scala.reflect.api.Position] = None) extends Exception(msg)
 
 object QuasiEmbedder {
   private val knownSubtypes = mutable.ArrayBuffer[Any]()
@@ -34,7 +34,12 @@ object QuasiEmbedder {
 import QuasiEmbedder._
 
 /** Holes represent free variables and free types (introduced as unquotes in a pattern or alternative unquotes in expressions).
-  * Here, insertion unquotes are _not_ viewed as holes (they should simply correspond to a base.$[T,C](tree) node). */
+  * Here, insertion unquotes are _not_ viewed as holes (they should simply correspond to a base.$[T,C](tree) node).
+  * 
+  * Note: this class produces output that is very closely coupled with the RuleBasedTransformer#rewriteImpl macro;
+  * consequently, changes in the shape of generated code here may affect/break the `rewrite` macro.
+  * 
+  */
 class QuasiEmbedder[C <: whitebox.Context](val c: C) {
   import c.universe._
   
@@ -52,6 +57,25 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
   
   val UnknownContext = typeOf[utils.UnknownContext]
   val scal = q"_root_.scala"
+  
+  
+  lazy val VariableCtxSym = symbolOf[QuasiBase#Variable[Any]#Ctx]
+  def variableContext(tree: Tree) = {
+    val singt = singletonTypeOf(tree).getOrElse(throw QuasiException(
+      s"Cannot use variable of non-singleton type ${tree.tpe}",
+      Some(tree.pos)
+    ))
+    c.typecheck(tq"$singt#Ctx",c.TYPEmode).tpe
+    /* ^ note: things that did not work:
+           c.internal.typeRef(singt,VariableCtxSym,Nil);
+           singt.member(TermName("Ctx")).asType.toType */
+  }
+  def singletonTypeOf(tree: Tree): Option[Type] = tree.tpe match {
+    case SingleType(_,_) => Some(tree.tpe)
+    case _ => tree |>? {
+      case Ident(name) => val id = Ident(name); c.typecheck(q"$id:$id.type").tpe
+    }
+  }
   
 
   /** holes: Seq(either term or type); splicedHoles: which holes are spliced term holes (eg: List($xs*))
@@ -278,6 +302,8 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
     type Context = Map[TermName, Type]
     val termHoleInfo = mutable.Map[TermName, (Context, Type)]()
     
+    /** Association between extracted binder names and the corresponding singleton types of the extracted variables (generated on the fly) */
+    val extractedBinders = mutable.Map[TermName,Type]()
     
     // TODO aggregate these in a pre-analysis phase to get right hole/fv types...
     var freeVariableInstances = List.empty[(String, Type)]
@@ -295,6 +321,23 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
     val insertedTermTrees = mutable.ArrayBuffer[Tree]() // currently only used to disable caching if non-empty
     val insertedTypeTrees = mutable.Map[TermName,Tree]() // 'inserted types' are types that are explicitly unquoted or types for which an implicit is obtained
     insertedTypeTrees ++= unquotedTypes map { case (tn,tp,tpt) => c.freshName(tn.toTermName) -> q"$tpt.rep" }
+    
+    
+    /** The _.Ctx types of the first-class variables bound so far (using first-class-variable insertion) */
+    // Ideally this should be part of the implicit context ctx:Map[TermSymbol,Either[b.BoundVal,Type]]
+    var boundScopes = Map.empty[TermSymbol,Type]
+    def bindScope[R](scps: List[TermSymbol->Type])(k: => R) = {
+      val old = boundScopes
+      boundScopes ++= scps
+      k alsoDo (boundScopes = old)
+    }
+    
+    def freshSingletonVariableType(nam: TermName, typ: Type) = {
+      /* Note: the following did not work:
+           c.typecheck(q"object $nam extends $baseTree.Variable()(???); $nam").tpe
+         because it creates a class symbol that can't be found  runtime (when a cast is inserted later in generated code) */
+      c.typecheck(q"val $nam: $baseTree.Variable[$typ]{type OuterCtx=${termScope.last}} = ???; $nam:$nam.type").tpe
+    }
     
     
     /** Embeds the type checked code with ModularEmbedding, but via the config.embed function, which may make the embedded
@@ -354,19 +397,51 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               liftTerm(tree, parent, expectedType)
               
               
-            /** Processes extracted binders in lambda parameters */
-            case q"(..$params) => $body" =>
-              val xtr = params filter (_.symbol.annotations exists (_.tree.tpe.typeSymbol == ExtractedBinder))
+            /** Processes extracted binders in lambda parameters;
+              * note: this is an adaptation of the implementation of lambdas in ModularEmbedding */
+            case q"(..$ps) => $bo" =>
+              
+              // Processes extracted binders in lambda parameters
+              val xtr = ps filter (_.symbol.annotations exists (_.tree.tpe.typeSymbol == ExtractedBinder))
               xtr foreach { vd =>
                 val nam = vd.name
                 val typ = vd.symbol.typeSignature
+                val ltyp = liftType(typ)
+                extractedBinders += (nam -> freshSingletonVariableType(nam,typ))
                 debug("PARAM-BOUND HOLE:",nam,typ)
+                assert(!termHoleInfo.contains(nam)) // Q: B/E necessary?
                 termHoleInfo += nam -> (Map(nam -> typ) -> typ)
               }
-              super.liftTerm(x, parent, expectedType, inVarargsPos)
+              
+              var cntxs = List.empty[TermSymbol->Type]
+              
+              val (params, bindings) = ps map {
+                case p @ ValDef(mods, name, tpt, _) =>
+                  traverseTypeTree(tpt)
+                  val bv =
+                    // inserted binders are marked with a name beginning with `$` – this allows the quasicode syntax `code{val $v = 0; $v + 1}`
+                    if (name.toString.startsWith("$")) {
+                      val n = name.toString.tail
+                      val v = Ident(TermName(n))
+                      val cntx = variableContext(v)
+                      debug("INSERTED VAL:",n,cntx)
+                      cntxs ::= p.symbol.asTerm -> cntx
+                      val mb = b.asInstanceOf[(MetaBases{val u: c.universe.type})#MirrorBase with b.type]
+                      mb.Existing(q"$v.`internal bound`").asInstanceOf[b.BoundVal]
+                    }
+                    else {
+                      b.bindVal(name.toString, liftType(p.symbol.typeSignature), p.symbol.annotations map (a => liftAnnot(a, x)))
+                    }
+                  bv -> (p.symbol.asTerm -> bv)
+              } unzip;
+              
+              val body = bindScope(cntxs) {
+                liftTerm(bo, x, typeIfNotNothing(bo.tpe) orElse (expectedType flatMap FunctionType.unapply))(ctx ++ bindings)
+              }
+              b.lambda(params, body)
               
             /** Processes extracted binders in val bindings */
-            case q"${vd @ ValDef(mods, TermName(name), tpt, rhs)}; $body" if vd.symbol.annotations exists (_.tree.tpe.typeSymbol == ExtractedBinder) =>
+            case q"${vd @ ValDef(mods, TermName(name), tpt, rhs)}; ..$body" if vd.symbol.annotations exists (_.tree.tpe.typeSymbol == ExtractedBinder) =>
               val nam = TermName(name)
               
               val sign = vd.symbol.typeSignature
@@ -376,12 +451,47 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               }
               else sign
               
+              val ltyp = liftType(typ)
+              extractedBinders += (nam -> freshSingletonVariableType(nam,typ))
+              
               debug("VAL-BOUND HOLE:",nam,typ)
+              assert(!termHoleInfo.contains(nam)) // Q: B/E necessary?
               termHoleInfo += nam -> (Map(nam -> typ) -> typ)
               
               super.liftTerm(x, parent, expectedType, inVarargsPos)
               
-            
+            /** Processes inserted vals; adapted from ModularEmbedding */
+            case q"${vdef @ ValDef(mods, TermName(name), tpt, rhs)}; ..$body" if name.startsWith("$") =>
+              
+              if (mods.hasFlag(Flag.MUTABLE)) throw QuasiException(
+                "Insertion of symbol in place of mutable variables is not yet supported; " +
+                  "explicitly use the squid.Var[T] data type instead", Some(vdef.pos))
+              
+              val n = name.toString.tail
+              val v = Ident(TermName(n))
+              val cntx = variableContext(v)
+              
+              debug("INSERTED VAL:",n,cntx)
+              val mb = b.asInstanceOf[(MetaBases{val u: c.universe.type})#MirrorBase with b.type]
+              val bound = mb.Existing(q"$v.`internal bound`").asInstanceOf[b.BoundVal]
+              
+              val value = liftTerm(rhs, x, typeIfNotNothing(vdef.symbol.typeSignature))
+              
+              val body2 = bindScope((vdef.symbol.asTerm -> cntx)::Nil) { liftTerm(
+                setType( q"..$body",x.tpe ), // doing this kind of de/re-structuring loses the type
+                x,
+                expectedType
+              )(ctx + (vdef.symbol.asTerm -> bound)) }
+              
+              b.letin(bound, value, body2, liftType(expectedType getOrElse x.tpe))
+              
+              
+            case q"$baseTree.$$$$_var[$tpt]($v)" => // TODO remove this special mechanism?
+              val ctx = variableContext(v)
+              if (!boundScopes.valuesIterator.exists(_ =:= ctx)) termScope ::= ctx
+              q"$v.rep".asInstanceOf[b.Rep]
+              
+              
             case q"$baseTree.$$Code[$tpt]($idt)" =>
               val tree = q"$baseTree.$$[$tpt,$Any]($idt.unsafe_asClosedCode)"
               liftTerm(tree, parent, expectedType)
@@ -400,8 +510,9 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               val (captured,free) = vars mapSplit {
                 case(n,t) => varsInScope get n match {
                   case Some((tpe,bv)) =>
-                    tpe <:< t ||
-                      (throw EmbeddingException(s"Captured variable `$n: $tpe` has incompatible type with free variable `$n: $t` found in inserted code $$(${idts mkString ","})"))
+                    tpe <:< t || ( throw EmbeddingException(
+                      s"Captured variable `$n: $tpe` has incompatible type with free variable `$n: $t` " +
+                        s"found in inserted code $$(${idts mkString ","})") )
                     Left(n, bv)
                   case None => Right(n, t)
                 }
@@ -412,7 +523,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
                 // eg: in `case code"val x = 0; $tree" => ...`, though `tree` should capture `x` if `x` is free in it,
                 // there is no reason to import other free variables/contexts from it
                 
-                termScope :::= bases
+                termScope :::= bases.filterNot(b => boundScopes.valuesIterator.exists(_ =:= b)) // computes captured bases
                 importedFreeVars ++= free.iterator map { case (n,t) => n.toString -> t }
               }
               
@@ -433,6 +544,12 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
                   assertVararg(q"$$(..$idts)")
                   subs(q"_root_.scala.Seq(..${idts}): _*")
               }
+            
+            /** Handles inserted references to variables symbols */
+            case q"$baseTree.$$[$tvar]($v)" =>
+              val tree = q"$baseTree.$$[$tvar,${Nothing}]($v.unsafe_asClosedCode)"
+              /* ^ Note: Nothing needs to be inserted here as a proper type (not type tree), because the _.tpe will be queried by the recursive call */
+              liftTerm(tree, parent, expectedType)
               
             case q"$baseTree.$$[$tfrom,$tto,$scp]($fun)" => // Special case for inserting staged IR functions
               val tree = q"$baseTree.$$[$tfrom => $tto,$scp]($baseTree.liftFun[$tfrom,$tto,$scp]($fun))"
@@ -514,6 +631,10 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               
               val termName = TermName(name)
               
+              // Note: there is no special logic about first-class variable symbols here because the logic happens later,
+              // when computing the final types of extracted holes, where we distinguish whether the names bound in `ctx`
+              // are extracted binders (and should therefore not correspond to a nominal context requirement)
+              
               hopvHoles get TermName(name) match {
                 case Some(idents) =>
                   
@@ -524,7 +645,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
                   val identVals = idents map (_ map scp)
                   val yes = identVals map (_ map (_._2))
                   val keys = idents.flatten.toSet
-                  val no = scp.filterKeys(!keys(_)).values.map(_._2).toList
+                  val no = scp.filterKeys(!keys(_)).values.map(_._2).toList  // Q: does `no` work correctly in the presence of extracted binders?
                   debug(s"HOPV: yes=$yes; no=$no")
                   val List(identVals2) = identVals // FIXME generalize
                   val hopvType = FunctionType(identVals2 map (_._1.typeSignature) : _*)(holeType)
@@ -657,19 +778,28 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
         
         val termHoleInfoProcessed = termHoleInfo mapValues {
           case (scp, tp) =>
-            val scpTyp = CompoundTypeTree(Template(termScope map typeToTree, noSelfType, scp map { case(n,t) => q"val $n: $t" } toList))
+            val (nominalScp,symbolicScp) = scp.mapSplit {
+              case(n,t) if extractedBinders.contains(n) => Right(tq"${extractedBinders(n)}#Ctx")
+              case(n,t) => Left(n -> t)
+            }
+            val scpTyp = 
+              CompoundTypeTree(Template(
+                (termScope filterNot (Any <:< _) map typeToTree) ++ symbolicScp 
+                  |>=? { case Nil => tq"$Any"::Nil }, // Scala typer doesn't seem to accept this being empty
+                noSelfType, nominalScp map { case(n,t) => q"val $n: $t" } toList))
             (scpTyp, tp)
         }
         val termTypesToExtract = termHoleInfoProcessed map {
           case (name, (scpTyp, tp)) => name -> (
-            if (splicedHoles(name)) tq"Seq[$baseTree.Code[$tp,$scpTyp]]"
+            if (splicedHoles(name)) tq"_root_.scala.collection.Seq[$baseTree.Code[$tp,$scpTyp]]"
+            else if (extractedBinders.isDefinedAt(name)) tq"${extractedBinders(name)}"
             else tq"$baseTree.Code[$tp,$scpTyp]"
           )}
         val typeTypesToExtract = typeSymbols mapValues { sym => tq"$baseTree.CodeType[$sym]" }
         
         val extrTyps = holes.map {
-          case Left(vname) => termTypesToExtract(vname)
-          case Right(tname) => typeTypesToExtract(tname) // TODO B/E
+          case Left(vname)  => termTypesToExtract.getOrElse(vname, lastWords(s"cannot find type info for term hole $vname"))
+          case Right(tname) => typeTypesToExtract.getOrElse(tname, lastWords(s"cannot find type info for type hole $tname"))
         }
         debug("Extracted Types: "+extrTyps.map(showCode(_)).mkString(", "))
         
@@ -680,6 +810,13 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
           case Left(name) if splicedHoles(name) =>
             val (scp, tp) = termHoleInfoProcessed(name)
             q"_maps_._3(${name.toString}) map (r => $Base.`internal Code`[$tp,$scp](r))"
+          case Left(name) if extractedBinders isDefinedAt name =>
+            val (scp, tp) = termHoleInfoProcessed(name)
+            val tmp = TermName(c.freshName())
+            q"""val $tmp = _maps_._1(${name.toString})  // the `rewrite` macro looks for this pattern and duplicating it would break it!
+              $Base.Variable[$tp]($Base.extractVal($tmp)
+              .getOrElse(throw new _root_.java.lang.AssertionError("Expected a variable symbol, got "+$tmp)))
+              .asInstanceOf[${extractedBinders(name)}]"""
           case Left(name) =>
             //q"Quoted(_maps_._1(${name.toString})).asInstanceOf[${termTypesToExtract(name)}]"
             val (scp, tp) = termHoleInfoProcessed(name)

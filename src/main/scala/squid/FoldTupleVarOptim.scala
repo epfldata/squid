@@ -20,6 +20,8 @@ import utils.Debug.show
 
 import squid.lib.Var
 
+/** Note: a more up-to-date version, FoldTupleVarOptimNew, uses first-class variable symbols to do the variable falttening
+  * more elegantly (and more efficiently). */
 trait FoldTupleVarOptim extends FixPointRuleBasedTransformer with TopDownTransformer { self =>
   import base.Predef._
   
@@ -85,10 +87,13 @@ trait FoldTupleVarOptim extends FixPointRuleBasedTransformer with TopDownTransfo
     
     //case ir"val $tup: Var[($ta, $tb)] = Var($init); $body: $t" => // FIXME: binding `x @ ir...`
     
-    case code"val $tup = Var($init: ($ta, $tb)); $body: $t" =>
+    case code"val tup = Var($init: ($ta, $tb)); $body: $t" =>
       
       val a = code"?a: Var[$ta]"
       val b = code"?b: Var[$tb]"
+      
+      val tup = code"?tup: Var[($ta,$tb)]"
+      type Tup = Var[(ta.Typ,tb.Typ)]
       
       //val (a,b) = (ir"?a: Var[$ta]", ir"?b: Var[$tb]") // FIXME rewrite brittleness
       
@@ -100,11 +105,13 @@ trait FoldTupleVarOptim extends FixPointRuleBasedTransformer with TopDownTransfo
       //show(initComps) // initComps =	Some((ir"1",ir"0")) : Option[scp.utils.->[FoldTupleVarOptim.this.base.Predef.IR[ta,<context @ 49:10>],FoldTupleVarOptim.this.base.Predef.IR[tb,<context @ 49:10>]]]
       
       val newBody = body topDown_rewrite {
-        case code"($$tup !)._1" => code"$a !"
-        case code"($$tup !)._2" => code"$b !"
-        case code"$$tup := ($va: $$ta, $vb: $$tb)" => code"$a := $va; $b := $vb"
-        case code"$$tup !" => code"($a.!, $b.!)"
-      }
+        //case code"((${`tup`}:Tup) !)._1" => code"$a !" // TODO make it work – "EmbeddingException: Pattern shape not yet supported in rewrite rule: `tup`"
+        case code"(($tu:Tup) !)._1" if tu =~= tup => code"$a !"
+        case code"(($tu:Tup) !)._2" if tu =~= tup => code"$b !"
+        case code"($tu:Tup) := ($va: $$ta, $vb: $$tb)" if tu =~= tup => code"$a := $va; $b := $vb"
+        case code"($tu:Tup) !" if tu =~= tup => code"($a.!, $b.!)"
+      } /* We cannot match with $tup because it is now a FV (see: new extracted binder semantics makes us remove the $ in `val tup` pattern)
+           and FV matching is broken in the current IR; so have to go through this awkward matching mechanism. */
       
       //show(newBody)
       

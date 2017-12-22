@@ -60,19 +60,20 @@ class QuasiMacros(val c: whitebox.Context) {
     * unless debugging is on (in which case it is often useful to see the stack trace) */
   def wrapError[T](code: => T): T = try code catch {
     case e: Throwable =>
-      val (err, report) = e match {
-        case QuasiException(msg) => "Quasiquote Error: "+msg -> true
-        case EmbeddingException(msg) => "Embedding Error: "+msg -> true
-        case e => e.getMessage -> false
+      val err -> report -> pos = e match {
+        case QuasiException(msg,pos) => "Quasiquote Error: "+msg -> true -> pos
+        case EmbeddingException(msg) => "Embedding Error: "+msg -> true -> None
+        case e => e.getMessage -> false -> None
       }
+      def getPos = pos.getOrElse(c.enclosingPosition).asInstanceOf[c.Position]
       if (debug.debugOptionEnabled) {
         debug("Macro failed with: "+e)
         //debug(e.getStackTrace mkString "\n")
         throw e
       }
-      else if (report) c.abort(c.enclosingPosition, err)
+      else if (report) c.abort(getPos, err)
       else {
-        c.warning(c.enclosingPosition, "Macro failed with: "+e)
+        c.warning(getPos, "Macro failed with: "+e)
         throw e
       }
   }
@@ -89,6 +90,9 @@ class QuasiMacros(val c: whitebox.Context) {
   }
   def forward$2(q: Tree): Tree = c.macroApplication match {
     case q"$qc.$$[$t,$s,$c]($code)" => q"$qc.qcbase.$$[$t,$s,$c]($code)"
+  }
+  def forward$3(q: Tree): Tree = c.macroApplication match {
+    case q"$qc.$$[$t]($vr)" => q"$qc.qcbase.$$[$t]($vr)"
   }
   def forward$$(name: Tree): Tree = {
     deprecated("The `$$[T]('x)` free variable syntax is deprecated; use syntax `(?x:T)` instead.", "0.2.0")
@@ -155,17 +159,24 @@ class QuasiMacros(val c: whitebox.Context) {
   lazy val CodeTSym = symbolOf[QuasiBase#CodeType[_]]
   lazy val CodeSym = symbolOf[QuasiBase#Code[_,_]]
   lazy val AnyCodeSym = symbolOf[QuasiBase#AnyCode[_]]
+  lazy val VariableSym = symbolOf[QuasiBase#Variable[_]]
   lazy val FunSym = symbolOf[_ => _]
   
-  def asIR(tp: Type, typeOfBase: Type) = tp.baseType(CodeSym) |>? {
+  // TODO generalize to handle AnyCode and retrieve the path-dependent context type... (if well-defined/not existential!)
+  def asCode(tp: Type, typeOfBase: Type) = tp.baseType(CodeSym) |>? {
     case TypeRef(typeOfBase0, CodeSym, typ :: ctx :: Nil) if typeOfBase =:= typeOfBase0 => (typ, ctx)
   }
-  class AsIR(typeOfBase: Type) { def unapply(x:Type) = asIR(x, typeOfBase) }
+  class AsCode(typeOfBase: Type) { def unapply(x:Type) = asCode(x, typeOfBase) }
   
-  def asCode(tp: Type, typeOfBase: Type) = tp.baseType(AnyCodeSym) |>? {
+  def asAnyCode(tp: Type, typeOfBase: Type) = tp.baseType(AnyCodeSym) |>? {
     case TypeRef(typeOfBase0, AnyCodeSym, typ :: Nil) if typeOfBase =:= typeOfBase0 => typ
   }
-  class AsCode(typeOfBase: Type) { def unapply(x:Type) = asCode(x, typeOfBase) }
+  class AsAnyCode(typeOfBase: Type) { def unapply(x:Type) = asAnyCode(x, typeOfBase) }
+  
+  def asVariable(tp: Type, typeOfBase: Type) = tp.baseType(VariableSym) |>? {
+    case TypeRef(typeOfBase0, VariableSym, typ :: Nil) if typeOfBase =:= typeOfBase0 => typ
+  }
+  class AsVariable(typeOfBase: Type) { def unapply(x:Type) = asVariable(x, typeOfBase) }
   
   object AsFun {
     def unapply(x:Type) = x.baseType(FunSym) match {
@@ -194,9 +205,9 @@ class QuasiMacros(val c: whitebox.Context) {
     //if (asIR(scrutinee.tpe, base.tpe).isEmpty) {
     //  throw EmbeddingException(s"Cannot match type `${scrutinee.tpe}`, which is not a proper subtype of `$base.${IRSym.name}[_,_]`"
     //    +"\n\tTry matching { case x: IR[_,_] => ... } first.")
-    if (asCode(scrutinee.tpe, base.tpe).isEmpty) {
+    if (asAnyCode(scrutinee.tpe, base.tpe).isEmpty) {
       throw EmbeddingException(s"Cannot match type `${scrutinee.tpe}`, which is not a proper subtype of `$base.${AnyCodeSym.name}[_]`"
-        +"\n\tTry matching { case x: Code[_] => ... } first.")
+        +"\n\tTry matching { case x: Code[_] => ... } first.") // TODO add position: ..., Some(scrutinee.pos)
     }
     
     quasiquoteImpl[L](base, Some(scrutinee))
@@ -247,11 +258,13 @@ class QuasiMacros(val c: whitebox.Context) {
     
     var hasStuckSemi = Option.empty[TermName]
     
-    object AsCode extends AsIR(base.tpe)
-    object AsAnyCode extends AsCode(base.tpe)
+    object AsCode extends AsCode(base.tpe)
+    object AsAnyCode extends AsAnyCode(base.tpe)
+    object AsVariable extends AsVariable(base.tpe)
     
     def mkTermHole(name: TermName, followedBySplice: Boolean) = {
       val h = builder.holes(name)
+      assert(remainingHoles(name), s"Duplicate hole? $h")
       remainingHoles -= name
       
       //debug("HOLE: "+h)
@@ -296,6 +309,8 @@ class QuasiMacros(val c: whitebox.Context) {
             
             // TODO: also handle auto-lifted function types of greater arities...
             t.tpe match {
+              case AsVariable(typ) => q"$base.$$$$_var($t)"
+              // ^ Note: it's simpler to let QuasiEmbedder later figure out the exact context of the term (using its `variableContext` method)
               case AsCode(typ, ctx) => q"$base.$$[$typ,$ctx]($t)"
               case AsFun(AsCode(t0,ctx0), AsCode(tr,ctxr)) => q"$base.$$[$t0,$tr,$ctx0 with $ctxr]($t)"
               case AsAnyCode(typ) => dep; q"$base.$$Code[$typ]($t)"
@@ -312,19 +327,36 @@ class QuasiMacros(val c: whitebox.Context) {
       /** Note: value/parameters may be named "_", while anonymous function parameters are desugared to names of the form x$n
         * Anonymous function parameters are not a threat to soundness, so we do allow using them. */
       case ValDef(_, TermName(name), _, _) if isUnapply && (name == "_" /*|| (name startsWith "x$")*/) =>
-        throw QuasiException("All extracted bindings should be named.")
+        throw QuasiException("All matched bindings should be named.")
         
-      /** Extracted binder: adds corresponding hole and an annotation to tell the IR and QuasiEmbedded to extract this binder */
-      case ValDef(mods, name, tpt, rhs) if isUnapply && builder.holes.contains(name) =>
+      /** Extracted/inserted binder: adds corresponding hole and an annotation to tell the IR and QuasiEmbedded to extract this binder */
+      case ValDef(mods, name, tpt, rhs) if builder.holes.contains(name) =>
         val hole = builder.holes(name)
-        mkTermHole(name, false)
-        val n = hole.tree match {
-          case Bind(n, _) => n
-          case _ => throw QuasiException(s"All extracted bindings must be named. In: $${${hole.tree}}")
+        if (isUnapply) {
+          mkTermHole(name, false)
+          val n = hole.tree match {
+            case Bind(n, _) => n
+            case _ => throw QuasiException(s"All extracted bindings must be named. In: $${${hole.tree}}", Some(hole.tree.pos))
+          }
+          val newMods = Modifiers(mods.flags, mods.privateWithin, q"new _root_.squid.lib.ExtractedBinder" :: mods.annotations)
+          val r = ValDef(newMods, TermName(n.toString), rec(tpt), rec(rhs))
+          r
+        } else {
+          //debug(s"INSERTED VAL: $hole : ${hole.tree.tpe} @ ${hole.tree.symbol}")
+          assert(!hole.vararg)
+          hole.tree.tpe match {
+            case AsVariable(typ) =>
+              remainingHoles -= name
+              val hname = TermName(s"$$${hole.name.getOrElse(
+                throw QuasiException(s"Inserted variable symbols can only be identifiers. In: $${${hole.tree}}", Some(hole.tree.pos))
+              )}")
+              // Q: add annotation identifying the special inserted binder?
+              if (tpt.isEmpty) ValDef(mods, hname, tq"$typ", rec(rhs))
+              else ValDef(mods, hname, tpt, rec(rhs))
+            case AsCode(typ, ctx) => throw QuasiException("Cannot insert a code value in place of a variable symbol.", Some(hole.tree.pos))
+            case _ => throw QuasiException(s"Cannot insert object of type `${hole.tree.tpe}` here.", Some(hole.tree.pos))
+          }
         }
-        val newMods = Modifiers(mods.flags, mods.privateWithin, q"new _root_.squid.lib.ExtractedBinder" :: mods.annotations)
-        val r = ValDef(newMods, TermName(n.toString), rec(tpt), rec(rhs))
-        r
         
       // This is to help Scala typecheck the spliced hole; if we don't and call $$ instead of $$_*, typechecking usually silently fails and makes <error> types, for some reason...
       case q"${Ident(name: TermName)}: _*" if isUnapply && builder.holes.contains(name) =>
@@ -341,7 +373,7 @@ class QuasiMacros(val c: whitebox.Context) {
         })
         val hole = builder.holes(name)
         val n = hole.name filter (_.toString != "_") getOrElse (
-          throw QuasiException("All higher-order holes should be named.") // Q: necessary restriction?
+          throw QuasiException("All higher-order holes should be named.", Some(hole.tree.pos)) // Q: necessary restriction?
         ) toTermName;
         hopvHoles += n -> idents
         mkTermHole(name, false)
@@ -365,7 +397,7 @@ class QuasiMacros(val c: whitebox.Context) {
         
         if (isUnapply) {
           val n = hole.name.filter(_.toString != "_")
-            .getOrElse(throw QuasiException("All extracted types should be named.")).toTypeName // TODO B/E // TODO relax?
+            .getOrElse(throw QuasiException("All extracted types should be named.", Some(hole.tree.pos))).toTypeName // TODO B/E // TODO relax?
           holes ::= Right(n) -> hole.tree
           tq"$n"
         }
@@ -424,10 +456,13 @@ class QuasiMacros(val c: whitebox.Context) {
         
     })
     if (remainingHoles nonEmpty) {
-      val missing = remainingHoles map builder.holes map (h => h.name map ("$"+_) getOrElse s"$${${showCode(h.tree)}}")
+      val missing = remainingHoles map builder.holes map (h => (h.name map ("$"+_) getOrElse s"$${${showCode(h.tree)}}", h.tree.pos))
       // ^ Not displaying the tree when possible, because in apply mode, typechecked trees can be pretty ugly...
       
-      throw QuasiException(s"Illegal hole position${if (missing.size > 1) "s" else ""} for: "+missing.mkString(", "))
+      throw QuasiException(
+        s"Illegal hole position${if (missing.size > 1) "s" else ""} for: "+missing.map(_._1).mkString(", "),
+        Some(missing.head._2)
+      )
     }
     
     object Embedder extends QuasiEmbedder[c.type](c)

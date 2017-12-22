@@ -128,4 +128,41 @@ class TermRewriting extends MyFunSuite {
     
   }
   
+  test("Path-dependent types in rewrite rules") {
+    
+    class Test { type X; def x: X = null.asInstanceOf[X] }
+    
+    code"42.toDouble" rewrite {
+      case code"$n:Int" =>
+        val x = new Test
+        x.x:x.X
+        val c: Code[Int,x.X] = code"42"
+        code"$c+1" : Code[Int,x.X]
+    }
+    
+    val p0 = code"List(1,2,3).map(_+1)"
+    val p1 = p0 rewrite {
+      case code"($v:Int)=>$body:$bt" =>
+        val w = new Variable[Int]
+        code"($w:Int) => ${v.substitute[bt.Typ,v.OuterCtx with w.Ctx](body, w.toCode)}"
+    }
+    p1 eqt p0
+    
+    val p2 = p1 rewrite {
+      case code"($v:Int)=>$body:Int" =>
+        
+        val w = new Variable[Int]
+        /* ^ seems to work similarly with `object w extends Variable[Int]` */
+        
+        val newBody = code"$body + $w"
+        /* ^ this part is crucial in eliciting the problematic behavior: it makes `newBody`'s type depend on `w.Ctx`,
+             but then the `rewrite` macro redefines `w` and the types don't coincide anymore
+             (there is currently an ad-hoc fix for this in the `rewriteImpl` macros) */
+        
+        code"($w:Int) => ${v.substitute[Int,v.OuterCtx with w.Ctx](newBody, w.toCode)}"
+    }
+    p2 eqt code"List(1,2,3).map(x=>x+1+x)"
+    
+  }
+  
 }

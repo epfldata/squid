@@ -65,8 +65,11 @@ trait TupleVarOptim extends SimpleRuleBasedTransformer { self =>
           case code"$$tup !" => code"($a.!, $b.!)"
         }
         
-        val body3 = body2 subs 'tup -> {
-          throw RewriteAbort(s"tup is still used! in: $body2")}
+        //val body3 = body2 subs 'tup -> {
+        //  throw RewriteAbort(s"tup is still used! in: $body2")}
+        val body3 = tup.substitute[t.Typ, tup.OuterCtx & a.Ctx & b.Ctx & isNull.Ctx](body2, 
+          throw RewriteAbort(s"tup is still used! in: $body2"))
+        
         code" val isNull = Var(${Const(isInitializedWithNull)}); val a = Var(${nullValue[ta.Typ]});  val b = Var(${nullValue[tb.Typ]});  $body3 "
         
       } else {
@@ -82,9 +85,11 @@ trait TupleVarOptim extends SimpleRuleBasedTransformer { self =>
         
         //show(body2)
         
-        val body3 = body2 subs 'tup -> {
-          //println(s"tup is still used! in: ${newBody rep}")
-          throw RewriteAbort(s"tup is still used! in: $body2")}
+        //val body3 = body2 subs 'tup -> {
+        //  //println(s"tup is still used! in: ${newBody rep}")
+        //  throw RewriteAbort(s"tup is still used! in: $body2")}
+        val body3 = tup.substitute[t.Typ, tup.OuterCtx & a.Ctx & b.Ctx](body2, 
+          throw RewriteAbort(s"tup is still used! in: $body2"))
         
         code" val init = $init; val a = Var(init._1);  val b = Var(init._2);  $body3 "
         
@@ -99,8 +104,11 @@ trait TupleVarOptim extends SimpleRuleBasedTransformer { self =>
         case code"$$tup._2" => code"$b"
         case code"$$tup == null" => code"false"
       }
-      //val newwBody2 = newBody subs 'tup -> ir"($a,$b)"  // can't do that as otherwise the transformer would have no fixed point
-      val newwBody2 = newBody subs 'tup -> (throw RewriteAbort())
+      
+      ////val newwBody2 = newBody subs 'tup -> ir"($a,$b)"  // can't do that as otherwise the transformer would have no fixed point
+      //val newwBody2 = newBody subs 'tup -> (throw RewriteAbort())
+      val newwBody2 = tup.substitute[t.Typ, tup.OuterCtx](newBody, throw RewriteAbort())
+      
       newwBody2
     
   }

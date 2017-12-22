@@ -32,7 +32,7 @@ trait ScopeAnalyser[U <: scala.reflect.api.Universe] extends UniverseHelpers[U] 
   */
   def bases_variables(typ: Type): (List[Type], List[(TermName, Type)]) = {
     //println("[C] "+typ+" : "+typ.getClass)
-    typ match {
+    typ.dealias match {
       case st @ SingleType(pre: Type, sym: Symbol) =>
         bases_variables(sym.typeSignature) // or use 'st.widen'
       case RefinedType(parents: List[Type], decls: Scope) =>
@@ -48,6 +48,8 @@ trait ScopeAnalyser[U <: scala.reflect.api.Universe] extends UniverseHelpers[U] 
         };
         (baseSyms.flatten, varSyms.flatten ++ vars)
       case x: RefinedType => ???
+
+      case null => lastWords("Type was null (while trying to analyse context)")
         
       case _ => (typ :: Nil) -> Nil
     }

@@ -472,7 +472,8 @@ class PardisIRExtractTests extends PardisTestSuite {
           
           //println(s"New body: $newBody")
           
-          val closedBody = newBody subs 'arr -> ((throw new RewriteAbort):Code[arr.Typ,{}])
+          //val closedBody = newBody subs 'arr -> ((throw new RewriteAbort):Code[arr.Typ,{}])
+          val closedBody = arr.substitute[bt.Typ, arr.OuterCtx](newBody, (throw new RewriteAbort) : Code[arr.Typ,{}])
           
           //println(s"Closed body: $newBody")
           
@@ -533,7 +534,7 @@ class PardisIRExtractTests extends PardisTestSuite {
           
           //println(s"New body: $newBody")
           
-          code"val arr = $init; $newBody"
+          code"val $arr = $init; $newBody"
       }
     }
     

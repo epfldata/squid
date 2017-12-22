@@ -22,6 +22,10 @@ object MyBase extends SimpleAST with ClassEmbedder
 object TestDSL extends SimpleAST with ClassEmbedder
 object NormDSL extends SimpleAST with ClassEmbedder with OnlineOptimizer with BindingNormalizer //with BlockNormalizer
 
+object LegacyTestDSL extends SimpleAST with ClassEmbedder {
+  override val newExtractedBindersSemantics: Boolean = false
+}
+
 object Test {
   object InnerTestDSL extends SimpleAST
 }

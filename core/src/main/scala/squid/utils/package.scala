@@ -29,6 +29,10 @@ package object utils {
   type ? = t forSome{type t}
   type ! = Nothing
   
+  /** For preventing widening of singleton types.
+    * See: https://stackoverflow.com/questions/35903100/what-does-t-do-in-scala/35916154#35916154 */
+  type Narrow[T] = T{}
+  
   /** Tag type to be interpreted by quasiquotes as an existential named [Unknown Context],
     * useful to ensure rewrite rules are fully parametric in the context of the terms they match */
   final class UnknownContext private() // TODO extend <extruded type>
@@ -43,8 +47,9 @@ package object utils {
   
   implicit final class Alsoable[T](private val self: T) extends AnyVal {
     
-    @inline def alsoApply(f: T => Unit) = { f(self); self }
-    @inline def alsoApply_?(f: PartialFunction[T,Unit]) = { f.runWith(_=>())(self); self }
+    // TODO rename to just `also`
+    @inline def alsoApply(effect_f: T => Unit) = { effect_f(self); self }
+    @inline def alsoApply_?(effect_f: PartialFunction[T,Unit]) = { effect_f.runWith(_=>())(self); self }
     
     @inline def alsoDo(effect: Unit) = self
     

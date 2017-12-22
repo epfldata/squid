@@ -143,13 +143,12 @@ trait ASTReinterpreter { ast: AST =>
       
       override def apply(d: Def) = {
         
-        object BV { def unapply(x: Code[_,_]) = x match {
-          case Code(RepDef(bv: BoundVal)) => Some(bv)
+        object BV { def unapply(x: AnyCode[_]) = x match {
+          case AnyCode(RepDef(bv: BoundVal)) => Some(bv)
           case _ => None }}
         
-        object ScalaVar { def unapply(r: Code[lib.Var[_],_]): Option[Ident] = r match {
-          case Code(RepDef(h: Hole)) if h.originalSymbol exists (boundVars isDefinedAt _) =>
-            Some(Ident(boundVars(h.originalSymbol.get)))
+        object ScalaVar { def unapply(r: AnyCode[lib.Var[_]]): Option[Ident] = r match {
+          case AnyCode(RepDef(bv: BoundVal)) if boundVars isDefinedAt bv => Some(Ident(boundVars(bv)))
           case _ => None }}
         
         //`internal IR`[Any,Nothing](ast.rep(d)) match {
@@ -196,9 +195,7 @@ trait ASTReinterpreter { ast: AST =>
             assert(!(tv <:< AnyRef.rep))
             System.err.println(s"Warning: variable `${bv}` of type `${tv}` (not a subtype of `AnyRef`) is assigned `null`.")
             val varName = newBase.freshName(bv.name optionUnless (_ startsWith "$") Else "v")
-            q"var $varName: ${rect(tv)} = null; ..${
-              boundVars += bv -> varName
-              apply(inline(bv, body0, Hole(bv.name)(bv.typ,Some(bv)) |> rep))}"
+            q"var $varName: ${rect(tv)} = null; ..${ boundVars += bv -> varName; apply(body0) }"
             
             
           /** Converts redexes to value bindings, nicer to the eye.
@@ -206,7 +203,7 @@ trait ASTReinterpreter { ast: AST =>
           case code"((${p @ BV(bv)}: $ta) => $body: $tb)($arg)" =>
             val a = apply(arg rep)
             val av = if (ascribeBoundValsWhenNull && arg.rep.typ <:< ruh.Null) newBase.ascribe(a, rect(bv.typ)) else a
-            newBase.letin(recv(bv), av, apply(body subs 'p -> p rep), rect(tb rep))
+            newBase.letin(recv(bv), av, apply(body rep) /* note: we no longer substitute matched binders */, rect(tb rep))
             
             
           /** We explicitly convert multi-parameter lambdas, as they may be encoded (cf: `CurryEncoding`): */
@@ -215,16 +212,16 @@ trait ASTReinterpreter { ast: AST =>
             newBase.lambda(Nil, apply(body rep))
             
           case code"((${p @ BV(bp)}: $tp, ${q @ BV(bq)}: $tq) => $body: $tb)" =>
-            newBase.lambda(recv(bp) :: recv(bq) :: Nil, apply(body  subs 'p -> p subs 'q -> q rep))
+            newBase.lambda(recv(bp) :: recv(bq) :: Nil, apply(body rep))
             
           case code"((${p @ BV(bp)}: $tp, ${q @ BV(bq)}: $tq, ${r @ BV(br)}: $tr) => $body: $tb)" =>
-            newBase.lambda(recv(bp) :: recv(bq) :: recv(br) :: Nil, apply(body  subs 'p -> p subs 'q -> q subs 'r -> r rep))
+            newBase.lambda(recv(bp) :: recv(bq) :: recv(br) :: Nil, apply(body rep))
             
           case code"((${p @ BV(bp)}: $tp, ${q @ BV(bq)}: $tq, ${r @ BV(br)}: $tr, ${s @ BV(bs)}: $ts) => $body: $tb)" =>
-            newBase.lambda(recv(bp) :: recv(bq) :: recv(br) :: recv(bs) :: Nil, apply(body  subs 'p -> p subs 'q -> q subs 'q -> q subs 's -> s rep))
-
+            newBase.lambda(recv(bp) :: recv(bq) :: recv(br) :: recv(bs) :: Nil, apply(body rep))
+            
           case code"((${p @ BV(bp)}: $tp, ${q @ BV(bq)}: $tq, ${r @ BV(br)}: $tr, ${s @ BV(bs)}: $ts, ${t @ BV(bt)}: $tt) => $body: $tb)" =>
-            newBase.lambda(recv(bp) :: recv(bq) :: recv(br) :: recv(bs) :: recv(bt) :: Nil, apply(body  subs 'p -> p subs 'q -> q subs 'q -> q subs 's -> s subs 't -> t rep))
+            newBase.lambda(recv(bp) :: recv(bq) :: recv(br) :: recv(bs) :: recv(bt) :: Nil, apply(body rep))
             
             
           case code"($f: $ta => $tb)($arg)" =>
