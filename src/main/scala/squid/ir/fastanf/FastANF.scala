@@ -325,10 +325,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     })
   }
 
-  protected def extract(xtor: Rep, xtee: Rep): Option[Extract] = {
-    println(s"Extract(\n$xtor, \n$xtee)")
-    extractWithState(xtor, xtee)(State.forExtraction(xtor, xtee)).toOption map (_.ex)
-  }
+  protected def extract(xtor: Rep, xtee: Rep): Option[Extract] = extractWithState(xtor, xtee)(State.forExtraction(xtor, xtee)).toOption map (_.ex)
 
   // Context is mapping from xtor BVs to xtee BVs
   type Ctx = Map[BoundVal, BoundVal]
@@ -342,7 +339,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   
   /**
     * Signals if the current extraction attempt has failed. 
-    * `Left` returns the matching that failed,
+    * `Left` returns the matchings that failed (xtor -> xtee),
     * `Right` the update state after a successful extraction.
     */
   type ExtractState = Either[Set[(BoundVal, BoundVal)], State]
@@ -384,7 +381,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     
     def withFailed(newFailed: Set[(BoundVal, BoundVal)]): State = {
       val updatedFailed = newFailed.foldLeft(failed) { case (mergedF, (k, v)) =>
-        println(s"($mergedF, ($k -> $v)")
         mergedF + (k -> mergedF.get(k).map(_ + v).getOrElse(Set(v)))
       }
       copy(failed = updatedFailed)
@@ -512,8 +508,6 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
   }
   
   def extractWithState(xtor: Rep, xtee: Rep)(implicit es: State): ExtractState = {
-    println(es)
-    
     def extractHOPHole(name: String, typ: TypeRep, argss: List[List[Rep]], visible: List[BoundVal])(implicit es: State): ExtractState = {
       def hasNoUndeclaredUsages(r: Rep): Boolean = {
         def hasNoUndeclaredUsages0(r: Rep, declared: Set[BoundVal]): Boolean = r match {
@@ -536,11 +530,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       /**
         * Attemps to find the `xtors` in the body of the function and replaces them with newly generated arguments, 
         * adding the new arguments to the function. Even if the `xtors` are not found in the body, 
-        * arguments representing them will be generated and added to it. They will simply be ignored when it is applied.
-        * 
-        * @param xtors 
-        * @param maybeFuncAndState the current function and the extraction state after its creation.
-        * @return
+        * arguments representing them will be generated and added to it. They will simply not appear in the function's body. 
         */
       def buildFunc(xtors: List[Rep], maybeFuncAndState: Option[(Rep, State)]): Option[(Rep, State)] = {
         val args = xtors.map(arg => bindVal("hopArg", arg.typ, Nil))
@@ -548,7 +538,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
         /**
           * Returns the body of function. 
-          * This is the body of the most deeply nested [[Lambda]] as the function is curried. 
+          * This is the body of the most deeply nested [[Lambda]] since the function is curried. 
           */
         def body(func: Rep): Rep = {
           def body0(d: Def): Option[Rep] = d match {
@@ -596,6 +586,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
                     /*
                      * Replaces every occurrence of `lb` in the body with `arg`.
                      */
+                    // TODO single pass
                     extractWithState(lb, body) map { es0 =>
                       val replace =  es0.ctx(lb.last.bound)
                       val body0  = bottomUpPartial(filterLBs(body)(es0.ctx.values.toSet contains _.bound)) { case `replace` => arg }
@@ -637,6 +628,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         })
         
         (f, es2) <- argss0.foldRight(Option(xtee -> (es withNewExtract m)))(buildFunc)
+        //                     ^ so arguments are in the right order
         
         if hasNoUndeclaredUsages(f)
       } yield es2 updateExtractWith Some(repExtract(name -> f))
@@ -686,28 +678,23 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       * Only extracts inside a [[MethodApp]], fails for all other cases.
       * It won't extract inside the [[ByName]] arguments. 
       */
-    def extractInside(r: Rep, d: Def)(implicit es: State): ExtractState = {
-      println(s"INSIDE: $r -> $d")
-      d match {
-        case ma: MethodApp => (ma.self :: ma.argss.argssList).foldLeft[ExtractState](fail) { case (acc, arg) =>
-          for {
-            failed1 <- acc.left
-            failed2 <- extractWithState(r, arg)(es withFailed failed1).left
-          } yield failed1 ++ failed2
-        }
-        case _ => fail
+    def extractInside(r: Rep, d: Def)(implicit es: State): ExtractState = d match {
+      case ma: MethodApp => (ma.self :: ma.argss.argssList).foldLeft[ExtractState](fail) { case (acc, arg) =>
+        for {
+          failed1 <- acc.left
+          failed2 <- extractWithState(r, arg)(es withFailed failed1).left
+        } yield failed1 ++ failed2
       }
+      case _ => fail
     }
      
 
     def extractedBy(h: Hole)(implicit es: State): Option[Rep] = es.ex._1 get h.name
-
-    println(s"-----\nextractWithState: \n$xtor\n\n$xtee\n-----\n\n")
     
     xtor -> xtee match {
       case (h: Hole, _) => extractedBy(h) match {
         case Some(`xtee`) => succeed
-        case Some(_) => fail // Something has gone wrong
+        case Some(_) => die // Something has gone wrong
         case None => extractHole(h, xtee)
       }
 
@@ -808,7 +795,7 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
 
       case _ => fail
       }
-  } alsoApply (res => println(s"Extract: $res"))
+  }
   
   protected def spliceExtract(xtor: Rep, args: Args): Option[Extract] = xtor match {
     // Should check that type matches, but don't see how to access it for Args
@@ -882,38 +869,34 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
     rewriteRep0(xtor, xtee, code)(State.forRewriting(xtor, xtee))
 
   def rewriteRep0(xtor: Rep, xtee: Rep, code: Extract => Option[Rep])(implicit es: State): Option[Rep] = {
-    def rewriteRepWithState(xtor: Rep, xtee: Rep)(implicit es: State): ExtractState = {
-      println(s"rewriteRepWithState(\n\t$xtor\n\t$xtee)($es)")
+    def rewriteRepWithState(xtor: Rep, xtee: Rep)(implicit es: State): ExtractState = (xtor, xtee) match {
+      case (lb1: LetBinding, lb2: LetBinding) =>
 
-      (xtor, xtee) match {
-        case (lb1: LetBinding, lb2: LetBinding) =>
-
-          /**
-            * Pure statements (annotated with the instruction [[Skip]] only have to extracted starting from their
-            * return value and extract each sub-part recursively. Through this mechanism the order of the pure statements
-            * does not matter.
-            * For instance, this will successfully match : 
-            *   {{{
-            *   ir"val b = 22.toDouble; val a = 11.toDouble; a + b" match {
-            *     case ir"val aX = 11.toDouble; val bX = 22.toDouble; aX + bX" => ???
-            *   }
-            *   }}}
-            *   
-            */
-          (es.instructions.get(lb1.bound), es.instructions.get(lb2.bound)) match {
-            
-            /**
-              * The traversal of the code is done externally by [[transformRep()]]. 
-              * Hence, if the current statements don't have to be extracted at this point (both are pure and not return values)
-              * we simply skip the extraction of the current `xtee`. 
-              */
-            case (Skip, Skip) => fail  
-              
-            case _ => extractWithState(lb1, lb2)
-          }
+        /**
+          * Pure statements (annotated with the instruction [[Skip]] only have to extracted starting from their
+          * return value and extract each sub-part recursively. Through this mechanism the order of the pure statements
+          * does not matter.
+          * For instance, this will successfully match : 
+          *   {{{
+          *   ir"val b = 22.toDouble; val a = 11.toDouble; a + b" match {
+          *     case ir"val aX = 11.toDouble; val bX = 22.toDouble; aX + bX" => ???
+          *   }
+          *   }}}
+          *   
+          */
+        (es.instructions.get(lb1.bound), es.instructions.get(lb2.bound)) match {
           
-        case _ => extractWithState(xtor, xtee)
-      }
+          /**
+            * The traversal of the code is done externally by [[transformRep()]]. 
+            * Hence, if the current statements don't have to be extracted at this point (both are pure and not return values)
+            * we simply skip the extraction of the current `xtee`. 
+            */
+          case (Skip, Skip) => fail  
+            
+          case _ => extractWithState(lb1, lb2)
+        }
+        
+      case _ => extractWithState(xtor, xtee)
     }
 
     def genCode(implicit es: State): Option[Rep] = {
@@ -927,12 +910,8 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
         *   case ir"val rX = readInt; $body" => ???
         * }
         * }}}
-        * `$body` will extract `ir"r + 1"` where `r` <-> `rX`. Here the let-binding `val rX = readInt; ...` 
-        * is user-defined. Therefore, on the rhs of the rewriting rule the user can still write valid code 
-        * (e.g. `ir"val r `
-        * 
-        * TODO ask about this
-        *
+        * `$body` will extract `ir"r + 1"` where `r` <-> `rX`. Since the let-binding `val rX = readInt; ...` 
+        * is user-defined.
         */
       def preCheck(ex: Extract): Boolean = {
         def preCheckRep(declaredBVs: Set[BoundVal], invCtx: Map[BoundVal, Set[BoundVal]], r: Rep): Boolean = {
@@ -1118,15 +1097,15 @@ class FastANF extends InspectableBase with CurryEncoding with StandardEffects wi
       }
       
       if (preCheck(es.ex)) for {
-        code <- code(es.ex) alsoApply(c => println(s"CODE: $c"))
-        mergedCode = merge(code, xtee)(xtor, es.ctx) alsoApply (c => println(s"CODE0: $c"))
+        code <- code(es.ex)
+        mergedCode = merge(code, xtee)(xtor, es.ctx)
         finalCode <- filterNot(es.matchedImpureBVs)(mergedCode)
       } yield finalCode
       else None
     }
     
     rewriteRepWithState(xtor, xtee) match {
-      case Right(es) => genCode(es) alsoApply(c => println(s"GEN: $c"))
+      case Right(es) => genCode(es)
       case Left(_) => None
     }
   }

@@ -4,8 +4,8 @@ package fastir
 
 import scala.util.Try
 
-class HOPVTests extends MyFunSuiteBase(HOPVTests.Embedding) {
-  import HOPVTests.Embedding.Predef._
+class HOPTests extends MyFunSuiteBase(HOPTests.Embedding) {
+  import HOPTests.Embedding.Predef._
 
   test("Matching lambda bodies") {
     val id = ir"(z:Int) => z"
@@ -179,6 +179,6 @@ class HOPVTests extends MyFunSuiteBase(HOPVTests.Embedding) {
   }
 }
 
-object HOPVTests {
+object HOPTests {
   object Embedding extends FastANF
 }

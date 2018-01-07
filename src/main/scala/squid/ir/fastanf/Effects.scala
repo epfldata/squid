@@ -4,8 +4,12 @@ import squid.utils.Bool
 
 import scala.collection.mutable
 
+/**
+  * Basic effect system where statements can be `Pure` or `Impure`.
+  * By default everything is impure.
+  */
 trait Effects {
-  protected val pureMtds = mutable.Set[MethodSymbol]()
+  private val pureMtds = mutable.Set[MethodSymbol]()
   //protected val pureTyps = mutable.Set[TypeSymbol]()
 
   def addPureMtd(m: MethodSymbol): Unit = pureMtds += m
@@ -39,10 +43,7 @@ trait Effects {
          HOPHole(_, _, _, _) => Pure
   }
 
-  def mtdEffect(m: MethodSymbol): Effect = {
-    //println(m)
-    if (pureMtds contains m) Pure else Impure
-  }
+  def mtdEffect(m: MethodSymbol): Effect = if (pureMtds contains m) Pure else Impure
 
   def defEffect(d: Def): Effect = d match {
     case l: Lambda => effect(l.body)
@@ -55,6 +56,9 @@ trait Effects {
   }
 
   sealed trait Effect {
+    /**
+      * Combine effects.
+      */
     def |+|(e: Effect): Effect
   }
 
@@ -67,6 +71,10 @@ trait Effects {
   }
 }
 
+/**
+  * Standard effect system.
+  * Defines the set of pure methods used in tests.
+  */
 trait StandardEffects extends Effects {
   addPureMtd(MethodSymbol(TypeSymbol("scala.Int"),"$plus"))
   addPureMtd(MethodSymbol(TypeSymbol("scala.Double"),"$plus"))

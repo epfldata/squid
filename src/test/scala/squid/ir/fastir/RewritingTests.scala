@@ -2,8 +2,6 @@ package squid
 package ir
 package fastir
 
-import squid.test.Test.Embedding
-
 class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
   import RewritingTests.Embedding.Predef._
   import RewritingTests.Embedding.Quasicodes._
@@ -23,14 +21,6 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
       case ir"(${Const(n)}: Int).toDouble" => ir"${Const(n.toDouble)}"
     }
     assert(c =~= ir"val t = ${ir"42"}.toDouble; 42.0")
-
-    //assertDoesNotCompile("""
-    //  T.rewrite { case ir"0.5" => ir"42" }
-    //""")
-
-    //assertDoesNotCompile("""
-    //  T.rewrite { case ir"123" => ir"($$n:Int)" }
-    //""")
   }
 
   test("Rewriting subpatterns") {
@@ -49,13 +39,30 @@ class RewritingTests extends MyFunSuiteBase(RewritingTests.Embedding) {
       case ir"($a: Int) * 5" => ir"$a * 2"
     }
     assert(c =~= ir"val t1 = Option(42); val t2 = t1.get; val t3 = ${ir"42"} * 5; ${ir"42"} * 2")
+
+    val d = ir"val r = (() => readInt.toDouble)(); r * r" rewrite {
+      case ir"readInt.toDouble" => ir"readDouble"
+    }
+    assert(d =~= ir"val r = (() => readDouble)(); r * r")
   }
   
   test("Rewriting with dead-ends") {
-    val b = ir"Option(42).get; 20" rewrite {
+    val a = ir"Option(42).get; 20" rewrite {
       case ir"Option(($n: Int)).get; 20" => n
     }
-    assert(b =~= ir"val t = ${ir"Option(42)"}; 42")
+    assert(a =~= ir"val t = ${ir"Option(42)"}; 42")
+    
+    val b = ir"val r1 = readDouble.toInt; val a = r1 + 2; val b = r1 + 4; r1" rewrite {
+      case ir"readDouble.toInt" => ir"readInt"
+      case ir"2" => ir"4"
+      case ir"4" => ir"8"
+    }
+    assert(b =~= ir"val r1 = readInt; val a = r1 + 8; val b = r1 + 8; r1")
+    
+    val c = ir"val r1 = readInt; val f = (x: Int) => { val r2 = readInt; val a = x + 1; r2 }; f(r1)" rewrite {
+      case ir"(x: Int) => { val rX = readInt; val a = x + 1; rX }" =>  ir"(x: Int) => { val a = x + 22; x }"
+    }
+    assert(c =~= ir"val r1 = readInt; val f = (x: Int) => { val a = x + 22; x }; f(r1)")
   } 
   
   test("Substitution should be called from inside a reification context") {
