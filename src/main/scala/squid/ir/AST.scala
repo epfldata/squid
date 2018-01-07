@@ -298,6 +298,12 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
   override def hopHole(name: String, typ: TypeRep, yes: List[List[Val]], no: List[Val]) = rep(new HOPHole(name, typ, yes, no))
   class HOPHole(name: String, typ: TypeRep, val yes: List[List[Val]], val no: List[Val]) extends HoleClass(name, typ)()
   
+  override def hopHole2(name: String, typ: TypeRep, args: List[List[Rep]], visible: List[BoundVal]): Rep = {
+    // TODO replace `hopHole`
+    val vars = args map (_ map (r => dfn(r).asInstanceOf[BoundVal]))
+    hopHole(name, typ, vars, visible.toSet -- vars.flatten toList)
+  }
+  
   case class Constant(value: Any) extends Def {
     lazy val typ = value match {
       case () => TypeRep(ruh.Unit)

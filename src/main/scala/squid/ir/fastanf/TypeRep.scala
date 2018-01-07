@@ -4,7 +4,7 @@ package ir.fastanf
 import utils._
 
 // cannot be sealed unless we put everything into one file...
-private[fastanf] trait DefOrTypeRep {
+/*private[fastanf]*/ trait DefOrTypeRep {
   def typ: TypeRep
   def fold[R](df: Def => R, typeRep: TypeRep => R): R
 }

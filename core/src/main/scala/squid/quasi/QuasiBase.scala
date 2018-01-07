@@ -33,6 +33,8 @@ self: Base =>
   def substitute(r: => Rep, defs: Map[String, Rep]): Rep
   def substituteLazy(r: => Rep, defs: Map[String, () => Rep]): Rep = substitute(r, defs map (kv => kv._1 -> kv._2()))
   
+  def insertAfterTransformation(r: => Rep, defs: Map[String, Rep]): Rep = substitute(r, defs)
+  
   /** Not yet used: should eventually be defined by all IRs as something different than hole */
   def freeVar(name: String, typ: TypeRep) = hole(name, typ)
   
@@ -46,6 +48,14 @@ self: Base =>
     * this should check that the extracted term does not contain any reference to a bound value contained in the `no` 
     * parameter, and it should extract a function term with the arity of the `yes` parameter. */
   def hopHole(name: String, typ: TypeRep, yes: List[List[BoundVal]], no: List[BoundVal]): Rep
+  def hopHole2(name: String, typ: TypeRep, args: List[List[Rep]], visible: List[BoundVal]): Rep = {
+    // TODO remove `hopHole` and implement this correctly everywhere
+    //val vars = args map (_ map (_.asInstanceOf[BoundVal]))\
+    // ^ Note: this will succeed even if there are some non-BoundVal, because BoundVal is eliminated by erasure
+    //   it's actually wrong (in AST, readVal(_:BoundVal) adds a Rep wrapper!
+    //hopHole(name, typ, vars, visible.toSet -- vars.flatten toList)
+    throw new UnsupportedOperationException("Higher-order patterns")
+  }
   
   /** Pattern hole in type position */
   def typeHole(name: String): TypeRep
@@ -61,6 +71,8 @@ self: Base =>
   final def substitute(r: => Rep, defs: (String, Rep)*): Rep =
   /* if (defs isEmpty) r else */  // <- This "optimization" is not welcome, as some IRs (ANF) may relie on `substitute` being called for all insertions
     substitute(r, defs.toMap)
+  
+  final def insertAfterTransformation(r: => Rep, defs: (String, Rep)*): Rep = insertAfterTransformation(r, defs.toMap)
   
   protected def mkIR[T,C](r: Rep): IR[T,C] = new IR[T,C] {
     val rep = r
@@ -291,6 +303,8 @@ self: Base =>
     res
   }
   
+  protected def mergeAll(as: Extract*): Option[Extract] = mergeAll(as.map(Some(_)))
+
   def mergeableReps(a: Rep, b: Rep): Boolean = a =~= b
   
   def mergeTypes(a: TypeRep, b: TypeRep): Option[TypeRep] =
@@ -320,10 +334,13 @@ self: Base =>
   def $Code[T](q: Code[T]): T = ??? // TODO B/E  -- also, rename to 'unquote'?
   def $Code[A,B](q: Code[A] => Code[B]): A => B = ???
   
-  /* To support hole syntax `xs?` (old syntax `$$xs`) (in ction) or `$xs` (in xtion)  */
+  /* To support hole syntax `?xs` (old syntax `$$xs`) (in ction) or `$xs` (in xtion)  */
   def $$[T](name: Symbol): T = ???
   /* To support hole syntax `$$xs: _*` (in ction) or `$xs: _*` (in xtion)  */
   def $$_*[T](name: Symbol): Seq[T] = ???
+  
+  /** Higher-order pattern */
+  def $$_hop[T](name: Symbol)(args: Any*): T = ???
   
   
   implicit def liftFun[A:IRType,B,C](qf: IR[A,C] => IR[B,C]): IR[A => B,C] = {

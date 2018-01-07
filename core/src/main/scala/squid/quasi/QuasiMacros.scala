@@ -106,7 +106,7 @@ class QuasiMacros(val c: whitebox.Context) {
       holeSymbols = Set(),
       holes = Seq(),
       splicedHoles = Set(),
-      hopvHoles = Map(),
+      hopHoles = Set(),
       termHoles = Set(),
       typeHoles = Set(),
       typedTree = code,
@@ -200,7 +200,7 @@ class QuasiMacros(val c: whitebox.Context) {
     
     var holes: List[(Either[TermName,TypeName], Tree)] = Nil // (Left(value-hole) | Right(type-hole), original-hole-tree)
     val splicedHoles = mutable.Set[TermName]()
-    val hopvHoles = mutable.Map[TermName,List[List[TermName]]]()
+    val hopvHoles = mutable.Set[TermName]()
     var typeBounds: List[(TypeName, EitherOrBoth[Tree,Tree])] = Nil
     
     // Keeps track of which holes still have not been found in the source code
@@ -302,18 +302,17 @@ class QuasiMacros(val c: whitebox.Context) {
       case Ident(name: TermName) if builder.holes.contains(name) =>
         mkTermHole(name, false)
         
-      // Identify and treat Higher-Order Pattern Variables (HOPV)
-      case q"${Ident(name: TermName)}(...$argss)" if isUnapply && builder.holes.contains(name) =>
-        val idents = argss map (_ map {
-          case Ident(name:TermName) => name
-          case e => throw EmbeddingException(s"Unexpected expression in higher-order pattern variable argument: ${showCode(e)}")
-        })
-        val hole = builder.holes(name)
-        val n = hole.name filter (_.toString != "_") getOrElse (
+      // Identify and treat Higher-Order Patterns (HOP)
+      case q"${Ident(nme: TermName)}(...$argss)" if isUnapply && builder.holes.contains(nme) =>
+        val List(args) = argss // TODO handle ...$argss
+        val hole = builder.holes(nme)
+        val name = hole.name filter (_.toString != "_") getOrElse (
           throw QuasiException("All higher-order holes should be named.") // Q: necessary restriction?
         ) toTermName;
-        hopvHoles += n -> idents
-        mkTermHole(name, false)
+        hopvHoles += name
+        remainingHoles -= nme
+        holes ::= Left(name) -> hole.tree
+        q"$base.$$$$_hop(${Symbol(name toString)})(..$args)"
         
       // Interprets bounds on extracted types, like in: `case List[$t where (Null <:< t <:< AnyRef)]`:
       case tq"${Ident(name: TypeName)} where $bounds" if isUnapply && builder.holes.contains(name.toTermName) =>

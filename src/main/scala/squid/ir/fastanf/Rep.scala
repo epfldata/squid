@@ -37,24 +37,49 @@ object Som {
 /** Trivial expression, that can be used as arguments */
 sealed abstract class Def extends DefOption with DefOrTypeRep with FlatSom[Def] {
   def fold[R](df: Def => R, typeRep: TypeRep => R): R = df(this)
+  def map(f: Def => Def): Def = f(this)
 }
 
 /** Expression that can be used as an argument or result; this includes let bindings. */
 sealed abstract class Rep extends RepOption with ArgumentList with FlatSom[Rep] {
   def typ: TypeRep
   def * = SplicedArgument(this)
+  def argssMap(f: Rep => Rep) = f(this)
+  def argssList: List[Rep] = this :: Nil
 }
 
+// TODO check that it only contains args
+/**
+  * Wraps _arguments_ to make them by-name arguments.
+  */
+final case class ByName(r: Rep) extends Rep {
+  val typ: TypeRep = r.typ
+} 
+
 final case class Constant(value: Any) extends Rep with CachedHashCode {
-  lazy val typ = value match { // TODO impl and rm lazy
-    case _ => lastWords(s"Not a valid constant: $value")
+  // TODO impl and rm lazy
+  lazy val typ = value match {
+    case _ => DummyTypeRep
   }
 }
 
+final case class Hole(name: String, typ: TypeRep) extends Rep with CachedHashCode
+
+final case class SplicedHole(name: String, typ: TypeRep) extends Rep with CachedHashCode
+
+final case class HOPHole(name: String, typ: TypeRep, args: List[List[Symbol]], visible: List[Symbol]) extends Rep with CachedHashCode
+
+final case class HOPHole2(name: String, typ: TypeRep, args: List[List[Rep]], visible: List[Symbol]) extends Rep with CachedHashCode
+
 // TODO intern objects
 final case class StaticModule(fullName: String) extends Rep with CachedHashCode {
-  lazy val typ = ???
+  val typ = DummyTypeRep
+  override def toString = fullName
 }
+
+final case class Module(prefix: Rep, name: String, typ: TypeRep) extends Rep with CachedHashCode
+
+final case class NewObject(typ: TypeRep) extends Rep with CachedHashCode
 
 // TODO make sure this does not generate a field for `base`
 //  if it does, perhaps use `private[this] implicit val`?
@@ -70,6 +95,9 @@ trait MethodApp extends Def {
   def targs: List[TypeRep]
   def argss: ArgumentLists
   def typ: TypeRep
+  protected def doChecks = // we can't execute the checks here right away, because of initialization order
+    //(self :: argss.argssList).foreach(r => assert(!r.isInstanceOf[LetBinding], s"Illegal ANF argument/self: $r"))
+    assert(!self.isInstanceOf[LetBinding], s"Illegal ANF self argument: $self") // ^ some arguments may be by-name!
   override def toString = s"$self.${mtd.name}${argss.toArgssString}"
 }
 object MethodApp {
@@ -81,9 +109,93 @@ object MethodApp {
       case _ => SimpleMethodApp(self: Rep, mtd: MethodSymbol, targs: List[TypeRep], argss)(typ)
     }
   }
+
+  /**
+    * Inlines `self` and the arguments `argss` if they are let-bindings in order to transform it into valid ANF.
+    */
+  def toANF(self: Rep, mtd: MethodSymbol, targs: List[TypeRep], argss: ArgumentLists, typ0: TypeRep)(implicit base: FastANF): Rep = {
+    def processArgss(argss: ArgumentLists)(f: Rep => (Option[LetBinding], Rep)): (Option[LetBinding], ArgumentLists) = {
+      def processArgs(args: ArgumentList)(f: Rep => (Option[LetBinding], Rep)): (Option[LetBinding], ArgumentList) = {
+        def go(args: ArgumentList)(k: (Option[LetBinding], ArgumentList) => (Option[LetBinding], ArgumentList)): (Option[LetBinding], ArgumentList) = args match {
+          case NoArguments => k(None, NoArguments)
+          case ArgumentCons(h, t) =>
+            val (maybeLB, r) = f(h)
+            go(t) { case (lb0, args0) =>
+              val maybeNewLB = (lb0, maybeLB) match {
+                case (Some(lb0), Some(lb)) => lb.last.body = lb0; Some(lb)
+                case (_, Some(lb)) => Some(lb)
+                case (Some(lb0), _) => Some(lb0)
+                case _ => None
+              }
+
+              k(maybeNewLB, ArgumentCons(r, args0))
+            }
+          case SplicedArgument(arg) => k.tupled(f(arg))
+          case r: Rep => k.tupled(f(r))
+        }
+
+        go(args)((lb, args) => (lb, args))
+      }
+
+      def go(argss: ArgumentLists)(k: (Option[LetBinding], ArgumentLists) => (Option[LetBinding], ArgumentLists)): (Option[LetBinding], ArgumentLists) = argss match {
+        case NoArgumentLists => k(None, NoArgumentLists)
+        case NoArguments => k(None, NoArguments)
+        case a: ArgumentCons => processArgs(a)(f)
+        case s: SplicedArgument => processArgs(s)(f)
+        case ArgumentListCons(h, t) =>
+          val (lb, args) = processArgs(h)(f)
+          go(t) { case (lb0, argss0) =>
+            val newLB = (lb0, lb) match {
+              case (Some(lb0), Some(lb)) => lb.last.body = lb0; Some(lb)
+              case (_, Some(lb)) => Some(lb)
+              case (Some(lb0), _) => Some(lb0)
+              case _ => None
+            }
+            k(newLB, ArgumentListCons(args, argss0))
+          }
+        case r: Rep => k.tupled(f(r))
+      }
+
+      go(argss)((lb, argss) => (lb, argss))
+    }
+
+    /**
+      * Splits `r` at before the point of its return value
+      */
+    def split(r: Rep): Option[LetBinding] -> Rep = r match {
+      case lb: LetBinding => Some(lb) -> lb.last.body
+      case _ => None -> r
+    }
+    
+    val (maybeSelfLB, selfBV) = self |> split
+    val (maybeArgssLB, argssBVs) = processArgss(argss)(split)
+
+    // Merge `maybeSelfLB` and `maybeArgssLB`
+    val maybeNewLB = (maybeSelfLB, maybeArgssLB) match {
+      case (Some(selfLB), Some(lbFromArgss)) => lbFromArgss.last.body = selfLB; Some(lbFromArgss)
+      case (_, Some(lbFromArgss)) => Some(lbFromArgss)
+      case (Some(selfLB), _) => Some(selfLB)
+      case _ => None
+    }
+
+    val maWithBVs = MethodApp(selfBV, mtd, targs, argssBVs, typ0)
+
+    // Set `maWithBVs` as the body of `maybeNewLB`
+    maybeNewLB match {
+      case Some(newLB) => 
+        newLB.last.body = new Symbol {
+          protected var _parent: SymbolParent = new LetBinding("tmp", this, maWithBVs, this)
+        }.owner.asInstanceOf[LetBinding]
+        newLB
+
+      case None => new Symbol {
+        protected var _parent: SymbolParent = new LetBinding("tmp", this, maWithBVs, this)
+      }.owner.asInstanceOf[LetBinding]
+    }
+  }
 }
 final case class SimpleMethodApp protected(self: Rep, mtd: MethodSymbol, targs: List[TypeRep], argss: ArgumentLists)(val typ: TypeRep) 
-  extends MethodApp with CachedHashCode
+  extends MethodApp with CachedHashCode { doChecks }
 
 final case class App(fun: Rep, arg: Rep)(implicit base: FastANF) extends Def with MethodApp {
   val self = fun
@@ -91,6 +203,11 @@ final case class App(fun: Rep, arg: Rep)(implicit base: FastANF) extends Def wit
   def targs = Nil
   def argss = arg
   lazy val typ = fun.typ.asFunType.map(_._2).getOrElse(lastWords(s"Application on a non-function type `${fun.typ}`"))
+  doChecks
+}
+
+final case class DefHole(hole: Hole) extends Def {
+  def typ: TypeRep = hole.typ
 }
 
 /** To avoid useless wrappers/boxing in the most common cases, we have this scheme for argument lists:
@@ -112,43 +229,103 @@ sealed trait ArgumentLists extends CachedHashCode {
   def asSingleArg: Rep = this.asInstanceOf[Rep]
   
   def ~~: (as: ArgumentList): ArgumentLists = ArgumentListCons(as, this)
-  
-  def toArgssString = this match {
-    case NoArgumentLists => ""
-    case NoArguments => s"()"
-    case r: Rep => s"($r)"
-    case _ => ??? // TODO
+
+  def toArgssString: String = {
+    def withoutParen(args: ArgumentList): String = args match {
+      case NoArguments => ""
+      case r: Rep => s"$r"
+      case SplicedArgument(r) => s"$r: _*"
+      case ArgumentCons(h, t: Rep) => s"$h, ${withoutParen(t)}"
+      case ArgumentCons(h, NoArguments) => s"$h"
+      case ArgumentCons(h, t) => s"$h, ${withoutParen(t)}"
+    }
+
+    this match {
+      case NoArgumentLists => ""
+      case NoArguments => s"()"
+      case r: Rep => s"(${withoutParen(r)})"
+      case s: SplicedArgument => s"(${withoutParen(s)})"
+      case args: ArgumentCons => s"(${withoutParen(args)})"
+      case ArgumentListCons(h, t) => s"(${withoutParen(h)})${t.toArgssString}"
+    }
   }
+
+  def argssMap(f: Rep => Rep): ArgumentLists
+  def argssList: List[Rep] // TODO use more efficient structure to accumulate args (with constant-time ++ and +:); also, make these lazy vals in non-trivial argument lists?
 }
+
 final case object NoArgumentLists extends ArgumentLists {
   override def ~~: (as: ArgumentList): ArgumentLists = as
+  def argssMap(f: Rep => Rep) = this
+  def argssList: List[Rep] = Nil
 }
 sealed trait ArgumentList extends ArgumentLists {
   def ~: (a: Rep): ArgumentList = ArgumentCons(a, this)
+  def argssMap(f: Rep => Rep): ArgumentList
 }
 final case object NoArguments extends ArgumentList {
   override def ~: (a: Rep): ArgumentList = a
+  def argssMap(f: Rep => Rep) = this
+  def argssList: List[Rep] = Nil
 }
-final case class SplicedArgument(arg: Rep) extends ArgumentList // Q: can make extend AnyVal? requires making all upper traits universal)
-final case class ArgumentCons(head: Rep, tail: ArgumentLists) extends ArgumentList
-final case class ArgumentListCons(head: ArgumentList, tail: ArgumentLists) extends ArgumentLists
+// Q: can make extend AnyVal? requires making all upper traits universal)
+final case class SplicedArgument(arg: Rep) extends ArgumentList {
+  def argssMap(f: Rep => Rep) = SplicedArgument(f(arg))
+  def argssList: List[Rep] = arg :: Nil
+}
+final case class ArgumentCons(head: Rep, tail: ArgumentList) extends ArgumentList {
+  def argssMap(f: Rep => Rep) = ArgumentCons(f(head), tail argssMap f)
+  def argssList: List[Rep] = head :: tail.argssList
+}
+final case class ArgumentListCons(head: ArgumentList, tail: ArgumentLists) extends ArgumentLists {
+  def argssMap(f: Rep => Rep) = ArgumentListCons(head argssMap f, tail argssMap f)
+  def argssList: List[Rep] = head.argssList ++ tail.argssList
+}
 
 
 trait Binding extends SymbolParent {
-  val name: String
+  def name: String
   def bound: Symbol
   def boundType: TypeRep
 }
-class LetBinding(val name: String, val bound: Symbol, val value: Def, private var _body: Rep) extends Rep with Binding {
+trait RebindableBinding extends Binding {
+  def bound_= (newBound: Symbol): Unit
+  def name_= (newName: String): Unit
+}
+class LetBinding(var name: String, var bound: Symbol, var value: Def, private var _body: Rep) extends Rep with RebindableBinding {
+  var isUserDefined = false
   def body = _body
   def body_= (newBody: Rep) = _body = newBody
   def boundType = value.typ
   def typ = body.typ
+  /** Returns the last let-bindings of this conceptual block of code.
+    * Caution: this has linear complexity */
+  def last: LetBinding = body match {
+    case lb: LetBinding => lb.last
+    case _ => this
+  }
   override def toString: String = s"val $bound = $value; $body"
 }
-class Lambda(val name: String, val bound: Symbol, val boundType: TypeRep,  val body: Rep)(implicit base: FastANF) extends Def with Binding {
+object LetBinding {
+  /**
+    * Inlines the `value` to transform it into valid ANF.
+    */
+  def withRepValue(name: String, bound: Symbol, value: Rep, mkBody: => Rep): Rep = value match {
+    case lb: LetBinding =>
+      val last = lb.last
+      last.name = name
+      bound rebind last.bound
+      last.bound = bound
+      last.body = mkBody
+      lb
+
+    case _ => throw new IllegalArgumentException
+  }
+}
+
+class Lambda(var name: String, var bound: Symbol, val boundType: TypeRep, var body: Rep)(implicit base: FastANF) extends Def with RebindableBinding {
   val typ: TypeRep =  base.funType(boundType, body.typ)
-  override def toString: String = s"($bound: $boundType) => $body"
+  override def toString: String = s"($bound: $boundType) => $body --"
 }
 
 /** Currently used mainly for reification. */ // Note: could intern these objects
@@ -171,12 +348,17 @@ abstract class Symbol extends Rep with SymbolParent {
   def representative: Symbol = owner.bound
   def owner: Binding = _parent match {
     case bnd: Binding =>
-      assert(bnd.bound eq this)
+      //assert(bnd.bound eq this) // FIXME? still seems to crash; is the assertion correct?
       bnd
     case parent: Symbol =>
       val bnd = parent.owner
       _parent = bnd
       bnd
+  }
+  def owner_=(bnd: RebindableBinding) = {
+    // TODO add appropriate assertions...?
+    bnd.bound = this
+    _parent = bnd
   }
   def typ = owner.boundType
   def dfn: DefOption = owner match {
@@ -189,6 +371,11 @@ abstract class Symbol extends Rep with SymbolParent {
     case s: Symbol => s.representative eq representative
     case _ => false
   }
-  override def toString: String = s"${owner.name}#${System.identityHashCode(representative)}"
+  //override def toString: String = s"${owner.name}#${System.identityHashCode(representative)}"
+  /* below is for easier debugging -- revert to the above for better perf */
+  val id = Symbol.curId alsoDo (Symbol.curId += 1); override def toString: String = s"${owner.name}_${representative.id}"
+}
+object Symbol {
+  private var curId = 0
 }
 
