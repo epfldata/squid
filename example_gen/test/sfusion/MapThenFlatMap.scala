@@ -152,7 +152,7 @@
             val ClosureVar_14 = x_12.size;
             val ClosureVar_15 = x_12.length;
             var v_16: scala.Int = 0;
-            envVar_5 = scala.Some.apply[scala.Tuple2[scala.Int, scala.Tuple2[scala.Int, squid.lib.`package`.Var[scala.Int]]]](scala.Tuple2.apply[scala.Int, scala.Tuple2[scala.Int, squid.lib.`package`.Var[scala.Int]]](ClosureVar_14, scala.Tuple2.apply[scala.Int, squid.lib.`package`.Var[scala.Int]](ClosureVar_15, new squid.lib.VarProxy[scala.Int](v_16, ((a) => v_16 = a)))));
+            envVar_5 = scala.Some.apply[scala.Tuple2[scala.Int, scala.Tuple2[scala.Int, squid.lib.`package`.Var[scala.Int]]]](scala.Tuple2.apply[scala.Int, scala.Tuple2[scala.Int, squid.lib.`package`.Var[scala.Int]]](ClosureVar_14, scala.Tuple2.apply[scala.Int, squid.lib.`package`.Var[scala.Int]](ClosureVar_15, new squid.lib.MutVarProxy[scala.Int](v_16, ((a) => v_16 = a)))));
             false
           })
         }) 

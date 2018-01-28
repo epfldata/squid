@@ -192,7 +192,7 @@ class PardisIRTests extends PardisTestSuite {
   
   
   test("Variables") {
-    import squid.lib.Var
+    import squid.lib.MutVar
     import SC._
     
     sameDefs(code"var a = 0; 1", scBlock {
@@ -213,7 +213,7 @@ class PardisIRTests extends PardisTestSuite {
   
   
   test("Variable dependency and order") {
-    import squid.lib.Var
+    import squid.lib.MutVar
     import SC.Predef._
     import SC.{ ArrayBufferRep, readVar }
     
@@ -228,7 +228,7 @@ class PardisIRTests extends PardisTestSuite {
   
   
   test("Inserting Variables") {
-    import squid.lib.Var
+    import squid.lib.MutVar
     
     sameDefs(code"var a = 0; a; a = a + 1; a", block {
       val v = code"Var(0)"

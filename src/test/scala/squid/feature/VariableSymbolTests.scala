@@ -328,26 +328,26 @@ class VariableSymbolTests extends MyFunSuite {
   
   
   test("Local Variable Symbols in Speculative Rewritings") {
-    import squid.lib.Var
+    import squid.lib.MutVar
     
     val p = code"val a = 1; val b = 2; val c = 3; a + b + c"
     
     p rewrite {
       case code"val $v: $vt = $init; $body:$bt" =>
-        val w = new Variable[Var[vt.Typ]]
+        val w = new Variable[MutVar[vt.Typ]]
         val newBody = v.substitute[bt.Typ, v.OuterCtx & w.Ctx](body, code"$w!")
-        assertDoesNotCompile(""" code"val $w = $init; $newBody" """) // Error:(300, 10) Embedding Error: Quoted expression does not type check: type mismatch; found: vt; required: squid.lib.Var[vt.Typ]
-        code"val $w = Var($init); $newBody"
+        assertDoesNotCompile(""" code"val $w = $init; $newBody" """) // Error:(300, 10) Embedding Error: Quoted expression does not type check: type mismatch; found: vt; required: squid.lib.MutVar[vt.Typ]
+        code"val $w = MutVar($init); $newBody"
     } eqt code"var a = 1; var b = 2; var c = 3; a + b + c"
     
     object R extends DSL.SelfTransformer with SimpleRuleBasedTransformer with BottomUpTransformer {
       
       rewrite {
         case code"val $v: $vt = $init; $body:$bt" =>
-          val w = new Variable[Var[vt.Typ]]
+          val w = new Variable[MutVar[vt.Typ]]
           val newBody = v.substitute[bt.Typ, v.OuterCtx & w.Ctx](body, code"$w!")
           assertDoesNotCompile(""" code"val $w = $init; $newBody" """) // Error:(300, 10) Embedding Error: Quoted expression does not type check: type mismatch; found: vt; required: squid.lib.Var[vt.Typ]
-          code"val $w = Var($init); $newBody"
+          code"val $w = MutVar($init); $newBody"
       }
       
     }

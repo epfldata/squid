@@ -31,7 +31,7 @@ trait TupleVarOptim extends SimpleRuleBasedTransformer { self =>
   import self.base.InspectableCodeOps
   import self.base.IntermediateCodeOps
   
-  import squid.lib.Var
+  import squid.lib.MutVar
   
   rewrite {
     

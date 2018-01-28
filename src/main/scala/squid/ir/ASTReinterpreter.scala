@@ -147,7 +147,7 @@ trait ASTReinterpreter { ast: AST =>
           case AnyCode(RepDef(bv: BoundVal)) => Some(bv)
           case _ => None }}
         
-        object ScalaVar { def unapply(r: AnyCode[lib.Var[_]]): Option[Ident] = r match {
+        object ScalaVar { def unapply(r: AnyCode[lib.MutVar[_]]): Option[Ident] = r match {
           case AnyCode(RepDef(bv: BoundVal)) if boundVars isDefinedAt bv => Some(Ident(boundVars(bv)))
           case _ => None }}
         
@@ -169,11 +169,11 @@ trait ASTReinterpreter { ast: AST =>
             
           case code"($x:Any) equals $y" => q"${apply(x rep)} == ${apply(y rep)}"
     
-          case code"(${ScalaVar(id)}: squid.lib.Var[$tv]) := $value" => q"$id = ${apply(value.rep)}"
-          case code"(${ScalaVar(id)}: squid.lib.Var[$tv]) !" => id
-          case code"${ScalaVar(id)}: squid.lib.Var[$tv]" =>
+          case code"(${ScalaVar(id)}: squid.lib.MutVar[$tv]) := $value" => q"$id = ${apply(value.rep)}"
+          case code"(${ScalaVar(id)}: squid.lib.MutVar[$tv]) !" => id
+          case code"${ScalaVar(id)}: squid.lib.MutVar[$tv]" =>
             if (warnOnEscapingVars) System.err.println(s"Virtualized variable `${id}` of type `${tv}` escapes its defining scope!")
-            q"new squid.lib.VarProxy[${rect(tv.rep)}]($id, a => $id = a)"
+            q"new squid.lib.MutVarProxy[${rect(tv.rep)}]($id, a => $id = a)"
             
           //case ir"var $v: $tv = $init; $body: $tb" =>
           case code"var ${v @ BV(bv)}: $tv = $init; $body: $tb" =>

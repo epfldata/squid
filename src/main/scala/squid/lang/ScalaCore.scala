@@ -58,6 +58,6 @@ trait ScalaCore
 @mirror[Tuple5[_,_,_,_,_]] trait Tuple5Mirror
 
 @mirror[squid.lib.`package`.type] trait SquidLibMirror
-@mirror[squid.lib.Var[_]] trait VarMirror
+@mirror[squid.lib.MutVar[_]] trait VarMirror
 @mirror[Predef.type] trait PredefMirror
 

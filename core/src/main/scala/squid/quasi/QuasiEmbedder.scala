@@ -446,7 +446,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               
               val sign = vd.symbol.typeSignature
               val typ = if (mods.hasFlag(Flag.MUTABLE)) {
-                val sym = typeOf[squid.lib.Var[Any]].typeSymbol
+                val sym = typeOf[squid.lib.MutVar[Any]].typeSymbol
                 internal.typeRef(typeOf[squid.lib.`package`.type], sym, sign :: Nil)
               }
               else sign

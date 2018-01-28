@@ -61,7 +61,7 @@ class InterpreterTests extends FunSuite {
   
   test("Variables") {
     
-    runSame( shallowAndDeep(b){ lib.Var(0) } )
+    runSame( shallowAndDeep(b){ lib.MutVar(0) } )
     runSame( shallowAndDeep(b){ var x = ("ok" + "ko".reverse).length; x-=1; (x+=1, x, 'lol) } )
     
   }

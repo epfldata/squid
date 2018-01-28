@@ -18,7 +18,7 @@ import utils._
 import ir._
 import utils.Debug.show
 
-import squid.lib.Var
+import squid.lib.MutVar
 
 /** Like the old FoldTupleVarOptim, but uses first-class variable symbols instead of hard-coded names. */
 trait FoldTupleVarOptimNew extends FixPointRuleBasedTransformer with TopDownTransformer { self =>
@@ -51,10 +51,10 @@ trait FoldTupleVarOptimNew extends FixPointRuleBasedTransformer with TopDownTran
   
   rewrite {
     
-    case code"val $tup = Var($init: ($ta, $tb)); $body: $t" =>
+    case code"val $tup = MutVar($init: ($ta, $tb)); $body: $t" =>
       
-      val a = new Variable[Var[ta.Typ]]
-      val b = new Variable[Var[tb.Typ]]
+      val a = new Variable[MutVar[ta.Typ]]
+      val b = new Variable[MutVar[tb.Typ]]
       
       val initComps = tuple2Components(init)
       
@@ -69,8 +69,8 @@ trait FoldTupleVarOptimNew extends FixPointRuleBasedTransformer with TopDownTran
         Abort(s"tup=$tup is still used! in: $newBody"))
       
       val res = initComps.fold(
-        code" val init = $init; val $a = Var(init._1);  val $b = Var(init._2);  $newwBody2 " )(ab =>
-        code"                   val $a = Var(${ab._1}); val $b = Var(${ab._2}); $newwBody2 " )
+        code" val init = $init; val $a = MutVar(init._1);  val $b = MutVar(init._2);  $newwBody2 " )(ab =>
+        code"                   val $a = MutVar(${ab._1}); val $b = MutVar(${ab._2}); $newwBody2 " )
       res
       
       /* FIXME: precise typing lost, probably because of rewrite's untypecheck:

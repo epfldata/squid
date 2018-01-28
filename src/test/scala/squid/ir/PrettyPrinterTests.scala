@@ -127,7 +127,7 @@ class PrettyPrinterTests extends FunSuite {
 
   test("Variables") {
 
-    val act0 = shallowAndDeep(b){ lib.Var(0) }
+    val act0 = shallowAndDeep(b){ lib.MutVar(0) }
     val exp0 =
       """
         |0

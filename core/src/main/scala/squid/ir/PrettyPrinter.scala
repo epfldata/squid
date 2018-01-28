@@ -72,7 +72,7 @@ class PrettyPrinter extends Base with TraceDebug {
     val b = body(offset)
     val v = value(offset)
 
-    if (bound._2.startsWith("squid.lib.Var")) {
+    if (bound._2.startsWith("squid.lib.MutVar")) {
       val tpe = removeBrackets(bound._2.dropWhile(_ != '['))
       " " * offset + s"var ${bound._1}: $tpe = $v\n$b"
     } else {
@@ -156,7 +156,7 @@ class PrettyPrinter extends Base with TraceDebug {
         else result
       }
 
-      case ("squid.lib.Var", "apply") => args.head.reps.head(offset)
+      case ("squid.lib.MutVar", "apply") => args.head.reps.head(offset)
 
       case ("scala.Symbol", "apply") =>
         // scala.Symbol.apply("arg")

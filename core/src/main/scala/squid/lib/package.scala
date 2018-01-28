@@ -39,14 +39,14 @@ package object lib {
   def ThunkArg: ThunkParam = ThunkParam
   
   
-  abstract class Var[A] {
+  abstract class MutVar[A] {
     def := (that: A) : Unit
     def ! : A
-    override def equals(that: Any) = that |>? { case v: Var[_] => this.! == v.! } Else false
+    override def equals(that: Any) = that |>? { case v: MutVar[_] => this.! == v.! } Else false
     override def toString = s"Var(${this!})"
   }
-  object Var {
-    def apply[A](init: A): Var[A] = new Var[A] {
+  object MutVar {
+    def apply[A](init: A): MutVar[A] = new MutVar[A] {
       private[this] var cur = init
       def := (that: A) = cur = that
       def ! = cur
@@ -54,7 +54,7 @@ package object lib {
   }
   
   /** Used in ReinterpreterToScala when a local variable "escapes", to preserve the validity and semantics of the program. */
-  class VarProxy[A](get: => A, set: A => Unit) extends Var[A] {
+  class MutVarProxy[A](get: => A, set: A => Unit) extends MutVar[A] {
     def := (that: A) = set(that)
     def ! = get
   }

@@ -40,7 +40,7 @@ class AutoboundPardisIR[DSL <: ir.Base](val DSL: DSL) extends PardisIR(DSL) {
   
   override object Predef extends Predef[DefaultQuasiConfig] {
     implicit def conv[A](x: R[A]): Code[A,{}] = `internal Code`(x)
-    implicit def convVar[A](x: sc.Var[A]): Code[squid.lib.Var[A],{}] = `internal Code`(x)
+    implicit def convVar[A](x: sc.Var[A]): Code[squid.lib.MutVar[A],{}] = `internal Code`(x)
     def mkVar[T](init: Code[T,{}]): sc.Var[T] = sc.__newVar[Any](init.rep |> toExpr)(init.rep.typ).asInstanceOf[sc.Var[T]]
     def mapLambda[T:CodeType,C](x: Code[T,C])(f: R[T] => R[T]) = block(`internal Code`[T,C](f(x.toRep)))
   }
@@ -52,9 +52,9 @@ class AutoboundPardisIR[DSL <: ir.Base](val DSL: DSL) extends PardisIR(DSL) {
   protected val ImperativeSymbol = loadMtdSymbol(loadTypSymbol("squid.lib.package$"), "Imperative", None)
   protected val IfThenElseSymbol = loadMtdSymbol(loadTypSymbol("squid.lib.package$"), "IfThenElse", None)
   
-  protected val VarApplySymbol = loadMtdSymbol(loadTypSymbol("squid.lib.package.Var$"), "apply", None)
-  protected val VarBangSymbol = loadMtdSymbol(loadTypSymbol("squid.lib.package.Var"), "$bang", None)
-  protected val VarColonEqualSymbol = loadMtdSymbol(loadTypSymbol("squid.lib.package.Var"), "$colon$eq", None)
+  protected val VarApplySymbol = loadMtdSymbol(loadTypSymbol("squid.lib.package.MutVar$"), "apply", None)
+  protected val VarBangSymbol = loadMtdSymbol(loadTypSymbol("squid.lib.package.MutVar"), "$bang", None)
+  protected val VarColonEqualSymbol = loadMtdSymbol(loadTypSymbol("squid.lib.package.MutVar"), "$colon$eq", None)
   
   protected val PrintlnSymbol = loadMtdSymbol(loadTypSymbol("scala.Predef$"), "println", None)
   

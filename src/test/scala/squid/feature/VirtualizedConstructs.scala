@@ -114,9 +114,9 @@ class VirtualizedConstructs extends MyFunSuite {
   
   test("Variables") {
     
-    eqt( code"var x = 0; x = 1; x",  code"val x = lib.Var(0); x := 1; x!" )
+    eqt( code"var x = 0; x = 1; x",  code"val x = lib.MutVar(0); x := 1; x!" )
 
-    eqt( code"var x = 0; x += 1",  code"val x = lib.Var(0); x := x.! + 1" )
+    eqt( code"var x = 0; x += 1",  code"val x = lib.MutVar(0); x := x.! + 1" )
     
     same(code"val lol = 42; var v = lol-1; v += 1; v.toDouble".run, 42.0)
     

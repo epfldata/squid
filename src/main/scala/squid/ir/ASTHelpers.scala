@@ -99,8 +99,8 @@ trait ASTHelpers extends Base { self: AST =>
   }
   
   object Var {
-    val ModuleSymbol = loadTypSymbol("squid.lib.package.Var$")
-    val ClassSymbol = loadTypSymbol("squid.lib.package.Var")
+    val ModuleSymbol = loadTypSymbol("squid.lib.package.MutVar$")
+    val ClassSymbol = loadTypSymbol("squid.lib.package.MutVar")
     object Apply {
       val Symbol = loadMtdSymbol(ModuleSymbol, "apply", None)
     }

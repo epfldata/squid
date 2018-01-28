@@ -30,7 +30,7 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
   import self.base.InspectableCodeOps
   import self.base.IntermediateCodeOps
   
-  import squid.lib.Var
+  import squid.lib.MutVar
   import squid.lib.uncheckedNullValue
   
   rewrite {
@@ -45,8 +45,8 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
     
     // Removal of Var[Option[_]]
     case code"var $v: Option[$t] = $init; $body: $bt" =>
-      val isDefined = code"?isDefined: Var[Bool]" // More hygienic would be to use first-class variable symbol here
-      val optVal = code"?optVal: Var[$t]" // More hygienic would be to use first-class variable symbol here
+      val isDefined = code"?isDefined: MutVar[Bool]" // More hygienic would be to use first-class variable symbol here
+      val optVal = code"?optVal: MutVar[$t]" // More hygienic would be to use first-class variable symbol here
       
       // Note: applying sub-rewritings sch as `case ir"$$v.!.isDefined" =>` is not going to work well, because it will
       // not rewrite cases such as `var a = Option(42); val v = a; (v.isDefined, v.isDefined)`...
@@ -95,16 +95,16 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
       //  $body3
       //"""
       code"""
-        val isDefined = Var($init.isDefined)
-        val optVal = Var($init getOrElse uncheckedNullValue[$t])
+        val isDefined = MutVar($init.isDefined)
+        val optVal = MutVar($init getOrElse uncheckedNullValue[$t])
         $body3
       """
       
       
-    // Removal of Var[Tuple2[_]]
+    // Removal of MutVar[Tuple2[_]]
     case code"var $v: ($ta,$tb) = $init; $body: $bt" =>
-      val lhs = code"?lhs: Var[$ta]" // More hygienic would be to use first-class variable symbol here
-      val rhs = code"?rhs: Var[$tb]" // More hygienic would be to use first-class variable symbol here
+      val lhs = code"?lhs: MutVar[$ta]" // More hygienic would be to use first-class variable symbol here
+      val rhs = code"?rhs: MutVar[$tb]" // More hygienic would be to use first-class variable symbol here
       
       val body2 = body rewrite {
         case code"val $x = $$v.! ; $sbody: $bt" =>
@@ -124,18 +124,18 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
       val body3 = v.substitute[bt.Typ,v.OuterCtx with lhs.Ctx with rhs.Ctx](body2, Abort())
       
       if (init =~= code"uncheckedNullValue[($ta,$tb)]")
-        code" val lhs = Var(uncheckedNullValue[$ta]);  val rhs = Var(uncheckedNullValue[$tb]);  $body3 "
+        code" val lhs = MutVar(uncheckedNullValue[$ta]);  val rhs = MutVar(uncheckedNullValue[$tb]);  $body3 "
       else
       code"""
-        val lhs = Var($init._1)
-        val rhs = Var($init._2)
+        val lhs = MutVar($init._1)
+        val rhs = MutVar($init._2)
         $body3
       """
       
       
-    // Removal of Var[Var[_]] in some special cases
-    case code"var $v: Var[$t] = $init; $body: $bt" =>
-      val flatVar = code"?flatVar: Var[$t]" // More hygienic would be to use first-class variable symbol here
+    // Removal of MutVar[MutVar[_]] in some special cases
+    case code"var $v: MutVar[$t] = $init; $body: $bt" =>
+      val flatVar = code"?flatVar: MutVar[$t]" // More hygienic would be to use first-class variable symbol here
       
       val body2 = body rewrite {
         case code"$$v.!.!" => code"$flatVar.!" // TODO genlze?
@@ -149,9 +149,9 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
       //  System.err.println(s"Variable v=$v still in $body2")
       //  Abort()}
       
-      if (init =~= code"uncheckedNullValue[Var[$t]]")
-        code"val flatVar = Var(uncheckedNullValue[$t]); $body3"
-      else code"val flatVar = Var($init.!); $body3"
+      if (init =~= code"uncheckedNullValue[MutVar[$t]]")
+        code"val flatVar = MutVar(uncheckedNullValue[$t]); $body3"
+      else code"val flatVar = MutVar($init.!); $body3"
       
   }
       

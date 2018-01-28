@@ -177,7 +177,7 @@ class Compiler extends Optimizer {
       case code"flatMap[$ta,$tb]($s)(a => ${Closure(clos)})" =>
         //println("CLOS: "+clos)
         import clos._
-        import squid.lib.Var
+        import squid.lib.MutVar
         
         println(fun)
         //val fun2 = fun subs 'a -> Abort()

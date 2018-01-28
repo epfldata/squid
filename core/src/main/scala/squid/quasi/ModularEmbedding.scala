@@ -53,10 +53,10 @@ class ModularEmbedding[U <: scala.reflect.api.Universe, B <: Base](val uni: U, v
   def dbg(x: => Any, xs: Any*) = debug((x +: xs) mkString " ")
   
   lazy val (varModCls, varTypSym) = {
-    encodedTypeSymbol(typeOf[squid.lib.Var.type].typeSymbol.asType) ->
-      loadTypSymbol(encodedTypeSymbol(typeOf[squid.lib.Var[_]].typeSymbol.asType))
+    encodedTypeSymbol(typeOf[squid.lib.MutVar.type].typeSymbol.asType) ->
+      loadTypSymbol(encodedTypeSymbol(typeOf[squid.lib.MutVar[_]].typeSymbol.asType))
   }
-  lazy val squidLibVar = staticModule("squid.lib.Var")
+  lazy val squidLibVar = staticModule("squid.lib.MutVar")
   
   lazy val squidLib = staticModule("squid.lib.package")
   lazy val squidLibTyp = staticModuleType("squid.lib.package")

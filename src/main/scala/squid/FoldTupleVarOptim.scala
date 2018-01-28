@@ -18,7 +18,7 @@ import utils._
 import ir._
 import utils.Debug.show
 
-import squid.lib.Var
+import squid.lib.MutVar
 
 /** Note: a more up-to-date version, FoldTupleVarOptimNew, uses first-class variable symbols to do the variable falttening
   * more elegantly (and more efficiently). */
@@ -87,13 +87,13 @@ trait FoldTupleVarOptim extends FixPointRuleBasedTransformer with TopDownTransfo
     
     //case ir"val $tup: Var[($ta, $tb)] = Var($init); $body: $t" => // FIXME: binding `x @ ir...`
     
-    case code"val tup = Var($init: ($ta, $tb)); $body: $t" =>
+    case code"val tup = MutVar($init: ($ta, $tb)); $body: $t" =>
       
-      val a = code"?a: Var[$ta]"
-      val b = code"?b: Var[$tb]"
+      val a = code"?a: MutVar[$ta]"
+      val b = code"?b: MutVar[$tb]"
       
-      val tup = code"?tup: Var[($ta,$tb)]"
-      type Tup = Var[(ta.Typ,tb.Typ)]
+      val tup = code"?tup: MutVar[($ta,$tb)]"
+      type Tup = MutVar[(ta.Typ,tb.Typ)]
       
       //val (a,b) = (ir"?a: Var[$ta]", ir"?b: Var[$tb]") // FIXME rewrite brittleness
       
@@ -168,8 +168,8 @@ trait FoldTupleVarOptim extends FixPointRuleBasedTransformer with TopDownTransfo
       */
       
       val res =
-      initComps map (ab => code" val a = Var(${ab._1}); val b = Var(${ab._2}); $newwBody2 ") getOrElse
-         code" val init = $init; val a = Var(init._1);  val b = Var(init._2);  $newwBody2 "
+      initComps map (ab => code" val a = MutVar(${ab._1}); val b = MutVar(${ab._2}); $newwBody2 ") getOrElse
+         code" val init = $init; val a = MutVar(init._1);  val b = MutVar(init._2);  $newwBody2 "
       
       //show(res rep)
       //show(res)
