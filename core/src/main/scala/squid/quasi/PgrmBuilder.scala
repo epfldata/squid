@@ -26,7 +26,8 @@ class PgrmBuilder[Ctx <: Context](val c: Ctx)(unapply: Boolean) { // TODO simpli
     def this(tree: c.Tree, vararg: Boolean) = this(tree, vararg, tree match {
       case Bind(name: Name, _) => Some(name)
       case Ident(name: Name)   => Some(name)
-      case q"$_.${name: Name}"   => Some(name) // equivalent to `Select(_, name: TermName)`
+      //case q"$_.${name: Name}"   => Some(name) // equivalent to `Select(_, name: TermName)`
+      // ^ disabled this as it was confusing in error messages such as "illegal hole position for ..."
       case _                       => None
     })
   }

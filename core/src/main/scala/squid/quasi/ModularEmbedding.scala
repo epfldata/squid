@@ -483,8 +483,7 @@ class ModularEmbedding[U <: scala.reflect.api.Universe, B <: Base](val uni: U, v
   
   /** Note: we currently use `moduleType` for types that reside in packages and for objects used as modules...
     * Note: widening may change Int(0) to Int (wanted) but also make 'scala' (as in 'scala.Int') TypeRef-matchable !! */
-  def liftTypeUncached(tp: Type, wide: Boolean): TypeRep = typeCache.getOrElseUpdate(tp,
-  {
+  def liftTypeUncached(tp: Type, wide: Boolean): TypeRep = {
   lazy val isExtracted = (ExtractedType unapply tp isDefined)
   tp match {
     //case _ if tp =:= Any =>
@@ -562,7 +561,7 @@ class ModularEmbedding[U <: scala.reflect.api.Universe, B <: Base](val uni: U, v
         unknownTypefallBack(tp)
       } else liftType(tp.widen, true)
       
-  }})
+  }}
   
   def liftStaticModule(tp: Type): Rep = tp.dealias match {
     case ThisType(sym) =>
