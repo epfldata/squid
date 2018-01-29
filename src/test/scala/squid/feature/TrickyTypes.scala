@@ -63,7 +63,7 @@ class TrickyTypes extends MyFunSuite {
       k => { b => b }
     }
     
-    eqt(c1.typ, codeTypeOf[Int => Int => Bool => Bool])
+    eqt(c1.Typ, codeTypeOf[Int => Int => Bool => Bool])
     
   }
   
@@ -73,6 +73,13 @@ class TrickyTypes extends MyFunSuite {
   test("Any method called on type parameter") {
     foo(code"42") eqt code"${code"42:Any"} == 0"
     foo(code"42") neqt code"${code"42"} == 0" // Note: Int.== and Any.== have two different method symbols!!
+  }
+  
+  test("Type evidence on non-singleton type") {
+    
+    eqt(foo(code"123").Typ : CodeType[_ <: Bool], codeTypeOf[Bool])
+    // ^ note that this does not yield a `CodeType[Bool]` because of declaration-site variance of Code[_,C] types
+    
   }
   
   

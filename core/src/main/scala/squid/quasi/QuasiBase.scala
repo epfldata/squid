@@ -129,14 +129,6 @@ self: Base =>
   // Unsealed to allow for abstract constructs to inherit from IR, for convenience.
   abstract class Code[+T, -C] protected() extends AnyCode[T] {
     
-    // Note: cannot put this in `IntermediateIROps`, because of the path-dependent type
-    def Typ(implicit ev: self.type <:< (self.type with IntermediateBase)): CodeType[Typ] = {
-      // Ninja path-dependent typing (relies on squid.utils.typing)
-      val s: self.type with IntermediateBase = self
-      val r: s.Rep = substBounded[Base,self.type,s.type,({type λ[X<:Base] = X#Rep})#λ](rep)
-      s.`internal CodeType`(s.repType(r))
-    }
-    
     // type Ctx >: C
     /* ^ this is the 'type-correct' definition: given an x:IR[T,C], we cannot really conclude that the "real" context of
      * x is C, since because of contravariance it *could be* any type less specific than C, such as Any. */

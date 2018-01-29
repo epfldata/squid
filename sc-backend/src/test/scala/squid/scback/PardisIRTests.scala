@@ -150,9 +150,9 @@ class PardisIRTests extends PardisTestSuite {
     
     val ABI = SC.typeArrayBuffer(SC.typeInt)
     
-    assert(code{ new ArrayBuffer[Int] }.typ.rep == ABI)
+    assert(code{ new ArrayBuffer[Int] }.trep == ABI)
     
-    assert(code{ val n1 = 1.toDouble.toInt; ArrayBuffer(n1) }.typ.rep == ABI)
+    assert(code{ val n1 = 1.toDouble.toInt; ArrayBuffer(n1) }.trep == ABI)
     
     assert(stmts(code{ val n1 = 1.toDouble }).head.typeT == typeRepOf[Double])
     

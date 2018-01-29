@@ -54,10 +54,42 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
     def typ = repType(self)
   }
   
-  implicit class IntermediateCodeOps[Typ,Ctx](private val self: Code[Typ,Ctx]) {
-    /* Note: making it `def typ: CodeType[Typ]` woule probably be unsound! */
-    def typ: CodeType[_ <: Typ] = `internal CodeType`(trep)
+  /* This used to be an implicit class, as in:
+         implicit class IntermediateCodeOps[Typ,Ctx](private val self: Code[Typ,Ctx])
+     but we had a problem with the `Typ` function depending on `self`, and making `self` public would expose it as
+     an extension method to all code values! 
+     Alternatives don't work either (for obscure reasons Scala fails to apply the implicit class), such as:
+         implicit class IntermediateCodeOps[Typ,Ctx,S<:Code[Typ,Ctx]](private val self: S)
+         implicit class IntermediateCodeOps[Typ,Ctx,S<:Code[Typ,Ctx] with Singleton](private val self: S)
+  */
+  implicit def IntermediateCodeOps[Typ,Ctx](c: Code[Typ,Ctx]): IntermediateCodeOps[Typ,Ctx,c.type] =
+    new IntermediateCodeOps[Typ,Ctx,c.type](c)
+  
+  class IntermediateCodeOps[Typ,Ctx,S<:Code[Typ,Ctx]](self: S) {
+    
     def trep = repType(self.rep)
+    
+    @deprecated("Use .Typ instead", "0.3.0")
+    def typ: CodeType[S#Typ] = `internal CodeType`(trep)
+    
+    /* Note: making it `def Typ: CodeType[Typ]` would surely be unsound! */
+    /** Same as `typ`, but with a capital letter for consistency with the `Typ` type member. */
+    def Typ: CodeType[S#Typ] = `internal CodeType`(trep)
+    /* ^ this used to be declared in class Code[+T,-C], using an ugly subtype evidence, as:
+      // Note: cannot put this in `IntermediateIROps`, because of the path-dependent type
+      def Typ(implicit ev: self.type <:< (self.type with IntermediateBase)): CodeType[Typ] = {
+        // Ninja path-dependent typing (relies on squid.utils.typing)
+        val s: self.type with IntermediateBase = self
+        val r: s.Rep = substBounded[Base,self.type,s.type,({type λ[X<:Base] = X#Rep})#λ](rep)
+        s.`internal CodeType`(s.repType(r))
+      } */
+    
+    //def Typ: CodeType[self.Typ] = `internal CodeType`(trep)
+    /* ^ this definition is more elegant, but makes Scala infer idiotic types that are not reduced enough, such as:
+           "inferred existential type TypeChangingCodeTransformer.this.base.CodeType[_582.self.Typ] 
+             forSome { val _582: TypeChangingCodeTransformer.this.base.IntermediateCodeOps[T,C]{val self: code.type} }, 
+             which cannot be expressed by wildcards" */
+    
     
     import scala.language.experimental.macros
     def subs[T1,C1](s: => (Symbol, Code[T1,C1])): Code[Typ,_ >: Ctx] = macro quasi.QuasiMacros.subsImpl[T1,C1]

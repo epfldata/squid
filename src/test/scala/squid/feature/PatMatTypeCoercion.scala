@@ -39,7 +39,7 @@ class PatMatTypeCoercion extends MyFunSuite {
     }
     """)
     
-    eqt(foo(code"List(1)").typ, codeTypeOf[Int])
+    eqt(foo(code"List(1)").Typ, codeTypeOf[Int])
     
   }
   

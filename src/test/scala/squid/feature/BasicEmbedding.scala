@@ -160,7 +160,7 @@ class BasicEmbedding extends MyFunSuite {
       case code"Stack[$ta]($n).map($f: ta => $tb).isEmpty" =>
         eqt(ta.rep, typeRepOf[Int])
         eqt(tb.rep, typeRepOf[Int])
-        eqt(f.typ.rep, typeRepOf[Int => Int])
+        eqt(f.Typ.rep, typeRepOf[Int => Int])
     }
     
   }
@@ -189,7 +189,7 @@ class BasicEmbedding extends MyFunSuite {
           Scala does _not_ prefix ClassTag, which leads to an incompatible scrutinee type warning if this import is not made... */
         ev match {
           case code"scala.reflect.ClassTag($cls:Class[String])" => // Note: ClassTag[String] not necessary...
-            eqt(cls.typ, codeTypeOf[Class[String]])
+            eqt(cls.Typ, codeTypeOf[Class[String]])
             same(cls.run, classOf[String])
         }
         
