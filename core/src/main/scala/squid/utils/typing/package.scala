@@ -33,4 +33,16 @@ package object typing {
   implicit def singletonIsSingleton[A<:Singleton,B](implicit ev: B <:< A): A =:= B = 
     =:=.tpEquals[A].asInstanceOf[A =:= B]
   
+  
+  // Helpers for first-class-polymorphism:
+  
+  trait Poly1[F[_]] { def apply[A](x:F[A]):F[A] }
+  object Poly1 { def identity[F[_]] = new Poly1[F] { def apply[T](x:F[T]):F[T]=x } }
+  
+  trait Poly2[F[_,_]] { def apply[A,B](x:F[A,B]):F[A,B] }
+  object Poly2 { def identity[F[_,_]] = new Poly2[F] { def apply[A,B](x:F[A,B]):F[A,B]=x } }
+  
+  type Poly[F[_]] = Poly1[F]
+  val Poly = Poly1
+  
 }
