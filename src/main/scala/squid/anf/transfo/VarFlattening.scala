@@ -40,7 +40,11 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
     case code"var $v: Unit = (); $body: $t" => // Note that Unit <: AnyVal and cannot take value `null`
       //body subs 'v -> ir"()"  // No, wrong type! (Error:(22, 23) Cannot substitute free variable `v: squid.lib.Var[Unit]` with term of type `Unit`)
       //body rewrite { case code"$$v.!" => code"()" case code"$$v:=(())" => code"()" } subs 'v -> Abort()
-      v.substitute[t.Typ,v.OuterCtx](body rewrite { case code"$$v.!" => code"()" case code"$$v:=(())" => code"()" }, Abort())
+      //v.substitute[t.Typ,v.OuterCtx](body rewrite { case code"$$v.!" => code"()" case code"$$v:=(())" => code"()" }, Abort())
+      val b = body rewrite { case code"$$v.!" => code"()" case code"$$v:=(())" => code"()" } 
+      b(v) ~> Abort() // the macro seems to need `b` to be let-bound; this did not work:
+      //body.rewrite { case code"$$v.!" => code"()" case code"$$v:=(())" => code"()" }(v) ~> Abort()
+      // ^ Term of context '_$6' does not seem to have free variable 'v' to substitute.
     
     
     // Removal of Var[Option[_]]
@@ -66,7 +70,8 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
           //println("RW1 "+sbody)
           //println("RW2 "+sbody2)
           //sbody2 subs 'x -> Abort()
-          x.substitute[bt.Typ,x.OuterCtx & isDefined.Ctx & optVal.Ctx](sbody2, Abort())
+          //x.substitute[bt.Typ,x.OuterCtx & isDefined.Ctx & optVal.Ctx](sbody2, Abort())
+          sbody2(x) ~> Abort()  // (this one did not compile when ~> macro had return context of Bottom...)
         case code"$$v := None" => code"$isDefined := false"
           
         case code"$$v := Some($x:$$t)" => code"$optVal := $x; $isDefined := true"
@@ -82,7 +87,8 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
       //println("RW "+body2)
       
       //val body3 = body2 subs 'v -> Abort()
-      val body3 = v.substitute[bt.Typ, v.OuterCtx & isDefined.Ctx & optVal.Ctx](body2, Abort())
+      //val body3 = v.substitute[bt.Typ, v.OuterCtx & isDefined.Ctx & optVal.Ctx](body2, Abort())
+      val body3 = body2(v) ~> Abort()
       //val body3 = body2 subs 'v -> {
       //  println(s"REMAINING 'v' IN $body2")
       //  Abort()}
@@ -121,7 +127,8 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
       }
       
       //val body3 = body2 subs 'v -> Abort()
-      val body3 = v.substitute[bt.Typ,v.OuterCtx with lhs.Ctx with rhs.Ctx](body2, Abort())
+      //val body3 = v.substitute[bt.Typ,v.OuterCtx with lhs.Ctx with rhs.Ctx](body2, Abort())
+      val body3 = body2(v) ~> Abort()
       
       if (init =~= code"uncheckedNullValue[($ta,$tb)]")
         code" val lhs = MutVar(uncheckedNullValue[$ta]);  val rhs = MutVar(uncheckedNullValue[$tb]);  $body3 "
@@ -144,7 +151,8 @@ trait VarFlattening extends SimpleRuleBasedTransformer { self =>
       }
       
       //val body3 = body2 subs 'v -> Abort()
-      val body3 = v.substitute[bt.Typ,v.OuterCtx with flatVar.Ctx](body2, Abort())
+      //val body3 = v.substitute[bt.Typ,v.OuterCtx with flatVar.Ctx](body2, Abort())
+      val body3 = body2(v) ~> Abort()
       //val body3 = body2 subs 'v -> {
       //  System.err.println(s"Variable v=$v still in $body2")
       //  Abort()}

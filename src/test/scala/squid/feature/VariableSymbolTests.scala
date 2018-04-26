@@ -37,6 +37,8 @@ class VariableSymbolTests extends MyFunSuite {
       assertCompiles("p0:Code[Int,v.Ctx]")
       
       v.substitute(p0, code"readInt") eqt code"readInt + readInt"
+      p0(v) ~> code"readInt" eqt code"readInt + readInt"
+      
     }
     
     // Local object
@@ -115,6 +117,9 @@ class VariableSymbolTests extends MyFunSuite {
     
     // Notice the need for explicit type arguments here, as Scala's type inference is limited with intersections:
     v.substitute[Int, w.Ctx](p0, code"readInt") eqt code"readInt + $w"
+    
+    // Now there is a macro to fill in this gaps in Scala type inference:
+    p0(v) ~> code"readInt" eqt code"readInt + $w"
     
   }
   
@@ -335,7 +340,8 @@ class VariableSymbolTests extends MyFunSuite {
     p rewrite {
       case code"val $v: $vt = $init; $body:$bt" =>
         val w = Variable[MutVar[vt.Typ]]()
-        val newBody = v.substitute[bt.Typ, v.OuterCtx & w.Ctx](body, code"$w!")
+        val newBody = body(v) ~> code"$w!"
+        newBody eqt v.substitute[bt.Typ, v.OuterCtx & w.Ctx](body, code"$w!")
         assertDoesNotCompile(""" code"val $w = $init; $newBody" """) // Error:(300, 10) Embedding Error: Quoted expression does not type check: type mismatch; found: vt; required: squid.lib.MutVar[vt.Typ]
         code"val $w = MutVar($init); $newBody"
     } eqt code"var a = 1; var b = 2; var c = 3; a + b + c"
@@ -405,6 +411,26 @@ class VariableSymbolTests extends MyFunSuite {
     var p3: Code[Int, Any] = null
     p3 = vfield2.substitute(p2, code"readInt")
     p3 eqt code"readInt + readInt"
+    
+  }
+  
+  
+  test("Substitution Macro Helper") {
+    
+    def foo[C](v: Variable[Int])(q: Code[String, C & v.Ctx]) = {
+      q(v) ~> code"readInt" alsoApply (_ eqt v.substitute(q,code"readInt"))
+    }
+    def bar[C](v: Variable[Int], w: Variable[Int])(q: Code[String, C & v.Ctx & w.Ctx]) = {
+      assertDoesNotCompile(""" v.substitute(q,code"readInt") """)
+      // ^ Note that this one does not compile; which is why the `(_)~>_` macro is useful
+      q(v) ~> code"readInt" alsoApply (_ eqt v.substitute[String,C & w.Ctx](q,code"readInt"))
+    }
+    
+    val v = Variable[Int]()
+    foo(v)(code"'lol.toString * $v") eqt code"'lol.toString * readInt"
+    
+    val w = Variable[Int]()
+    bar(v,w)(code"'lol.toString * $v + $w") eqt code"'lol.toString * readInt + $w"
     
   }
   

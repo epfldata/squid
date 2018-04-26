@@ -522,6 +522,44 @@ class QuasiMacros(val c: whitebox.Context) {
   }
   
   
+  def varSubsImpl[C: c.WeakTypeTag](term: c.Tree) = {
+    import c.universe._
+    
+    val (base -> quoted, fv, typ -> ctx, termCtx) = c.macroApplication match {
+      case q"$b.IntermediateCodeOps[$t,$c]($q).apply[$_]($v)~>[$tc]($_)" => (b -> q, v, t.tpe -> c.tpe, tc.tpe)
+      case q"$b.IntermediateCodeOps[$t,$c]($q).apply[$_]($v).dbg_~>[$tc]($_)" => (b -> q, v, t.tpe -> c.tpe, tc.tpe)
+    }
+    
+    val C = termCtx // weakTypeOf[C] is not useful as it returns a tag of C as viewed from the definition of ~> !!
+    
+    if (!fv.symbol.asTerm.isStable) c.abort(fv.pos, s"Cannot substitute variable '$fv', not a stable path.")
+    
+    object QE extends QuasiEmbedder[c.type](c)
+    val fvCtx = QE.variableContext(fv)
+    
+    val (bases, vars) = bases_variables(ctx)
+    
+    val outputCtx = {
+      val (cbases, cvars) = bases_variables(C)
+      val newBases = bases collect { case b if !(b =:= fvCtx) => b }
+      if (newBases.size === bases.size)
+        c.abort(c.enclosingPosition, s"Term of context '$ctx' does not seem to have free variable '$fv' to substitute.")
+      debug(s"$bases ~> $newBases")
+      mkContext(cbases ::: newBases, vars ::: cvars)
+    }
+    
+    debug(s"Output context: $outputCtx")
+    
+    val sanitizedTerm =
+      if (debug.debugOptionEnabled) term else untypeTreeShape(c.untypecheck(term))
+    
+    val res = q"${c.untypecheck(fv)}.substitute[$typ,$outputCtx]($quoted,$sanitizedTerm)"
+    
+    debug("Generated: "+showCode(res))
+    
+    res
+  }
+  
   def subsImpl[T: c.WeakTypeTag, C: c.WeakTypeTag](s: c.Tree) = {
     import c.universe._
     
@@ -555,7 +593,7 @@ class QuasiMacros(val c: whitebox.Context) {
     
     debug(s"Output context: $outputCtx")
     
-    val sanitizedTerm = 
+    val sanitizedTerm =
       if (debug.debugOptionEnabled) term else untypeTreeShape(c.untypecheck(term))
       //term
       //c.untypecheck(term)
@@ -565,8 +603,6 @@ class QuasiMacros(val c: whitebox.Context) {
     
     res
   }
-  
-  
   
   
   

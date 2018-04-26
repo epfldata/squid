@@ -144,7 +144,9 @@ class TermRewriting extends MyFunSuite {
     val p1 = p0 rewrite {
       case code"($v:Int)=>$body:$bt" =>
         val w = Variable[Int]()
-        code"($w:Int) => ${v.substitute[bt.Typ,v.OuterCtx with w.Ctx](body, w.toCode)}"
+        code"($w:Int) => ${
+          body(v) ~> w.toCode alsoApply (_ eqt v.substitute[bt.Typ,v.OuterCtx with w.Ctx](body, w.toCode))
+        }"
     }
     p1 eqt p0
     

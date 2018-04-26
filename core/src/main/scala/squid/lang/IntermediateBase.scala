@@ -92,8 +92,18 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
     
     
     import scala.language.experimental.macros
+    
     def subs[T1,C1](s: => (Symbol, Code[T1,C1])): Code[Typ,_ >: Ctx] = macro quasi.QuasiMacros.subsImpl[T1,C1]
+    // ^ Note: why _ >: Ctx ? What if C1 is not Any?
     @MacroSetting(debug = true) def dbg_subs[T1,C1](s: => (Symbol, Code[T1,C1])): Code[Typ,_ >: Ctx] = macro quasi.QuasiMacros.subsImpl[T1,C1]
+    
+    /** Helper macro to palliate limitations of Scala's type inference when using Variable#substitute: */
+    def apply[T](v: Variable[T]) = new {
+      // Note: amazingly, using `squid.utils.Bottom` instead of `Nothing` sometimes does not work!
+      // Using some existential (even unbounded) does not always work either!
+      def ~> [C] (term: Code[T,C]): Code[Typ,Nothing /*_ >: Ctx & C*/] = macro quasi.QuasiMacros.varSubsImpl[C]
+      @MacroSetting(debug = true) def dbg_~> [C] (term: Code[T,C]): Code[Typ,Nothing /*_ >: Ctx & C*/] = macro quasi.QuasiMacros.varSubsImpl[C]
+    }
     
     def reinterpretIn(newBase: Base): newBase.Code[Typ,Ctx] =
       newBase.`internal Code`(newBase.wrapConstruct( reinterpret(self.rep, newBase)(DefaultExtrudedHandler) ))
