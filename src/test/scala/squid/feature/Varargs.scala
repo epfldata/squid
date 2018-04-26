@@ -169,6 +169,8 @@ class Varargs extends MyFunSuite {
     } and {
       case code"List[Int]($xs*)" => assert(xs == seq)
     } and {
+      case code"List[$t]($xs*)" => assert(xs == seq)
+    } and {
       case code"List($$(seq: _*))" =>
     }
     

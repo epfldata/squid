@@ -19,7 +19,8 @@ package object squid {
     ??? // genies don't exist :-(
   }
   
-  /** To test for ad-hoc warnings printed on stderr. */
+  /** To test for ad-hoc warnings printed on stderr.
+    * Note: not ideal, as it can result in nondeterministic test failures when tests are ran in parallel by SBT. */
   def captureStdErr(thunk: => Unit): String = {
     val oldStrErr = System.err
     val newStdErr = new java.io.ByteArrayOutputStream()
