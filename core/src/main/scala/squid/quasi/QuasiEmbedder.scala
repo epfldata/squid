@@ -70,10 +70,13 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
            c.internal.typeRef(singt,VariableCtxSym,Nil);
            singt.member(TermName("Ctx")).asType.toType */
   }
+  /** For some reason, in quasiquote macros some argument trees are not given their proper singleton type; this is an
+    * ad-hoc trick to retrieve that singleton type. */
   def singletonTypeOf(tree: Tree): Option[Type] = tree.tpe match {
     case SingleType(_,_) => Some(tree.tpe)
     case _ => tree |>? {
       case Ident(name) => val id = Ident(name); c.typecheck(q"$id:$id.type").tpe
+      case Select(pref,name) => internal.singleType(pref.tpe,tree.symbol)
     }
   }
   

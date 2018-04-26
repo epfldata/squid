@@ -376,4 +376,37 @@ class VariableSymbolTests extends MyFunSuite {
   }
   
   
+  val vfield = new Variable[Int]
+  
+  test("Variable Symbol Fields") {
+    
+    var p0: Code[Int, vfield.Ctx] = null
+    p0 = code"$vfield + $vfield"
+    
+    var p1: Code[Int, Any] = null
+    p1 = vfield.substitute(p0, code"readInt")
+    p1 eqt code"readInt + readInt"
+    
+    object Test {
+      val vfield2 = new Variable[Int]
+      
+      var p0: Code[Int, vfield2.Ctx] = null
+      p0 = code"$vfield2 + $vfield2"
+      
+      var p1: Code[Int, Any] = null
+      p1 = vfield2.substitute(p0, code"readInt")
+      p1 eqt code"readInt + readInt"
+    }
+    import Test.vfield2
+    
+    var p2: Code[Int, vfield2.Ctx] = null
+    p2 = code"$vfield2 + $vfield2"
+    
+    var p3: Code[Int, Any] = null
+    p3 = vfield2.substitute(p2, code"readInt")
+    p3 eqt code"readInt + readInt"
+    
+  }
+  
+  
 }
