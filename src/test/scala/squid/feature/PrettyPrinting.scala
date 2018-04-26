@@ -91,7 +91,7 @@ class PrettyPrinting extends MyFunSuite {
   
   test("First-Class Variable Symbols") {
     
-    val v = new Variable[Int]
+    val v = Variable[Int]()
     
     // These are potentially tricky cases demonstrating shadowing of a symbol
     

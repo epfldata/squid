@@ -176,11 +176,10 @@ self: Base =>
   
   type SomeCode = AnyCode[_] // shortcut; avoids showing messy existentials
   
-  class Variable[T:CodeType](name: String = "x") extends AnyCode[T] with EquivBasedCodeEquals { vari =>
+  class Variable[T:CodeType] protected(protected val bound: BoundVal) extends AnyCode[T] with EquivBasedCodeEquals { vari =>
     type OuterCtx
     type Typ = T
     def withUnderlyingTyp = toCode
-    protected val bound: BoundVal = bindVal(name, typeRepOf[Typ], Nil) // TODO annot?
     def `internal bound` = bound
     def rep: Rep = readVal(bound)
     def toCode: Code[Typ,Ctx] = Code(rep)
@@ -196,11 +195,13 @@ self: Base =>
     override def toString: String = s"Variable[${typeRepOf[T]}](${showRep(rep)})"
   }
   object Variable {
-    def apply[T](bound: BoundVal)(implicit ev: self.type <:< self.type with IntermediateBase): Variable[T] = {
+    def apply[T:CodeType](name: String = "x") = new Variable[T](bindVal(name, typeRepOf[T], Nil)) // TODO annot?
+    def fromBound[T](bound: BoundVal)(implicit ev: self.type <:< self.type with IntermediateBase): Variable[T] = {
       val s: self.type with IntermediateBase = self
       val b: s.BoundVal = substBounded[Base,self.type,s.type,({type λ[X<:Base] = X#BoundVal})#λ](bound)
       s.mkVariable(b)
     }
+    def mk[T](bound: BoundVal, typ: TypeRep): Variable[T] = new Variable[T](bound)(CodeType(typ))
     def unapply[T](ir: Variable[T]): Some[BoundVal] = Some(ir.bound)
   }
   
@@ -238,6 +239,7 @@ self: Base =>
     type Code[+T,-C] = self.Code[T,C]
     type CodeType[T] = self.CodeType[T]
     type Variable[T] = self.Variable[T]
+    val Variable = self.Variable
     
     type OpenCode[+T] = self.OpenCode[T]
     type ClosedCode[+T] = self.ClosedCode[T]

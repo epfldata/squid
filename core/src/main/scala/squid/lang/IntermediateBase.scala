@@ -132,9 +132,7 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
     }, rep, extrudedHandle)
   
   
-  def mkVariable[T](r: BoundVal): Variable[T] =
-    // Note: the reason we make the class hierarchy so awkward is so users can write `new Vairable[Int]("someName")`
-    new Variable[T]()(CodeType(boundValType(r))) { override protected val bound = r }
+  def mkVariable[T](r: BoundVal): Variable[T] = Variable.mk[T](r, boundValType(r))
   
 }
 

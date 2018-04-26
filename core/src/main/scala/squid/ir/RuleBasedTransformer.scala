@@ -71,7 +71,7 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
     * involved in the context of quoted code.
     * `variableSymbols` saves the association from fresh names to old symbols, and `putBackVariableSymbols`
     * re-associates val-bindings with these symbols (presumably after they have been lost due to c.untypecheck).
-    * Currently we only do this for val-bindings of the shape `val v = new Variable[T]` */
+    * Currently we only do this for val-bindings of the shape `val v = Variable[T]()` */
   def putBackVariableSymbols(pgrm: Tree) = TreeOps(pgrm).transform {
     case v @ ValDef(mods, name, tpt, rhs) if variableSymbols isDefinedAt name =>
         val sym = variableSymbols(name)
@@ -272,7 +272,7 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
           // I tried doing this for general value bindings (with conditions such as
           //   `if rhs.nonEmpty && v.symbol.isTerm && v.symbol.asTerm.isStable && v.symbol.typeSignature <:< AnyRef`),
           // but it usually does not work... even if we manually type-check the tree and abort on type checking errors
-          case v @ ValDef(mods, name, tpt, rhs @ q"new $base.Variable[$typ]($nam)($typev)") => // TODO check base
+          case v @ ValDef(mods, name, tpt, rhs @ q"$base.Variable.apply[$typ]($nam)($typev)") => // TODO check base
             val fn = c.freshName(name)
             variableSymbols += (fn -> v.symbol.asTerm)
             ValDef(mods, fn, tpt, rhs)
@@ -368,7 +368,7 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
               //  - or it is used as a Variable (cf: extracted binders syntax `val $a = ...` or `($a:T) => ...`)
               pat.tpe.baseType(VariableSymbol.value) match { // here we distinguish in which case we are, based on expected pattern type
                 case NoType => patMat(q"__b__.`internal Code`(__extr__.$mapName($name))", pat, acc)
-                case TypeRef(_,_,_) => patMat(q"__b__.Variable(__b__.extractVal(__extr__.$mapName($name)).get).asInstanceOf[${pat.tpe}]", pat, acc)
+                case TypeRef(_,_,_) => patMat(q"__b__.mkVariable(__b__.extractVal(__extr__.$mapName($name)).get).asInstanceOf[${pat.tpe}]", pat, acc)
               }
               
             case ((pat, (mapName @ TermName("_2"), name)), acc) =>

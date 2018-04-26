@@ -809,6 +809,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
         val extrTuple = tq"(..$extrTyps)"
         //debug("Type to extract: "+extrTuple)
         
+        // Note: this part of the code is especially coupled with the rewriteImpl macro, which can generate much confusion
         val tupleConv = holes.map {
           case Left(name) if splicedHoles(name) =>
             val (scp, tp) = termHoleInfoProcessed(name)
@@ -817,7 +818,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
             val (scp, tp) = termHoleInfoProcessed(name)
             val tmp = TermName(c.freshName())
             q"""val $tmp = _maps_._1(${name.toString})  // the `rewrite` macro looks for this pattern and duplicating it would break it!
-              $Base.Variable[$tp]($Base.extractVal($tmp)
+              $Base.mkVariable[$tp]($Base.extractVal($tmp)
               .getOrElse(throw new _root_.java.lang.AssertionError("Expected a variable symbol, got "+$tmp)))
               .asInstanceOf[${extractedBinders(name)}]"""
           case Left(name) =>

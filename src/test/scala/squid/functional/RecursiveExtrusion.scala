@@ -31,7 +31,7 @@ class RecursiveExtrusion extends MyFunSuite {
           def apply[S,D](cde: Code[S, D with C with v.Ctx]) =  // Note: Scala fails to see the override if we make it `D & C & v.Ctx`
           //code"val $v = $init; ${ k[cde.Typ,D&v.Ctx](cde.ofTyp)} : ${cde.Typ}"
           // ^ FIXME needs fix to substitution under same binder because of v.substitute call below
-          { val w = new Variable[Int]
+          { val w = Variable[Int]()
             code"val $w = $init; ${
               v.substitute[cde.Typ, D & v.Ctx & C & w.Ctx](k[cde.Typ, D & v.Ctx](cde.withUnderlyingTyp), w.toCode)
             } : ${cde.Typ}" }

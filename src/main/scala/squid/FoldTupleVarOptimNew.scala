@@ -53,8 +53,8 @@ trait FoldTupleVarOptimNew extends FixPointRuleBasedTransformer with TopDownTran
     
     case code"val $tup = MutVar($init: ($ta, $tb)); $body: $t" =>
       
-      val a = new Variable[MutVar[ta.Typ]]
-      val b = new Variable[MutVar[tb.Typ]]
+      val a = Variable[MutVar[ta.Typ]]()
+      val b = Variable[MutVar[tb.Typ]]()
       
       val initComps = tuple2Components(init)
       
