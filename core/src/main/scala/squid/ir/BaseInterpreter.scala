@@ -27,7 +27,7 @@ import scala.reflect.runtime.ScalaReflectSurgeon
 /**
   * TODO: a smarter version that creates the invokers and returns a _runner_ that can be ran more efficiently.
   */
-class BaseInterpreter extends Base with RuntimeSymbols with TraceDebug {
+class BaseInterpreter extends Base with CrossStageEnabled with RuntimeSymbols with TraceDebug {
   import BaseInterpreter._
   
   type TypSymbol = ScalaTypeSymbol
@@ -200,7 +200,8 @@ class BaseInterpreter extends Base with RuntimeSymbols with TraceDebug {
     
   }
   
-  
+  def crossStage(value: Any, trep: TypeRep): Rep = value
+  def extractCrossStage(r: Rep): Option[Any] = None
   
   
   def uninterpretedType[A: sru.TypeTag]: TypeRep = () => sru.typeOf[A].typeSymbol.asType

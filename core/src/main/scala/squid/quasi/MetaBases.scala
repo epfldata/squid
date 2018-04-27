@@ -38,7 +38,7 @@ trait MetaBases {
     * are stored in the `symbols` mutable buffer.
     * Note: these are let-bound but not cached – caching is assumed to be performed by the caller (eg: ModularEmbedding).
     * @param baseType if defined, will be used to find potential static field accesses to the type/method symbols */
-  class MirrorBase(Base: Tree, baseType: Option[Type] = None) extends Base {
+  class MirrorBase(val Base: Tree, baseType: Option[Type] = None) extends Base {
     /* TODO: more clever let-binding so defs used once won't be bound? -- that would require changing `type Rep = Tree` to something like `type Rep = () => Tree` */
     import scala.collection.mutable
     

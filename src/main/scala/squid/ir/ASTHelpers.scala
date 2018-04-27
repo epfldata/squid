@@ -44,7 +44,7 @@ trait ASTHelpers extends Base { self: AST =>
       case MethodApp(self, mtd, targs, argss, tp) =>
         rec(self)
         argss.foreach(_.reps foreach rec)
-      case Hole(_) | SplicedHole(_) | NewObject(_) | StaticModule(_) | Constant(_) | RecordGet(_,_,_) | _: BoundVal =>
+      case Hole(_) | SplicedHole(_) | NewObject(_) | StaticModule(_) | _:ConstantLike | RecordGet(_,_,_) | _: BoundVal =>
     }
   }
   
@@ -142,6 +142,8 @@ trait ASTHelpers extends Base { self: AST =>
       case Typed(h @ Hole(name), typ) => s"$$$name<:${typ |> apply}" + (if (showHoleInfo) 
         (h.originalSymbol map (os => s"(o=$os)") getOrElse "") + (h.matchedSymbol map (m => s"(m=$m)") getOrElse "") else "")
       case Typed(SplicedHole(name), typ) => s"$$$name<:${typ |> apply}*"
+      case CrossStageValue(value,typ) if showReturnTypes => s"<<$value:${typ |> apply}>>"
+      case CrossStageValue(value,typ)                    => s"<<$value>>"
     }
     def apply(typ: TypeRep) =
       typ.toString.replace("squid.ir.ScalaTyping.TypeHole[java.lang.String", "$[")

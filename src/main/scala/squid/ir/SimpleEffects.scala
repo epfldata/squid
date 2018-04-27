@@ -96,7 +96,7 @@ trait SimpleEffects extends AST {
     case bv: BoundVal if !isTransparentType(bv.typ.typeSymbol.asType) => SimpleEffect.Latent
     case Ascribe(r,_) => r|>effectCached
     case Module(r,_,_) => r|>effectCached
-    case Constant(_) | _: BoundVal | StaticModule(_) | NewObject(_) | RecordGet(_,_,_) | _:Hole | _:SplicedHole => SimpleEffect.Pure
+    case _:ConstantLike | _: BoundVal | StaticModule(_) | NewObject(_) | RecordGet(_,_,_) | _:Hole | _:SplicedHole => SimpleEffect.Pure
   }
   
   

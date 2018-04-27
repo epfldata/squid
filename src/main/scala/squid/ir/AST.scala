@@ -119,6 +119,9 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
   
   def transformRep(r: Rep)(pre: Rep => Rep, post: Rep => Rep = identity): Rep = (new RepTransformer(pre,post))(r)
   
+  def transformOtherDef(d: Def)(pre: Rep => Rep, post: Rep => Rep): Def =
+    lastWords(s"Not supported: transformation of $d")
+  
   class RepTransformer(pre: Rep => Rep, post: Rep => Rep) {
     
     //def apply(r: Rep): Rep = r |> pre |> dfn |> apply |> rep |> post
@@ -184,7 +187,9 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
           if ((newSelf eq self) && sameArgs) d else MethodApp(newSelf, mtd, targs, newArgss, tp)
         case v: BoundVal => v
         case Constant(_) => d
-        //case or: OtherRep => or.transform(f) // TODO?
+        case cs: CrossStageValue => cs
+        case d => transformOtherDef(d)(pre,post)
+        //case or: OtherRep => or.transform(f)
       }
       //println(s"Traversed $r, got $ret")
       ret
@@ -270,6 +275,20 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
   }
   
   
+  protected def crossStage(value: Any, trep: TypeRep): Rep = value match {
+    case () | _:Bool | _:Char | _:Short | _:Int  | _:Long  | _:Float  | _:Double | _:String | _:Class[_] => const(value)
+    case _ => CrossStageValue(value, trep) |> rep
+  }
+  def extractCrossStage(r: Rep): Option[Any] = r |> dfn |>? {
+    //case c: ConstantLike => c.value
+    // ^ this causes problems because `extractCrossStage` is used to separate cross-stage values from the rest, and we
+    //   don't want random constants to be interpreted as cross-stage values in this case 
+    case CrossStageValue(v, _) => v
+    case Ascribe(r, _) => extractCrossStage(r)
+  }
+  
+  
+  
   /* --- --- --- Node Definitions --- --- --- */
   
   
@@ -318,7 +337,9 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
   override def hopHole(name: String, typ: TypeRep, yes: List[List[Val]], no: List[Val]) = rep(new HOPHole(name, typ, yes, no))
   class HOPHole(name: String, typ: TypeRep, val yes: List[List[Val]], val no: List[Val]) extends HoleClass(name, typ)()
   
-  case class Constant(value: Any) extends Def {
+  sealed trait ConstantLike { val value: Any }
+  
+  case class Constant(value: Any) extends Def with ConstantLike {
     lazy val typ = value match {
       case () => TypeRep(ruh.Unit)
       //case null => TypeRep(ruh.Null) // Not necessary; Scala creates a constant type Null(null) -- note: that type is a strict subtype of Null...
@@ -329,6 +350,10 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
       case _ => constType(value)
     }
   }
+  
+  // Note: would have probably been simpler to just give Constant a smart constructor/destructor and discriminate based on type...
+  case class CrossStageValue protected(value: Any, typ: TypeRep) extends Def with ConstantLike
+  
   case class Abs(param: BoundVal, body: Rep)(val typ: TypeRep) extends Def {
     def ptyp = param.typ
     //val typ = funType(ptyp, repType(body))
@@ -381,7 +406,7 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
     def children: Iterator[Rep] = this match {
       case a @ Abs(p, b) => dfn(b).children
       case Ascribe(r,t) => Iterator(r)
-      case Hole(_) | SplicedHole(_) | NewObject(_) | Constant(_) | (_:BoundVal) | StaticModule(_) => Iterator.empty
+      case Hole(_) | SplicedHole(_) | NewObject(_) | _:ConstantLike | (_:BoundVal) | StaticModule(_) => Iterator.empty
       case Module(pref, name, typ) => Iterator(pref) //dfn(pref).children
       case RecordGet(se, na, tp) => ???
       case MethodApp(self, mtd, targs, argss, tp) => Iterator(self) ++ argss.flatMap(_.repsIt)
@@ -518,6 +543,8 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
 
         case RecordGet(s0,n0,t0) -> RecordGet(s1,n1,t1) if n0 == n1 =>
           s0 extract s1
+          
+        case (a:ConstantLike) -> (b:ConstantLike) if a.value === b.value => Some(EmptyExtract)
           
         //  // TODO?
         //case (or: OtherRep, r) => or extractRep r

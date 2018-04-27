@@ -31,7 +31,7 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
   def repType(r: Rep): TypeRep
   def boundValType(bv: BoundVal): TypeRep
   
-  val DefaultExtrudedHandler = (bv: BoundVal) => throw ir.IRException(s"Extruded bound variable cannot be reinterpreted: $bv")
+  val DefaultExtrudedHandler = (bv: BoundVal) => throw ir.IRException(s"Extruded (free) variable cannot be reinterpreted: $bv")
   
   def reinterpret(r: Rep, newBase: Base)(extrudedHandle: (BoundVal => newBase.Rep) = DefaultExtrudedHandler): newBase.Rep
   
@@ -42,8 +42,16 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
   @volatile private var showing = false
   protected def isShowing = showing
   override def showRep(r: Rep) = synchronized { if (showing) super.showRep(r) else try { showing = true; showScala(r) } finally { showing = false } }
-  def showScala(r: Rep) = sru.showCode( scalaTree(r, bv => sru.Ident(sru.TermName(boundValUniqueName(bv))), markHoles = true) )
+  def showScala(r: Rep) = {
+    val (newRep,csvals) = separateCrossStageNodes(r)
+    val tree = scalaTree(newRep, bv => sru.Ident(sru.TermName(boundValUniqueName(bv))), markHoles = true)
+    sru.showCode(tree) + (if (csvals.isEmpty) "" else s" % (${csvals mkString ","})")
+  }
   // ^ Note: used to show extruded vals as s"?${bv}?" which looked ugly (as in `?[x:Int]?`)
+  
+  /** If there are any cross-stage values present in `r`, returns them as a list, and a term representing a function
+    * from this list of values to the original `r`; otherwise just return `r`. */
+  def separateCrossStageNodes(r: Rep): Rep -> List[Any]
   
   def boundValUniqueName(bv: BoundVal): String
   
@@ -115,11 +123,23 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
     }
     
     /** Compiles and executes the code at runtime using the Scala ToolBox compiler */
+    // TODO make `compile` a macro that can capture surrounding vars to fill in existing context dependencies?
     def compile(implicit ev: {} <:< Ctx): Typ = {
-      // TODO make `compile` a macro that can capture surrounding vars!!
-      val s = scalaTree(self.rep,hideCtors0 = false) // note ctor
-      System.err.println("Compiling tree: "+sru.showCode(s))
-      IntermediateBase.toolBox.eval(s).asInstanceOf[Typ]
+      val (newRep,csvals) = separateCrossStageNodes(self.rep)
+      val tree = scalaTree(newRep, hideCtors0 = false) // note ctor
+      System.err.println("Compiling tree: "+sru.showCode(tree))
+      val r = IntermediateBase.toolBox.eval(tree)
+      val applied = (r,csvals) match {
+        case (_, Nil) => r
+        case (f:(Any=>Any)@unchecked, a0::Nil) => f(a0)
+        case (f:((Any,Any)=>Any)@unchecked, a0::a1::Nil) => f(a0,a1)
+        case (f:((Any,Any,Any)=>Any)@unchecked, a0::a1::a2::Nil) => f(a0,a1,a2)
+        case (f:((Any,Any,Any,Any)=>Any)@unchecked, a0::a1::a2::a3::Nil) => f(a0,a1,a2,a3)
+        case (f:((Any,Any,Any,Any,Any)=>Any)@unchecked, a0::a1::a2::a3::a4::Nil) => f(a0,a1,a2,a3,a4)
+        case (f:((Any,Any,Any,Any,Any,Any)=>Any)@unchecked, a0::a1::a2::a3::a4::a5::Nil) => f(a0,a1,a2,a3,a4,a5)
+        case _ => lastWords(s"unsupported arity (${csvals.size}) for cross-stage compilation of $tree with $csvals")
+      }
+      applied.asInstanceOf[Typ]
     }
     
     def showScala: String = ibase.showScala(self rep)

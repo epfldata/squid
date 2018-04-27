@@ -21,6 +21,7 @@ import squid.ir.Transformer
 import squid.utils.TraceDebug
 
 import scala.annotation.StaticAnnotation
+import scala.collection.mutable
 
 /** An Inspectable Base is one that supports code pattern-matching, and therefore more generally code transformation */
 /* TODO proper error if user tries to do QQ matching with a Base that does not extend this */
@@ -54,6 +55,21 @@ trait InspectableBase extends IntermediateBase with quasi.QuasiBase with TraceDe
     def unapply[T: CodeType](ir: Code[T,_]): Option[T]
   }
   
+  def separateCrossStageNodes(r: Rep): Rep -> List[Any] = {
+    val extractCS: Rep => Option[Any] = this match {
+      case cse: this.type with CrossStageEnabled => r => cse.extractCrossStage(r.asInstanceOf[cse.Rep])
+      case _ => r => None
+    }
+    var boundCSVals = mutable.Map.empty[Any,BoundVal]
+    val singleStage = bottomUp(r) { r =>
+      extractCS(r).fold(r) { v =>
+        boundCSVals.getOrElseUpdate(v, bindVal("cs", repType(r), Nil)) |> readVal
+      }
+    }
+    val newRep = if (boundCSVals.isEmpty) singleStage else lambda(boundCSVals.toList.unzip._2, singleStage)
+    // ^ TODO curry the function for more than 6 params...
+    newRep -> boundCSVals.toList.unzip._1
+  }
   
   /** The top-level function called by quasiquotes extractors */
   def extractRep(xtor: Rep, xtee: Rep): Option[Extract] = {

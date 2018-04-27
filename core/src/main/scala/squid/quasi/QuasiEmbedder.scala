@@ -22,6 +22,7 @@ import collection.mutable
 import reflect.macros.TypecheckException
 import utils.CollectionUtils._
 import squid.lang.Base
+import squid.lang.CrossStageEnabled
 
 import scala.reflect.macros.whitebox
 
@@ -342,6 +343,10 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
       c.typecheck(q"val $nam: $baseTree.Variable[$typ]{type OuterCtx=${termScope.last}} = ???; $nam:$nam.type").tpe
     }
     
+    def requireCrossStageEnabled = {
+      if (!(baseTree.tpe <:< typeOf[CrossStageEnabled]))
+        throw EmbeddingException(s"Cannot use cross-stage reference: base ${baseTree} does not extend squid.lang.CrossStageEnabled.")
+    }
     
     /** Embeds the type checked code with ModularEmbedding, but via the config.embed function, which may make the embedded
       * program go through an arbitrary base before ending up as Scala mirror code! */
@@ -691,6 +696,16 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               //debug("NOPE",x)
               super.liftTerm(x, parent, expectedType)
           }}
+          
+          override def unknownFeatureFallback(x: Tree, parent: Tree): b.Rep = x match {
+            
+            case id @ Ident(name) =>
+              requireCrossStageEnabled
+              val mb = b.asInstanceOf[(MetaBases{val u: c.universe.type})#MirrorBase with b.type]
+              q"${mb.Base}.crossStage($id, ${liftType(x.tpe).asInstanceOf[Tree]})".asInstanceOf[b.Rep]
+              
+            case _ => super.unknownFeatureFallback(x, parent)
+          }
           
           override def liftTypeUncached(tp: Type, wide: Boolean): b.TypeRep = {
             val tname = tp.typeSymbol.owner.name optionIf (ExtractedType unapply tp isDefined)

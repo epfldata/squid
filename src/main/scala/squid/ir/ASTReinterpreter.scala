@@ -20,6 +20,7 @@ import utils._
 import utils.meta.{RuntimeUniverseHelpers => ruh}
 import ruh.sru
 import squid.lang.Base
+import squid.lang.CrossStageEnabled
 
 import scala.collection.mutable
 
@@ -84,6 +85,12 @@ trait ASTReinterpreter { ast: AST =>
       case Ascribe(r,t) => newBase.ascribe(apply(r), rect(t))
       case h @ Hole(n) =>
         newBase.hole(n, rect(h.typ))
+      case h @ SplicedHole(n) =>
+        newBase.splicedHole(n, rect(h.typ))
+      case CrossStageValue(value,typ) => newBase match {
+        case nb: newBase.type with CrossStageEnabled => nb.crossStage(value, rect(typ).asInstanceOf[nb.TypeRep])
+        case _ => throw new IllegalArgumentException(s"Cannot reinterpret cross-stage value into non-cross-stage-enabled base $newBase")
+      }
         
       //case RecordGet(RepDef(bv), name, tp) =>
       //  //???

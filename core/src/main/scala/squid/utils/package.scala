@@ -128,7 +128,7 @@ package object utils {
   def pairWith[A,B](f: A => B)(x: A) = x -> f(x)
   
   
-  implicit class SafeEq[T](val self: T) extends AnyVal {
+  implicit class SafeEq[T](private val self: T) extends AnyVal {
     def === (that: T) = self == that
     def =/= (that: T) = self != that
   }

@@ -1,4 +1,4 @@
-// Copyright 2017 EPFL DATA Lab (data.epfl.ch)
+// Copyright 2018 EPFL DATA Lab (data.epfl.ch)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,20 +13,14 @@
 // limitations under the License.
 
 package squid
+package ir
 
-import lang._
-import quasi._
-import ir._
+import squid.utils._
+import squid.lang.CrossStageEnabled
 
-object MyBase extends SimpleAST with ClassEmbedder
-object TestDSL extends SimpleAST with ClassEmbedder
-object NormDSL extends SimpleAST with ClassEmbedder with OnlineOptimizer with BindingNormalizer //with BlockNormalizer
-object CrossStageDSL extends SimpleAST with ClassEmbedder with CrossStageAST
-
-object LegacyTestDSL extends SimpleAST with ClassEmbedder {
-  override val newExtractedBindersSemantics: Boolean = false
-}
-
-object Test {
-  object InnerTestDSL extends SimpleAST
+trait CrossStageAST extends AST with CrossStageEnabled {
+  
+  // make `crossStage` method public, officially enabling construction of cross-stage nodes
+  override def crossStage(value: Any, trep: TypeRep): Rep = super.crossStage(value, trep)
+  
 }

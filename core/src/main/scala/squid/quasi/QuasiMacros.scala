@@ -514,7 +514,7 @@ class QuasiMacros(val c: whitebox.Context) {
     
     val res = q"$myBaseTree.`internal CodeType`[$T]($codeTree)"
     
-    debug("Generated: "+res)
+    debug("Generated: "+showCode(res))
     //if (debug.debugOptionEnabled) debug("Of Type: "+c.typecheck(res).tpe) // Makes a StackOverflow when type evidence macro stuff happen
     
     //codeTree: c.Tree

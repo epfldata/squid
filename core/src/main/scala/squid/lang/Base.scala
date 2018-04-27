@@ -64,7 +64,7 @@ trait Base extends TypingBase with quasi.QuasiBase {
     * Note: index should be None when the symbol is not overloaded, to allow for more efficient caching */
   def loadMtdSymbol(typ: TypSymbol, symName: String, index: Option[Int] = None, static: Boolean = false): MtdSymbol
   
-  /** High-level interface which implementation should specify how to construct (and potentially also deconstruct) constants */
+  /** High-level interface whose implementations should specify how to construct (and potentially also deconstruct) constants */
   trait ConstAPI {
     def apply[T: CodeType](v: T): Code[T,Any] = `internal Code`(const(v))
   }
