@@ -1,1 +1,1 @@
-sbt publishLocal core/publishLocal core_macros/publishLocal scBackend/publishLocal scBackendMacros/publishLocal
+sbt publishLocal core/publishLocal core_macros/publishLocal

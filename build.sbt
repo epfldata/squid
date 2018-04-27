@@ -22,7 +22,7 @@ lazy val commonSettings = Seq(
   organization := "ch.epfl.data",
   autoCompilerPlugins := true,
   scalacOptions ++= Seq("-feature", "-language:implicitConversions", "-language:higherKinds", "-language:postfixOps"
-    , "-deprecation"
+    , "-deprecation", "-unchecked"
   ),
   incOptions := incOptions.value.withLogRecompileOnMacro(false), // silences macro-related recompilation messages (cf. https://github.com/sbt/zinc/issues/142)
   resolvers += Resolver.sonatypeRepo("snapshots"),
