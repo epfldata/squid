@@ -98,4 +98,17 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
   }
   
   
+  test("Serialization of Cross-Stage Values") {
+    
+    val ls = List(1,2,3)
+    val cde = code"ls.map(_+1).sum"
+    
+    val tree = base.scalaTree(cde.rep)
+    assert(tree.toString ==
+      """_root_.squid.utils.serial.deserialize("rO0ABXNyADJzY2FsYS5jb2xsZWN0aW9uLmltbXV0YWJsZS5MaXN0JFNlcmlhbGl6YXRpb25Qcm94eQAAAAAAAAABAwAAeHBzcgARamF2YS5sYW5nLkludGVnZXIS4qCk94GHOAIAAUkABXZhbHVleHIAEGphdmEubGFuZy5OdW1iZXKGrJUdC5TgiwIAAHhwAAAAAXNxAH4AAgAAAAJzcQB+AAIAAAADc3IALHNjYWxhLmNvbGxlY3Rpb24uaW1tdXRhYmxlLkxpc3RTZXJpYWxpemVFbmQkilxjW/dTC20CAAB4cHg=").asInstanceOf[scala.collection.immutable.List[scala.Int]].map[scala.Int, scala.collection.immutable.List[scala.Int]](((x$1_0: scala.Int) => x$1_0.$plus(1)))(scala.collection.immutable.List.canBuildFrom[scala.Int]).sum[scala.Int](scala.math.Numeric.IntIsIntegral)""")
+    
+    same(squid.lang.IntermediateBase.toolBox.eval(tree), 2 + 3 + 4)
+    
+  }
+  
 }

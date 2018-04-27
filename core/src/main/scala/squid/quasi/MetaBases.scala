@@ -15,10 +15,14 @@
 package squid
 package quasi
 
+import java.io.NotSerializableException
+
 import utils._
 import squid.utils.meta.{RuntimeUniverseHelpers => ruh}
 import ruh.sru
+import squid.ir.IRException
 import squid.lang.Base
+import squid.lang.CrossStageEnabled
 
 trait MetaBases {
   type U = u.type
@@ -33,12 +37,22 @@ trait MetaBases {
     //freshName(hint replace('$', '_'))
     freshName(hint replace('$', '_') replace('<', '_') replace('>', '_'))
   
+  /** Return a Scala tree that, when ran, recreates the value `x`, if it is serializable. */
+  def serializeToTree(x: Any) = {
+    import squid.utils.serial._
+    val str = try serialize(x) catch {
+        case ns: NotSerializableException =>
+          throw IRException(s"Could not persist non-serializable value: ${x}", Some(ns))
+      }
+    q"_root_.squid.utils.serial.deserialize($str)"
+  }
+  
   /** Base that generates the Scala code necessary to construct the object program.
     * This class let-binds type symbols, method symbols, type applications and modules: the corresponding definitions
     * are stored in the `symbols` mutable buffer.
     * Note: these are let-bound but not cached – caching is assumed to be performed by the caller (eg: ModularEmbedding).
     * @param baseType if defined, will be used to find potential static field accesses to the type/method symbols */
-  class MirrorBase(val Base: Tree, baseType: Option[Type] = None) extends Base {
+  class MirrorBase(val Base: Tree, baseType: Option[Type] = None) extends Base with CrossStageEnabled {
     /* TODO: more clever let-binding so defs used once won't be bound? -- that would require changing `type Rep = Tree` to something like `type Rep = () => Tree` */
     import scala.collection.mutable
     
@@ -183,6 +197,9 @@ trait MetaBases {
     def constType(value: Any, underlying: TypeRep): TypeRep = q"$Base.constType(${Constant(value)}, $underlying)"
     
     
+    def crossStage(value: Any, trep: Tree): Tree = q"$Base.crossStage(${serializeToTree(value)})"
+    def extractCrossStage(r: Tree): Option[Any] = None
+    
     
     
     def mkNeatList(xs: Seq[Tree]) = xs match {
@@ -231,7 +248,7 @@ trait MetaBases {
   
   /** Base that simply outputs the Scala tree representation of the DSL program.
     * It does not add types to the trees, although it could (to some extent). */
-  class ScalaReflectionBase extends Base {
+  class ScalaReflectionBase extends Base with CrossStageEnabled {
     
     //val ascribeValBindings = true
     val ascribeValBindings = false
@@ -362,6 +379,9 @@ trait MetaBases {
     
     def constType(value: Any, underlying: TypeRep): TypeRep = tq"$underlying"
     
+    
+    def crossStage(value: Any, trep: Tree): Tree = q"${serializeToTree(value)}.asInstanceOf[$trep]"
+    def extractCrossStage(r: Tree): Option[Any] = None
     
     
     override def ascribe(self: Rep, typ: TypeRep): Rep = q"$self: $typ"

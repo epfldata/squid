@@ -168,5 +168,5 @@ trait IntermediateBase extends Base { ibase: IntermediateBase =>
 
 object IntermediateBase {
   import scala.tools.reflect.ToolBox
-  private lazy val toolBox = sru.runtimeMirror(getClass.getClassLoader).mkToolBox() // Q: necessary 'lazy'? (objects are already lazy)
+  private[squid] lazy val toolBox = sru.runtimeMirror(getClass.getClassLoader).mkToolBox() // Q: necessary 'lazy'? (objects are already lazy)
 }
