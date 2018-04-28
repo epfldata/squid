@@ -17,8 +17,49 @@ package feature
 
 class CrossStageTests extends MyFunSuite(CrossStageDSL) {
   import DSL.Predef._
+  import DSL.Quasicodes._
   
-  // TODO test ref to local val, local var, local method, local type?, val/var fields and methods, this ref
+  test("Cross-Stage Persistence of Local Variables") {
+    
+    val field = 'ok
+    var mutfield = 'ok
+    def method(x: Int) = x + 1
+    
+    eqt(code"field.name" : ClosedCode[String], code"${CrossStage(field)}.name")
+    eqt(code{field.name} : ClosedCode[String], code{${CrossStage(field)}.name}) // using quasicode
+    
+    eqt(code"mutfield.name" : ClosedCode[String], code"${CrossStage(mutfield)}.name")
+    
+    // could actually support this one fairly easily using a squid.lib.MutVarProxy:
+    assertDoesNotCompile(""" code"mutfield = 'ko" """) // no cross-stage mutable variable update
+    // ^ Error:(33, 13) Embedding Error: Unsupported feature: update to cross-stage mutable variable 'mutfield'
+    
+    assertDoesNotCompile(""" code"method(3)" """) // no cross-stage persistence of local methods
+    // ^ Error:(30, 9) Embedding Error: Unsupported feature: Reference to local method `method`
+    
+  }
+  
+  val field = 'ok
+  var mutfield = 'ok
+  def method(x: Int) = x + 1
+  type T
+  
+  test("Cross-Stage Persistence of Fields and Methods (via persistence of `this`)") {
+    
+    eqt(code"field.name" : ClosedCode[String], code"${CrossStage(this)}.field.name")
+    
+    eqt(code"mutfield.name" : ClosedCode[String], code"${CrossStage(this)}.mutfield.name")
+    
+    eqt(code"mutfield = 'ko" : ClosedCode[Unit], code"${CrossStage(this)}.mutfield = 'ko")
+    
+    eqt(code"method(3)" : ClosedCode[Int], code"${CrossStage(this)}.method(3)")
+    
+    eqt(code"Some(this)" : ClosedCode[Option[CrossStageTests]], code"Some(${CrossStage(this)})")
+    
+    assertDoesNotCompile(""" code"Set.empty[T]" """) // no 'cross-stage persistence of type', whatever that could be
+    // ^ Error:(33, 13) Embedding Error: Unknown type `CrossStageTests.this.T` does not have a TypeTag to embed it as uninterpreted.
+    
+  }
   
   test("Cross-Stage References to Primitive Types Yield Constants") {
     
@@ -95,8 +136,10 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
     assertDoesNotCompile(""" code"ls.size" """)
     // ^ Error:(77, 5) Embedding Error: Cannot use cross-stage reference: base TestDSL.Predef.base does not extend squid.lang.CrossStageEnabled.
     
+    assertDoesNotCompile(""" code"field.name" """)
+    // ^ Error:(137, 5) Embedding Error: Cannot use cross-stage reference: base TestDSL.Predef.base does not extend squid.lang.CrossStageEnabled.
+    
   }
-  
   
   test("Serialization of Cross-Stage Values") {
     
@@ -110,5 +153,22 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
     same(squid.lang.IntermediateBase.toolBox.eval(tree), 2 + 3 + 4)
     
   }
+  
+  
+  abstract class DataManager {
+    val data: Array[Int]
+    // ^ Note: currently cannot make this `protected`, because the cross-stage value in `stagedIterator` is `this` instead of `data`
+    //   we could prefer taking a cross-stage value to `data` instead, either always (but that may create more CS-values than
+    //   necessary), or only when a this.field is bnot public 
+    def iterator = data.iterator
+    def stagedIterator = code"data.iterator"
+  }
+  
+  test("Example of Data Manager Class Using CSP") {
+    
+    same(code"${(new DataManager{val data=Array(1,2,3)}).stagedIterator}.sum".compile, 6)
+    
+  }
+  
   
 }

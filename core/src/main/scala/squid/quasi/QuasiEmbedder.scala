@@ -396,9 +396,14 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               
             /** --- --- --- THIS REF --- --- --- */
             case This(tp) if !x.symbol.isModuleClass =>
+              /* // we used to convert `this` references to explicit free variables, which used to be fairly confusing/unexpected:
               // Note: Passing `x.symbol.asType.toType` will still result in a path-dependent module type because of hole coercion
               val tree = q"$baseTree.$$$$[${TypeTree(x.tpe)}](scala.Symbol.apply(${s"$tp.this"}))"
               liftTerm(tree, parent, expectedType)
+              */
+              requireCrossStageEnabled
+              val mb = b.asInstanceOf[(MetaBases{val u: c.universe.type})#MirrorBase with b.type]
+              q"${mb.Base}.crossStage($x, ${liftType(x.tpe).asInstanceOf[Tree]})".asInstanceOf[b.Rep]
               
               
             /** This is to find repeated holes: $-less references to holes that were introduced somewhere else.

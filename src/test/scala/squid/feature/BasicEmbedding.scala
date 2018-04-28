@@ -26,12 +26,13 @@ object BasicEmbedding {
   
   class ClassA { outer =>
     class ClassA {
-      import TestDSL.Predef._
+      import CrossStageDSL.Predef._
       
+      def out = code"outer"
       def foo1 = code"outer.bar"
       def foo2 = code"bar"
       def bar = 0
-      //def runFoo = foo.run // TODO
+      def runFoo = foo1.run // TODO
       
     }
     def bar = 1
@@ -119,25 +120,23 @@ class BasicEmbedding extends MyFunSuite {
     
   }
   
-  test("This References") {
+  test("This References (Cross-Stage Persistence)") {
     
     val aa = new clA.ClassA
     
-    import base.Quasicodes._
+    import CrossStageDSL.Predef._
     
-    //aa.foo1 eqt ir{$$[clA.type](Symbol("ClassA.this")).bar} // ir"`ClassA.this`.bar" and ir"`ClassA.this`.bar" are not equivalent
-    /* ^ the type for foo1's hole as seen from inside ClassA is `ClassA.this.type`;
-     * however, when used from here apparently becomes `scp.feature.BasicEmbedding.ClassA`... */
+    assert(aa.out =~= CrossStage(clA))
+    assert(aa.out.Typ =:= codeTypeOf[ClassA])
     
-    aa.foo1 eqt code{(? `ClassA.this` : ClassA).bar}
+    assert(aa.foo1 =~= code"${CrossStage(clA)}.bar")
+    assert(aa.foo1.run == 1)
     
-    intercept[NullPointerException](aa.foo1 subs Symbol("ClassA.this") -> code"null" run)
-    same(aa.foo1 subs Symbol("ClassA.this") -> code"clA" run, 1)
+    assert(aa.foo2 =~= code"${CrossStage(aa)}.bar")
+    assert(aa.foo2.run == 0)
     
-    aa.foo2 eqt code{(? `ClassA.this` : clA.ClassA).bar}
-    
-    assertDoesNotCompile(""" same(aa.foo2 subs Symbol("ClassA.this") -> code"clAclA" run, 0) """) // Error:(115, 48) Cannot substitute free variable `ClassA.this: aa.type` with term of type `scp.feature.BasicEmbedding.clAclA.type`
-    same(clAclA.foo2 subs Symbol("ClassA.this") -> code"clAclA" run, 0)
+    assert(!(aa.foo2 =~= code"${CrossStage(clAclA)}.bar"))
+    assert(clAclA.foo2.run == 0)
     
   }
   

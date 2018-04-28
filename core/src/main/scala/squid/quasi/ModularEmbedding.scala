@@ -212,7 +212,8 @@ class ModularEmbedding[U <: scala.reflect.api.Universe, B <: Base](val uni: U, v
         
       /** --- --- --- VARIABLE ASSIGNMENTS --- --- --- */
       case q"${vari @ Ident(_)} = $valu" =>  // Matching Ident because otherwise this can match a call to an update method!
-        val ref = readVal(ctx(vari.symbol.asTerm))
+        val ref = readVal(ctx.getOrElse(vari.symbol.asTerm, 
+          throw EmbeddingException.Unsupported(s"update to cross-stage mutable variable '$vari'")))
         val mtd = loadMtdSymbol(varTypSym, "$colon$eq", None)
         val retTp = liftType(Unit)
         methodApp(ref, mtd, Nil, Args(rec(valu, Some(vari.symbol.typeSignature)))::Nil, retTp)
