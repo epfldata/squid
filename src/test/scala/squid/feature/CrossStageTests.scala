@@ -84,7 +84,7 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
       case _ => false
     }
     assert(foo(List(1,2,3), code"ls.size")) // this should not cache the pattern in `foo` (with lspat=List(1,2,3))
-    //assert(!foo(List(1,2), code"ls.size")) // FIXME: disable caching of patterns when they include a CSV!
+    assert(!foo(List(1,2), code"ls.size"))  // caching of patterns when they include a CSV is disabled
     
   }
   

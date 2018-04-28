@@ -322,8 +322,12 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
     val tree = rawTree
     
     
-    val insertedTermTrees = mutable.ArrayBuffer[Tree]() // currently only used to disable caching if non-empty
-    val insertedTypeTrees = mutable.Map[TermName,Tree]() // 'inserted types' are types that are explicitly unquoted or types for which an implicit is obtained
+    /** remembers which Scala trees end up being inserted in the code for constructing the quoted term;
+      * currently only used to disable caching of patterns (if non-empty) */
+    val insertedTermTrees = mutable.ArrayBuffer[Tree]()
+    
+    /** 'inserted types' are types that are explicitly unquoted or types for which an implicit is obtained */
+    val insertedTypeTrees = mutable.Map[TermName,Tree]()
     insertedTypeTrees ++= unquotedTypes map { case (tn,tp,tpt) => c.freshName(tn.toTermName) -> q"$tpt.rep" }
     
     
@@ -701,6 +705,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
             
             case id @ Ident(name) =>
               requireCrossStageEnabled
+              insertedTermTrees += id
               val mb = b.asInstanceOf[(MetaBases{val u: c.universe.type})#MirrorBase with b.type]
               q"${mb.Base}.crossStage($id, ${liftType(x.tpe).asInstanceOf[Tree]})".asInstanceOf[b.Rep]
               
