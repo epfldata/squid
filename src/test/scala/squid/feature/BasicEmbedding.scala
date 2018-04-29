@@ -141,22 +141,22 @@ class BasicEmbedding extends MyFunSuite {
   }
   
   test("Methods") {
-    import collection.mutable.Stack
+    import collection.mutable.ArrayBuffer
     
-    code"Stack[Int](1,42,2).push(0)" matches {
-      case code"Stack(1,$n,2).push($m)" =>
+    code"ArrayBuffer[Int](1,42,2).+=(0)" matches {
+      case code"ArrayBuffer(1,$n,2).+=($m)" =>
         n eqt code"42"
         m eqt code"0"
     }
     
-    code"Stack(42).map(_+1)" matches {
-      case code"Stack[$ta]($n).map($f: ta => $tb)" => eqt(f.trep, typeRepOf[Int => Int])
+    code"ArrayBuffer(42).map(_+1)" matches {
+      case code"ArrayBuffer[$ta]($n).map($f: ta => $tb)" => eqt(f.trep, typeRepOf[Int => Int])
     }
     
-    code"Stack[Int](42).map(_+1).isEmpty" matches {
-      case code"Stack[Int](42).map(_+1).isEmpty" => // TODO
+    code"ArrayBuffer[Int](42).map(_+1).isEmpty" matches {
+      case code"ArrayBuffer[Int](42).map(_+1).isEmpty" => // TODO
     } and {
-      case code"Stack[$ta]($n).map($f: ta => $tb).isEmpty" =>
+      case code"ArrayBuffer[$ta]($n).map($f: ta => $tb).isEmpty" =>
         eqt(ta.rep, typeRepOf[Int])
         eqt(tb.rep, typeRepOf[Int])
         eqt(f.Typ.rep, typeRepOf[Int => Int])

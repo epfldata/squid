@@ -337,7 +337,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
     def bindScope[R](scps: List[TermSymbol->Type])(k: => R) = {
       val old = boundScopes
       boundScopes ++= scps
-      k alsoDo (boundScopes = old)
+      k alsoDo {boundScopes = old}
     }
     
     def freshSingletonVariableType(nam: TermName, typ: Type) = {

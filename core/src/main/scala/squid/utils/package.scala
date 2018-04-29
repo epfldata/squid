@@ -162,5 +162,9 @@ package object utils {
   /** Used to make Scala unexhaustivity warnings believed to be spurious go away */
   def spuriousWarning = lastWords("Case was reached that was thought to be unreachable.")
   
+  def checkless[A,B](pf: PartialFunction[A,B]): A => B = pf
+  
+  /** Used when we don't want Scalac to assume that something is true (e.g., pattern guard). */
+  @inline def trueButDontTellPlz: Bool = true
   
 }

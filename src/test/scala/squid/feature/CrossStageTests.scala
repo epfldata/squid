@@ -105,7 +105,7 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
     
     val ns = new{} // non-serializable object
     assert(code"ns.toString".toString startsWith """code"((cs_0: java.lang.Object) => cs_0.toString()) % """)
-    assert(code"Some(ns)".compile.x eq ns)
+    assert(code"Some(ns)".compile.get eq ns)
     
   }
   

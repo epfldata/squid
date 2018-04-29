@@ -322,18 +322,31 @@ class RuleBasedTransformerMacros(val c: whitebox.Context) {
               }
               else {
                 val args_names = args.zipWithIndex map (ai => ai._1 -> TermName("__"+ai._2))
-                q"$unapp flatMap { case (..${args_names map { case (arg, nam) => pq"$nam: ${arg.tpe.widen} @unchecked" }}) => ${
-                // using `.widen` so that things like `:String("abc")` become just `:String` ^
+                q"""$unapp flatMap {
+                  case (..${args_names map { case (arg, nam) => pq"$nam: ${arg.tpe.widen} @unchecked" }})
+                    if _root_.squid.utils.trueButDontTellPlz => ${
+                  // ^ using `.widen` so that things like `:String("abc")` become just `:String`
                   (args_names :\ body) {
                     case ((arg, nam), acc) => patMat(q"$nam", arg, acc)
                   }
-                }}" 
-                //} case _ => None }" // such default case is not useful as long as we widen `arg.tpe`; otherwise when
+                //}}"
+                } case _ => None }""" // such default case is not useful as long as we widen `arg.tpe`; otherwise when
                 // matching a constant, as in `case ir"println(${Const("abc")}:String)"`, the type of the pattern variable
                 // would be String("abc") and the matching would fail...
                 // OTOH, maybe there are other cases where the pattern variable would have a type that is too precise,
                 // eg maybe when matching a vararg with a host-language List instead of Seq... but it's not clear that
                 // in this case we really want to silently fail the matching...
+                // ^ the default case used to be commented; but starting with Scala 2.12 we were getting weird non-
+                //   exhaustive matching warnings in some cases (when using custom extractors AsBlock(WithResult(b,r))).
+                //   So put the default case back and a dummy condition on the main case (otherwise we get unreachable
+                //   code warnings).
+                //   Other things I've tried:
+                //     q"$unapp flatMap { x => (x : @unchecked) match { case ...
+                //     ^–– somehow loses precise type info ("found: QuasiBase.this.Rep; required: __b__.Rep")
+                //     q"$unapp flatMap { case x => val ((..${args_names map { case (arg, nam) => pq"$nam: ${arg.tpe.widen}" }})) = x; ...
+                //     ^–– same
+                //     q"$unapp flatMap(_root_.squid.utils.checkless { case ...
+                //     ^–– "found: Any; required: PartialFunction[Int,Option[trans$macro$261.base.Rep]]"
               }
             //case Bind(name: TermName, pq"_") => q"val $name = $scrut; ..$body"
             case b@Bind(name: TermName, pq"_") => // For some reason, this seems to be necessary for the gen0/gen phase below to work!! 

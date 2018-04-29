@@ -337,7 +337,7 @@ class VariableSymbolTests extends MyFunSuite {
     
     val p = code"val a = 1; val b = 2; val c = 3; a + b + c"
     
-    val Succeeded = ()
+    def Succeeded = ()
     // ^ Since Scala 2.12.5, I got errors from the `assertDoesNotCompile` below, due to Scalatest emitting a
     //   non-qualifiedreference to org.scalatest.Succeeded.type by way of `reify { Succeeded }`; this is a problem
     //   because the `rewrite` macro untypechecks the body of match cases and removes symbols attached to identifiers.

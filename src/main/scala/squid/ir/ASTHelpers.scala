@@ -33,7 +33,7 @@ trait ASTHelpers extends Base { self: AST =>
     case RepDef(Hole(_)|SplicedHole(_)) => return true
   } thenReturn false
   
-  def traversePartial(f: PartialFunction[Rep, Boolean]) = traverse(f orElse PartialFunction(_ => true)) _
+  def traversePartial(f: PartialFunction[Rep, Boolean]) = traverse(f orElse { case _ => true }) _
   
   def traverse(f: Rep => Boolean)(r: Rep): Unit = {
     val rec = if (f(r)) traverse(f) _ else ignore
