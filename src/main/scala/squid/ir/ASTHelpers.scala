@@ -181,6 +181,7 @@ trait ASTHelpers extends Base { self: AST =>
     case Abs(p,b) => dfn(b).unboundVals - p
     case _ => d.children.foldLeft(Set.empty[Val]){ (s,df) => s ++ dfn(df).unboundVals }
   }
+  def freeVariables(r: Rep): Set[BoundVal] = unboundVals(dfn(r))
   
   
   abstract override def loadTypSymbol(fullName: String) = {

@@ -37,6 +37,8 @@ trait InspectableBase extends IntermediateBase with quasi.QuasiBase with TraceDe
   
   def topDown(r: Rep)(f: Rep => Rep): Rep
   
+  def freeVariables(r: Rep): Set[BoundVal]
+  
   // Important: do not forget to override these to have better traversal performance (without useless tree reconstruction!) 
   def traverseTopDown(f: Rep => Unit)(r: Rep): Unit = topDown(r)(_ alsoApply f)
   def traverseBottomUp(f: Rep => Unit)(r: Rep): Unit = bottomUp(r)(_ alsoApply f)
@@ -129,6 +131,8 @@ trait InspectableBase extends IntermediateBase with quasi.QuasiBase with TraceDe
       traverseTopDown(r => pf.runWith(identity)(Code(r)) thenReturn Unit)(self.rep)
     def analyseBottomUp(pf: PartialFunction[Code[T,_ <: C],Unit]): Unit = 
       traverseBottomUp(r => pf.runWith(identity)(Code(r)) thenReturn Unit)(self.rep)
+    
+    def close: Option[ClosedCode[T]] = self.asInstanceOf[ClosedCode[T]] optionIf freeVariables(self.rep).isEmpty
     
   }
   protected implicit class ProtectedInspectableRepOps(private val self: Rep) {
