@@ -104,9 +104,6 @@ trait InspectableBase extends IntermediateBase with quasi.QuasiBase with TraceDe
   def extractType(xtor: TypeRep, xtee: TypeRep, va: Variance): Option[Extract]
   
   
-  implicit class InspectableAnyCodeOps[T](private val self: AnyCode[T]) extends InspectableCodeOps[T,Nothing](self.unsafe_asClosedCode)
-  // ^ Note: use context Nothing as it would be unsafe to make things like `rewrite` produce closed term types
-  
   implicit class InspectableCodeOps[T,C](private val self: Code[T,C]) {
     import scala.language.experimental.macros
     import squid.utils.MacroUtils.MacroSetting

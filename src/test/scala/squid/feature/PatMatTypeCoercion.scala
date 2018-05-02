@@ -48,10 +48,8 @@ class PatMatTypeCoercion extends MyFunSuite {
     def beta[T:CodeType](x:Code[T]): Code[T] = x match {
       case code"((p: $t0) => $body: T)($a: t0)" => body subs ('p -> beta(a))
       case code"($f: ($t0 => T))($a)" => val (f0, a0) = (beta(f), beta(a)); code"$f($a)":Code[T]
-      case code"(p: $t0) => $body: $t1" =>
-        val bodyf = (x:Code[t0.Typ]) => body subs 'p -> x
-        code"{(p: $t0) => ${(x:Code[t0.Typ]) => beta(bodyf(x))}(p)} : T" // coercion
-      case code"($a:Int) + ($b:Int)" => code"${beta(a)} + ${beta(b)} : T" // coercion
+      case code"($p: $t0) => $body: $t1" => code"{($p) => ${beta(body.unsafe_asClosedCode)}} : T" // coercion
+      case code"($a:Int) + ($b:Int)"     => code"${beta(a)} + ${beta(b)} : T" // coercion
       
       //case LeafCode(_) => x
         

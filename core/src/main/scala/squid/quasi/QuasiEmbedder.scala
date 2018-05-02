@@ -512,7 +512,7 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               b.letin(bound, value, body2, liftType(expectedType getOrElse x.tpe))
               
               
-            case q"$baseTree.$$$$_var[$tpt]($v)" => // TODO remove this special mechanism?
+            case q"$baseTree.$$$$_var[$tpt]($v)" =>
               val ctx = variableContext(v)
               if (!boundScopes.valuesIterator.exists(_ =:= ctx)) termScope ::= ctx
               q"$v.rep".asInstanceOf[b.Rep]
@@ -576,24 +576,6 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               val tree = q"$baseTree.$$[$tvar,${Nothing}]($v.unsafe_asClosedCode)"
               /* ^ Note: Nothing needs to be inserted here as a proper type (not type tree), because the _.tpe will be queried by the recursive call */
               liftTerm(tree, parent, expectedType)
-              
-            case q"$baseTree.$$[$tfrom,$tto,$scp]($fun)" => // Special case for inserting staged IR functions
-              val tree = q"$baseTree.$$[$tfrom => $tto,$scp]($baseTree.liftFun[$tfrom,$tto,$scp]($fun))"
-              liftTerm(tree, parent, expectedType)
-              
-            case q"$baseTree.$$[$tfrom,$tto,$scp]($fun).apply($arg)" => // Special case for inserting staged IR functions that are immediately applied
-              val tree = q"$baseTree.$$[$tfrom => $tto,$scp]($baseTree.liftFun[$tfrom,$tto,$scp]($fun))"
-              val argl = liftTerm(arg, x, Some(tfrom.tpe)) // Q: use typeIfNotNothing?
-              b.tryInline(liftTerm(tree, parent, expectedType), argl)(liftType(tfrom.tpe))
-              
-            case q"$baseTree.$$Code[$tfrom,$tto]($fun)" => // Special case for inserting staged Code functions
-              val tree = q"$baseTree.$$Code[$tfrom => $tto]($baseTree.liftCodeFun[$tfrom,$tto]($fun))"
-              liftTerm(tree, parent, expectedType)
-              
-            case q"$baseTree.$$Code[$tfrom,$tto]($fun).apply($arg)" => // Special case for inserting staged Code functions that are immediately applied
-              val tree = q"$baseTree.$$Code[$tfrom => $tto]($baseTree.liftCodeFun[$tfrom,$tto]($fun))"
-              val argl = liftTerm(arg, x, Some(tfrom.tpe)) // Q: use typeIfNotNothing?
-              b.tryInline(liftTerm(tree, parent, expectedType), argl)(liftType(tfrom.tpe))
               
               
             // Note: For some extremely mysterious reason, c.typecheck does _not_ seem to always report type errors from terms annotated with `_*`

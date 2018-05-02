@@ -336,7 +336,6 @@ self: Base =>
       @MacroSetting(debug = true) implicit def implicitType[T]: CodeType[T] = macro QuasiBlackboxMacros.implicitTypeImpl[QC, T]
     }
     
-    implicit def unliftFun[A,B:CodeType,C](f: Code[A => B,C]): Code[A,C] => Code[B,C] = a => Code(tryInline(f.rep,a.rep)(typeRepOf[B]))
   }
   
   
@@ -422,16 +421,7 @@ self: Base =>
   def $[T,C](q: Code[T,C]*): T = ??? // TODO rename to 'unquote'?
   
   @compileTimeOnly("Unquote syntax ${...} cannot be used outside of a quasiquote.")
-  def $[A,B,C](q: Code[A,C] => Code[B,C]): A => B = ??? // TODO rely on implicit liftFun instead?
-  
-  @compileTimeOnly("Unquote syntax ${...} cannot be used outside of a quasiquote.")
   def $[T](v: Variable[T]): T = ???
-  
-  @compileTimeOnly("This method is not supposed to be used manually.")
-  def $Code[T](q: AnyCode[T]): T = ???
-  
-  @compileTimeOnly("This method is not supposed to be used manually.")
-  def $Code[A,B](q: AnyCode[A] => AnyCode[B]): A => B = ???
   
   /* To support hole syntax `xs?` (old syntax `$$xs`) (in ction) or `$xs` (in xtion)  */
   @compileTimeOnly("Unquote syntax ${...} cannot be used outside of a quasiquote.")
@@ -443,23 +433,6 @@ self: Base =>
   @compileTimeOnly("This method is not supposed to be used manually.")
   def $$_var[T](v: Variable[T]): T = ???
   
-  
-  implicit def liftFun[A:CodeType,B,C](qf: Code[A,C] => Code[B,C]): Code[A => B,C] = {
-    val bv = bindVal("lifted", typeRepOf[A], Nil) // add TODO annotation recording the lifting?
-    val body = qf(Code(bv |> readVal)).rep
-    Code(lambda(bv::Nil, body))
-  }
-  implicit def liftCodeFun[A:CodeType,B](qf: AnyCode[A] => AnyCode[B]): AnyCode[A => B] = {
-    val bv = bindVal("lifted", typeRepOf[A], Nil) // add TODO annotation recording the lifting?
-    val body = qf(AnyCode(bv |> readVal)).rep
-    AnyCode(lambda(bv::Nil, body))
-  }
-  implicit def unliftFun[A,B:CodeType,C](qf: Code[A => B,C]): Code[A,C] => Code[B,C] = x => {
-    Code(app(qf.rep, x.rep)(typeRepOf[B]))
-  }
-  implicit def unliftCodeFun[A,B:CodeType](qf: AnyCode[A => B]): AnyCode[A] => AnyCode[B] = x => {
-    AnyCode(app(qf.rep, x.rep)(typeRepOf[B]))
-  }
   
   import scala.language.experimental.macros
   
@@ -510,9 +483,6 @@ self: Base =>
     
     def $[T](q: Variable[T]): T = macro QuasiMacros.forward$3 // to conserve the same method receiver as for QQ (the real `Base`)
     def $[T,C](q: Code[T,C]*): T = macro QuasiMacros.forward$ // to conserve the same method receiver as for QQ (the real `Base`)
-    def $[A,B,C](q: Code[A,C] => Code[B,C]): A => B = macro QuasiMacros.forward$2
-    //def $[T,C](q: IR[T,C]): T = macro QuasiMacros.forward$ // Actually unnecessary
-    //def $[T,C](q: IR[T,C]*): T = macro QuasiMacros.forwardVararg$ // Actually unnecessary
     def $$[T](name: Symbol): T = macro QuasiMacros.forward$$
     
     type $[QT <: TypeErased] = TypeOf[QT]

@@ -117,7 +117,7 @@ class TermRewriting extends MyFunSuite {
         identity(body) : Code[Int,body.Ctx]
         identity(body) : Code[Int,base.ContextOf[body.type]]
         // ^ identity to avoid useless statement warnings
-        code"val s = Symbol($str.reverse); ${(p:Code[Symbol,body.Ctx]) => code"$body+1"}(s)"
+        code"val s = Symbol($str.reverse); $body+1"
     }
     
     foo(code"""println{val x = Symbol("ok"); (?a:Double).toInt}""") eqt
