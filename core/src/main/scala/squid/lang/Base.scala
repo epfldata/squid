@@ -81,12 +81,21 @@ trait Base extends TypingBase with quasi.QuasiBase {
   def showRep(r: Rep) = r.toString
   
   /** Function1 application */
-  def app(fun: Rep, arg: Rep)(retTp: TypeRep): Rep = methodApp(fun, Function1ApplySymbol, Nil, Args(arg)::Nil, retTp)
+  def app(fun: Rep, arg: Rep)(retTp: TypeRep): Rep =
+    methodApp(fun, Function1ApplySymbol, Nil, Args(arg)::Nil, retTp)
+  /** Function2 application */
+  def app2(fun: Rep, arg0: Rep, arg1: Rep)(retTp: TypeRep): Rep =
+    methodApp(fun, Function2ApplySymbol, Nil, Args(arg0,arg1)::Nil, retTp)
+  /** Function3 application */
+  def app3(fun: Rep, arg0: Rep, arg1: Rep, arg2: Rep)(retTp: TypeRep): Rep =
+    methodApp(fun, Function3ApplySymbol, Nil, Args(arg0,arg1,arg2)::Nil, retTp)
   
   // TODO don't define here; force bases to implement explicitly
   /** Override to allow Squid to inline things in places like inserted automatically-lifted functions 
     * (e.g., {{{code"(x:Int) => ${(x:Code[Int]) => code"$x+1"}(x)"}}}) */
   def tryInline(fun: Rep, arg: Rep)(retTp: TypeRep): Rep = app(fun,arg)(retTp)
+  def tryInline2(fun: Rep, arg0: Rep, arg1: Rep)(retTp: TypeRep): Rep = app2(fun, arg0, arg1)(retTp)
+  def tryInline3(fun: Rep, arg0: Rep, arg1: Rep, arg2: Rep)(retTp: TypeRep): Rep = app3(fun, arg0, arg1, arg2)(retTp)
   
   /** Let-binding of a value */
   def letin(bound: BoundVal, value: Rep, body: => Rep, bodyType: TypeRep): Rep = {
@@ -117,6 +126,8 @@ trait Base extends TypingBase with quasi.QuasiBase {
   
   // TODO move all these into a Builtin object and remove `lazy`; or better: use @embed to create a core set of required features
   protected lazy val Function1ApplySymbol = loadMtdSymbol(loadTypSymbol("scala.Function1"), "apply")
+  protected lazy val Function2ApplySymbol = loadMtdSymbol(loadTypSymbol("scala.Function2"), "apply")
+  protected lazy val Function3ApplySymbol = loadMtdSymbol(loadTypSymbol("scala.Function3"), "apply")
   protected lazy val squidLib = staticModule("squid.lib.package")
   protected lazy val squidLibSym = loadTypSymbol("squid.lib.package$")
   protected lazy val BooleanType = staticTypeApp(loadTypSymbol("scala.Boolean"),Nil)

@@ -15,8 +15,6 @@
 package squid
 package feature
 
-import utils.Debug._
-
 class Matching extends MyFunSuite {
   import TestDSL.Predef._
   
@@ -181,14 +179,15 @@ class Matching extends MyFunSuite {
     
   }
   
-  /*test("Extracted Binders for Multi-Parameter Lambdas") { // TODO
+  test("Extracted Binders for Multi-Parameter Lambdas") {
     
-    ir"(a: Int, b: Int) => a+b" match {
-      case ir"($x: Int, $y: Int) => $b" =>
-        show(x,y)
+    code"(a: Int, b: Int) => a+b" match {
+      case code"($x: Int, $y: Int) => $b" =>
+        b eqt code"$x + $y"
+        b neqt code"$y + $x"
     }
     
-  }*/
+  }
   
   test("Extraction with null and ???") {
     import base._

@@ -68,6 +68,14 @@ trait AST extends InspectableBase with ScalaTyping with ASTReinterpreter with Ru
     case RepDef(a @ Abs(p,b)) => inline(p,b,arg)
     case _ => super.tryInline(fun,arg)(retTp)
   }
+  override def tryInline2(fun: Rep, arg0: Rep, arg1: Rep)(retTp: TypeRep): Rep = fun match {
+    case AbsN(x0::x1::Nil,b) => inline(x0,b,arg0) |> (inline(x1,_,arg1))
+    case _ => super.tryInline2(fun,arg0,arg1)(retTp)
+  }
+  override def tryInline3(fun: Rep, arg0: Rep, arg1: Rep, arg2: Rep)(retTp: TypeRep): Rep = fun match {
+    case AbsN(x0::x1::x2::Nil,b) => inline(x0,b,arg0) |> (inline(x1,_,arg1)) |> (inline(x2,_,arg2))
+    case _ => super.tryInline3(fun,arg0,arg1,arg2)(retTp)
+  }
   
   def newObject(tp: TypeRep): Rep = rep(NewObject(tp))
   def staticModule(fullName: String): Rep = rep({

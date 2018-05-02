@@ -157,7 +157,6 @@ class QuasiMacros(val c: whitebox.Context) {
   lazy val CodeSym = symbolOf[QuasiBase#Code[_,_]]
   lazy val AnyCodeSym = symbolOf[QuasiBase#AnyCode[_]]
   lazy val VariableSym = symbolOf[QuasiBase#Variable[_]]
-  lazy val FunSym = symbolOf[_ => _]
   
   // TODO generalize to handle AnyCode and retrieve the path-dependent context type... (if well-defined/not existential!)
   def asCode(tp: Type, typeOfBase: Type) = tp.baseType(CodeSym) |>? {
@@ -174,13 +173,6 @@ class QuasiMacros(val c: whitebox.Context) {
     case TypeRef(typeOfBase0, VariableSym, typ :: Nil) if typeOfBase =:= typeOfBase0 => typ
   }
   class AsVariable(typeOfBase: Type) { def unapply(x:Type) = asVariable(x, typeOfBase) }
-  
-  object AsFun {
-    def unapply(x:Type) = x.baseType(FunSym) match {
-      case TypeRef(_, FunSym, t0 :: tr :: Nil) => Some(t0,tr)
-      case _ => None
-    }
-  }
   
   
   def unapplyImpl[L: c.WeakTypeTag](scrutinee: c.Tree) = wrapError {
@@ -302,11 +294,24 @@ class QuasiMacros(val c: whitebox.Context) {
             // if we don't do that, the expected type we want to coerce to will be propagated all the way inside the 
             // unquote, and the coercion would have to happen outside of the shallow program! (not generally possible)
             
-            // TODO: also handle auto-lifted function types of greater arities...
+            def checkIsBottom(ctx: Type) = if (!(ctx <:< Nothing))
+              throw QuasiException("Only open code functions can benefit from automatic function lifting. " +
+                s"Context `$ctx` is not Bottom, a.k.a Nothing.") // TODO "see doc"
+            
+            // We currently only handle auto-lifted functions of arities 1 to 3
             t.tpe match {
               case AsVariable(typ) => q"$base.$$$$_var($t)"
               // ^ Note: it's simpler to let QuasiEmbedder later figure out the exact context of the term (using its `variableContext` method)
               case AsCode(typ, ctx) => q"$base.$$[$typ,$ctx]($t)"
+              case AsFun(AsCode(t0,ctx0), AsCode(tr,ctxr)) =>
+                checkIsBottom(ctx0)
+                q"$base.$$[$t0=>$tr,$ctxr]($base.liftOpenFun[$t0,$tr]($t))"
+              case AsFun2(AsCode(t0,ctx0), AsCode(t1,ctx1), AsCode(tr,ctxr)) =>
+                checkIsBottom(ctx0); checkIsBottom(ctx1)
+                q"$base.$$[($t0,$t1)=>$tr,$ctxr]($base.liftOpenFun2[$t0,$t1,$tr]($t))"
+              case AsFun3(AsCode(t0,ctx0), AsCode(t1,ctx1), AsCode(t2,ctx2), AsCode(tr,ctxr)) =>
+                checkIsBottom(ctx0); checkIsBottom(ctx1); checkIsBottom(ctx2)
+                q"$base.$$[($t0,$t1,$t2)=>$tr,$ctxr]($base.liftOpenFun3[$t0,$t1,$t2,$tr]($t))"
               case _ => q"$base.$$($t)"
             }
             
@@ -535,6 +540,8 @@ class QuasiMacros(val c: whitebox.Context) {
       val (cbases, cvars) = bases_variables(C)
       val newBases = bases collect { case b if !(b =:= fvCtx) => b }
       if (newBases.size === bases.size)
+      if (!(ctx <:< Nothing)) // if context is bottom, we're dealing with an explicit OpenCode, where it's understood
+                              // that we don't care about contexts (so there's nothing to safeguard here)
         c.abort(c.enclosingPosition, s"Term of context '$ctx' does not seem to have free variable '$fv' to substitute.")
       debug(s"$bases ~> $newBases")
       mkContext(cbases ::: newBases, vars ::: cvars)

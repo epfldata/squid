@@ -577,6 +577,23 @@ class QuasiEmbedder[C <: whitebox.Context](val c: C) {
               /* ^ Note: Nothing needs to be inserted here as a proper type (not type tree), because the _.tpe will be queried by the recursive call */
               liftTerm(tree, parent, expectedType)
               
+            // Special cases for inserting staged OpenCode functions that are immediately applied
+            case q"$baseTree.$$[$tp,$scp]($baseTree0.liftOpenFun[$tfrom,$tto]($fun)($ev)).apply($arg)" =>
+              val argl = liftTerm(arg, x, Some(tfrom.tpe)) // Q: use typeIfNotNothing?
+              val tree = q"$baseTree.$$[$tp,$scp]($baseTree0.liftOpenFun[$tfrom,$tto]($fun))"
+              b.tryInline(liftTerm(tree, parent, expectedType), argl)(liftType(tto.tpe))
+            case q"$baseTree.$$[$tp,$scp]($baseTree0.liftOpenFun2[$tfrom0,$tfrom1,$tto]($fun)($ev0,$ev1)).apply($arg0,$arg1)" =>
+              val argl0 = liftTerm(arg0, x, Some(tfrom0.tpe))
+              val argl1 = liftTerm(arg1, x, Some(tfrom1.tpe))
+              val tree = q"$baseTree.$$[$tp,$scp]($baseTree0.liftOpenFun2[$tfrom0,$tfrom1,$tto]($fun))"
+              b.tryInline2(liftTerm(tree, parent, expectedType), argl0, argl1)(liftType(tto.tpe))
+            case q"$baseTree.$$[$tp,$scp]($baseTree0.liftOpenFun3[$tfrom0,$tfrom1,$tfrom2,$tto]($fun)($ev0,$ev1,$ev2)).apply($arg0,$arg1,$arg2)" =>
+              val argl0 = liftTerm(arg0, x, Some(tfrom0.tpe))
+              val argl1 = liftTerm(arg1, x, Some(tfrom1.tpe))
+              val argl2 = liftTerm(arg2, x, Some(tfrom2.tpe))
+              val tree = q"$baseTree.$$[$tp,$scp]($baseTree0.liftOpenFun3[$tfrom0,$tfrom1,$tfrom2,$tto]($fun))"
+              b.tryInline3(liftTerm(tree, parent, expectedType), argl0, argl1, argl2)(liftType(tto.tpe))
+              
               
             // Note: For some extremely mysterious reason, c.typecheck does _not_ seem to always report type errors from terms annotated with `_*`
             case q"$baseTree.$$$$(scala.Symbol($stringNameTree))" => lastWords("Scala type checking problem.")

@@ -451,6 +451,12 @@ class VariableSymbolTests extends MyFunSuite {
     val w = Variable[Int]
     bar(v,w)(code"'lol.toString * $v + $w") eqt code"'lol.toString * readInt + $w"
     
+    val cde = code"'lol.toString * $v"
+    val r = code"42"
+    assertCompiles      (""" cde(v) ~> r """)
+    assertDoesNotCompile(""" cde(w) ~> r """) // Error: Term of context 'v.Ctx' does not seem to have free variable 'w' to substitute.
+    assertCompiles(""" (cde:OpenCode[String])(w) ~> r """) // when context is untracked, variable substitution is unchecked
+    
   }
   
   

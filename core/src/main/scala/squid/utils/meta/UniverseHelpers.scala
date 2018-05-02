@@ -135,6 +135,26 @@ trait UniverseHelpers[U <: scala.reflect.api.Universe] {
     
   }
   
+  import FunctionType.{FunSym, Fun2Sym, Fun3Sym}
+  object AsFun {
+    def unapply(x:Type) = x.baseType(FunSym) match {
+      case TypeRef(_, FunSym, t0 :: tr :: Nil) => Some(t0,tr)
+      case _ => None
+    }
+  }
+  object AsFun2 {
+    def unapply(x:Type) = x.baseType(Fun2Sym) match {
+      case TypeRef(_, Fun2Sym, t0 :: t1 :: tr :: Nil) => Some(t0,t1,tr)
+      case _ => None
+    }
+  }
+  object AsFun3 {
+    def unapply(x:Type) = x.baseType(Fun3Sym) match {
+      case TypeRef(_, Fun3Sym, t0 :: t1 :: t2 :: tr :: Nil) => Some(t0,t1,t2,tr)
+      case _ => None
+    }
+  }
+  
   object PossibleRefinement {
     def unapply(t: Type): Option[(List[Type], Scope)] = t match {
       case RefinedType(bases, scp) => Some(bases -> scp)

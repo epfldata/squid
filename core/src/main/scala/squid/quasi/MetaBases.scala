@@ -141,6 +141,10 @@ trait MetaBases {
     
     override def tryInline(fun: Rep, arg: Rep)(retTp: TypeRep): Rep =
       q"$Base.tryInline($fun, $arg)($retTp)"
+    override def tryInline2(fun: Rep, arg0: Rep, arg1: Rep)(retTp: TypeRep): Rep =
+      q"$Base.tryInline2($fun, $arg0, $arg1)($retTp)"
+    override def tryInline3(fun: Rep, arg0: Rep, arg1: Rep, arg2: Rep)(retTp: TypeRep): Rep =
+      q"$Base.tryInline3($fun, $arg0, $arg1, $arg2)($retTp)"
     
     def newObject(tp: TypeRep): Rep = q"$Base.newObject($tp)"
     

@@ -108,6 +108,15 @@ trait ASTHelpers extends Base { self: AST =>
     object ColonEqual { val Symbol = loadMtdSymbol(ClassSymbol, "$colon$eq", None) }
   }
   
+  object AbsN {
+    import Predef._
+    def unapply(r: Rep): Option[(List[Val],Rep)] = Code(r).erase |>? {
+      case code"($x0:$t0) => $body:$tr" => (x0.`internal bound`::Nil, body.rep)
+      case code"($x0:$t0,$x1:$t1) => $body:$tr" => (x0.`internal bound`::x1.`internal bound`::Nil, body.rep)
+      case code"($x0:$t0,$x1:$t1,$x2:$t2) => $body:$tr" => (x0.`internal bound`::x1.`internal bound`::x2.`internal bound`::Nil, body.rep)
+    }
+  }
+  
   
   // TODO move these into a Builtin object
   lazy val UnitType = staticTypeApp(loadTypSymbol("scala.Unit"),Nil)
