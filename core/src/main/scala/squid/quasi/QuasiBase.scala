@@ -431,9 +431,13 @@ self: Base =>
   @compileTimeOnly("Unquote syntax ${...} cannot be used outside of a quasiquote.")
   def $$_*[T](name: Symbol): Seq[T] = ???
   
+  /* Used by QuasiMacro when inserting a Variable directly into a code fragment. */
   @compileTimeOnly("This method is not supposed to be used manually.")
   def $$_var[T](v: Variable[T]): T = ???
   
+  /* Used by QuasiMacro when inserting a Variable function into a code fragment. */
+  @compileTimeOnly("This method is not supposed to be used manually.")
+  def $$_varFun[V,T,C](refIdent: V)(vf: Variable[V] => OpenCode[T]): T = ???
   
   // note: the following functions are implicitly inserted by QuasiEmbedder,
   //       so that code"$f(...)" is equivalent to code"${liftOpenFun(f)}(...)"

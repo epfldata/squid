@@ -324,7 +324,42 @@ class QuasiBlackboxMacros(val c: blackbox.Context) {
               case AsFun3(AsCode(t0,ctx0), AsCode(t1,ctx1), AsCode(t2,ctx2), AsCode(tr,ctxr)) =>
                 checkIsBottom(ctx0); checkIsBottom(ctx1); checkIsBottom(ctx2)
                 q"$base.$$[($t0,$t1,$t2)=>$tr,$ctxr]($base.liftOpenFun3[$t0,$t1,$t2,$tr]($t))"
-              case _ => q"$base.$$($t)"
+              case AsFun(AsVariable(typ), AsCode(tr,ctxr)) =>
+                debug(s"FV: $typ $tr $ctxr")
+                ??? // TODO
+              case AsFun(AsVariable(typ), ExistentialType(v::Nil, AsCode(tr,ctxr))) =>
+                debug(s"FV: $typ $v $tr $ctxr")
+                t match {
+                  case q"($x) => $body" =>
+                    if (x.symbol.owner =/= v.owner || v.name.toString =/= s"${x.symbol.name}.type")
+                      throw QuasiException(s"Unexpected: existential '${v}' does not seem to correspond to lambda-bound ${x.symbol}", Some(x.pos))
+                    val CtxSym = typeOf[Base].member(TypeName("Variable")).asType.toType.member(TypeName("Ctx"))
+                    debug(s"Old context: $ctxr")
+                    val (bs,vs) = bases_variables(ctxr)
+                    // Remove from the context the existential symbol which correspond to the value bound in the lambda:
+                    val newBases = bs.filterNot {
+                      case TypeRef(vtp,CtxSym,Nil) => vtp.typeSymbol == v
+                      case _ => false }
+                    val ctx = mkContext(newBases, vs)
+                    debug(s"New context: $ctx")
+                    val t0 = c.parse(showCode(t))
+                    /* ^ unfortunately, I couldn't find a way of doing this properly; the problem is that singleton
+                         Variable types get broken, rainsing errors such as:
+                             found   : VariableSymbolTests.this.DSL.Code[v.Typ,v.Ctx]
+                                (which expands to)  VariableSymbolTests.this.DSL.Code[Int,v.Ctx]
+                             required: VariableSymbolTests.this.DSL.Predef.Code[Int,v.Ctx]
+                                (which expands to)  VariableSymbolTests.this.DSL.Code[Int,v.Ctx]
+                         things I've tried independently and together:
+                           - c.untypecheck(t)  – only changes when the problem occurs
+                           - renewing every identifier in `t` with a fresh tree without symbol (`case Ident(n) => Ident(n)`)
+                           - deeply transform the tree, setting the symbols or types to `null`
+                     */
+                    q"$base.$$$$_varFun[$typ,$tr,$ctx](${x.name})($t0)"
+                  case _ => ??? // TODO
+                }
+              case _ => 
+                debug(s"Unrecognized insertion of type '${t.tpe}': ${t}\n –– typing may be imprecise as a result.")
+                q"$base.$$($t)"
             }
             
         }

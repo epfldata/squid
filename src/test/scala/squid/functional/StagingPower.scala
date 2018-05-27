@@ -35,17 +35,31 @@ class StagingPower extends MyFunSuite {
     
   }
   
+  val model = code"(y: Double) => y * (y * (y * 1.0))"
+  
   test("x => power(3)(x)") {
     
     val p3f = code"(x: Double) => ${power(3)(code"?x:Double")}" // TODO look at what this generates...
     
     assert(p3f =~= code"(x: Double) => x * (x * (x * 1.0))")
-    assert(p3f =~= code"(y: Double) => y * (y * (y * 1.0))")
+    assert(p3f =~= model)
     
     assert((p3f.run apply 2) == 8)
     
   }
   
+  def power2[C](n: Int)(v: Variable[Double]): Code[Double,v.Ctx] =
+    if (n == 0) code"1.0" else code"$v * ${power2(n-1)(v)}"
+  
+  test("power(3)(x) alternative") {
+    
+    val p3f = code"(x: Double) => ${(x: Variable[Double]) => power(3)(x.toCode)}"
+    p3f eqt model
+    
+    val p3f2 = code"(x: Double) => ${(x: Variable[Double]) => power2(3)(x)}"
+    p3f2 eqt model
+    
+  }
   
 }
 

@@ -515,6 +515,11 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
               if (!boundScopes.valuesIterator.exists(_ =:= ctx)) termScope ::= ctx
               q"$v.rep".asInstanceOf[b.Rep]
               
+            case q"$baseTree.$$$$_varFun[$vtp,$tpt,$ctxt]($vref)($repfun)" =>
+              val bv = ctx.get(vref.symbol.asTerm).get // TODO b/e
+              val mb = b.asInstanceOf[(MetaBases{val u: c.universe.type})#MirrorBase with b.type]
+              val tree = q"$baseTree.$$[$tpt,$ctxt]($repfun($Base.Variable.fromBound(${bv.asInstanceOf[mb.BoundVal].tree})))"
+              liftTerm(tree, parent, expectedType)
               
             /** Replaces insertion unquotes with whatever `insert` feels like inserting.
               * In the default quasi config case, this will be the trees representing the inserted elements. */
