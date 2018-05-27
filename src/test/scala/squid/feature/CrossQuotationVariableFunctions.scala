@@ -35,8 +35,22 @@ class CrossQuotationVariableFunctions extends MyFunSuite {
     
     code"val v = 0; ${(v:Variable[Int]) => code"$v + 1"} * 2" eqt model
     
-    //code"val v = 0; ${(v:Variable[Int]) => foo(code"42")} * 2" eqt code"val x = 0; (${code"42"}+1) * 2"
-    // ^ FIXME
+    // result of function is not existential because does not use the variable:
+    code"val v = 0; ${(v:Variable[Int]) => foo(code"42")} * 2" eqt
+      code"val x = 0; (${code"42"}+1) * 2"
+    
+    
+    // result of function is the WRONG existential:
+    import scala.language.existentials
+    val w -> cde = { val v = Variable[Int]; v -> code"$v+1" } 
+    // ^ cde has type: Code[Int,v.Ctx] where val v: Variable[Int]
+    var cdev = cde : (Code[Int,v.Ctx] forSome {val v: Variable[Int]})
+    // cdev contains the context requirement of the wrong variable, as existential
+    cdev = code"val v = 0; ${(v:Variable[Int]) => cdev} * 2"
+    // ^ makes sure the context is the same; the existential context requirement was not wrongly removed
+    val closed = code"val $w = 0; $cdev"
+    assertDoesNotCompile("closed.run") // Error:(53, 12) Cannot prove that AnyRef <:< v.Ctx.
+    assert(closed.close.get.run == 2)
     
   }
   
@@ -46,8 +60,7 @@ class CrossQuotationVariableFunctions extends MyFunSuite {
     
     assertDoesNotCompile("""
       code"val v = 0; ${(x:Variable[Int]) => x.toCode} * 2"
-    """)
-    // ^ TODO B/E
+    """) // Quasiquote Error: Inserted variable function refers to a variable 'x' that is not bound in the scope of that quote.
     
     assertDoesNotCompile("""
       code"val v = 0; ${(y:Variable[Int]) => y.toCode} * 2"
@@ -56,18 +69,13 @@ class CrossQuotationVariableFunctions extends MyFunSuite {
     val fun = (v:Variable[Int]) => foo(v.toCode)
     assertDoesNotCompile("""
       code"val v = 0; ${fun} * 2"
-    """)
-    // ^ TODO B/E
+    """) // Error:(71, 25) Quasiquote Error: Inserted variable functions must be lambda expressions.
     
     val v = Variable[Int]
     val cde = code"$v+1" // contains context of wrong variable!
-    //code"val v = 0; ${(v:Variable[Int]) => cde} * 2" alsoApply println
-    // ^ FIXME
-    
-    import scala.language.existentials
-    val cde2 = { val v = Variable[Int]; code"$v+1" } // contains context of wrong variable, as existential!
-    //code"val v = 0; ${(v:Variable[Int]) => cde} * 2" alsoApply println
-    // ^ FIXME
+    val res = code"val v = 0; ${(v:Variable[Int]) => cde} * 2"
+    assertDoesNotCompile("res.run") // Error:(77, 9) Cannot prove that AnyRef <:< v.Ctx.
+    code"val $v = 1; $res" eqt code"val a = 1; val b = 0; (a + 1) * 2"
     
   }
   

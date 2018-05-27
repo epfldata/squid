@@ -169,6 +169,7 @@ class QuasiBlackboxMacros(val c: blackbox.Context) {
   lazy val AnyCodeSym = symbolOf[QuasiBase#AnyCode[_]]
   lazy val VariableSym = symbolOf[QuasiBase#Variable[_]]
   //lazy val VariableCtxSym = symbolOf[QuasiBase#Variable[Any]#Ctx] // doesn't seem to work!! – prints "free type Ctx"
+  lazy val VariableCtxSym = typeOf[Base].member(TypeName("Variable")).asType.toType.member(TypeName("Ctx"))
   
   // TODO generalize to handle AnyCode and retrieve the path-dependent context type... (if well-defined/not existential!)
   def asCode(tp: Type, typeOfBase: Type) = tp.baseType(CodeSym) |>? {
@@ -263,6 +264,12 @@ class QuasiBlackboxMacros(val c: blackbox.Context) {
     object AsAnyCode extends AsAnyCode(base.tpe)
     object AsVariable extends AsVariable(base.tpe)
     
+    object AsVariableFun { def unapply(x:Type): Option[(Type,List[Symbol],Type,Type)] = x match {
+      case AsFun(AsVariable(typ), AsCode(tr,ctxr)) => Some((typ,Nil,tr,ctxr))
+      case AsFun(AsVariable(typ), ExistentialType(syms, AsCode(tr,ctxr))) => Some((typ,syms,tr,ctxr))
+      case _ => None
+    }}
+    
     def mkTermHole(name: TermName, followedBySplice: Boolean) = {
       val h = builder.holes(name)
       assert(remainingHoles(name), s"Duplicated hole? $h")
@@ -324,21 +331,18 @@ class QuasiBlackboxMacros(val c: blackbox.Context) {
               case AsFun3(AsCode(t0,ctx0), AsCode(t1,ctx1), AsCode(t2,ctx2), AsCode(tr,ctxr)) =>
                 checkIsBottom(ctx0); checkIsBottom(ctx1); checkIsBottom(ctx2)
                 q"$base.$$[($t0,$t1,$t2)=>$tr,$ctxr]($base.liftOpenFun3[$t0,$t1,$t2,$tr]($t))"
-              case AsFun(AsVariable(typ), AsCode(tr,ctxr)) =>
-                debug(s"FV: $typ $tr $ctxr")
-                ??? // TODO
-              case AsFun(AsVariable(typ), ExistentialType(v::Nil, AsCode(tr,ctxr))) =>
-                debug(s"FV: $typ $v $tr $ctxr")
+              case AsVariableFun(varTyp,existSyms,retTyp,retCtx) =>
+                debug(s"Insertion of variable function with",varTyp,existSyms,retTyp,retCtx)
                 t match {
                   case q"($x) => $body" =>
-                    if (x.symbol.owner =/= v.owner || v.name.toString =/= s"${x.symbol.name}.type")
-                      throw QuasiException(s"Unexpected: existential '${v}' does not seem to correspond to lambda-bound ${x.symbol}", Some(x.pos))
-                    val CtxSym = typeOf[Base].member(TypeName("Variable")).asType.toType.member(TypeName("Ctx"))
-                    debug(s"Old context: $ctxr")
-                    val (bs,vs) = bases_variables(ctxr)
+                    debug(s"Old context: $retCtx")
+                    val (bs,vs) = bases_variables(retCtx)
                     // Remove from the context the existential symbol which correspond to the value bound in the lambda:
                     val newBases = bs.filterNot {
-                      case TypeRef(vtp,CtxSym,Nil) => vtp.typeSymbol == v
+                      case TypeRef(vtp,VariableCtxSym,Nil) =>
+                        //assert(existSyms contains vtp.typeSymbol)
+                        // ^ not always true, as the body of an inserted variable function may not actually use its parameter!
+                        existSyms.exists(v => x.symbol.owner === v.owner && v.name.toString === s"${x.symbol.name}.type")
                       case _ => false }
                     val ctx = mkContext(newBases, vs)
                     debug(s"New context: $ctx")
@@ -354,8 +358,8 @@ class QuasiBlackboxMacros(val c: blackbox.Context) {
                            - renewing every identifier in `t` with a fresh tree without symbol (`case Ident(n) => Ident(n)`)
                            - deeply transform the tree, setting the symbols or types to `null`
                      */
-                    q"$base.$$$$_varFun[$typ,$tr,$ctx](${x.name})($t0)"
-                  case _ => ??? // TODO
+                    q"$base.$$$$_varFun[$varTyp,$retTyp,$ctx](${x.name})($t0)"
+                  case _ => throw QuasiException("Inserted variable functions must be lambda expressions.", Some(t.pos))
                 }
               case _ => 
                 debug(s"Unrecognized insertion of type '${t.tpe}': ${t}\n –– typing may be imprecise as a result.")

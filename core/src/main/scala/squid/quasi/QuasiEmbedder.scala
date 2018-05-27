@@ -516,7 +516,9 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
               q"$v.rep".asInstanceOf[b.Rep]
               
             case q"$baseTree.$$$$_varFun[$vtp,$tpt,$ctxt]($vref)($repfun)" =>
-              val bv = ctx.get(vref.symbol.asTerm).get // TODO b/e
+              val bv = ctx.get(vref.symbol.asTerm).getOrElse(throw QuasiException(
+                s"Inserted variable function refers to a variable '${showCode(vref)}' that is not bound in the scope of that quote.",
+                Some(repfun.pos)))
               val mb = b.asInstanceOf[(MetaBases{val u: c.universe.type})#MirrorBase with b.type]
               val tree = q"$baseTree.$$[$tpt,$ctxt]($repfun($Base.Variable.fromBound(${bv.asInstanceOf[mb.BoundVal].tree})))"
               liftTerm(tree, parent, expectedType)
