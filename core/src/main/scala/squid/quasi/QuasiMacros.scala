@@ -331,6 +331,7 @@ class QuasiBlackboxMacros(val c: blackbox.Context) {
               case AsFun3(AsCode(t0,ctx0), AsCode(t1,ctx1), AsCode(t2,ctx2), AsCode(tr,ctxr)) =>
                 checkIsBottom(ctx0); checkIsBottom(ctx1); checkIsBottom(ctx2)
                 q"$base.$$[($t0,$t1,$t2)=>$tr,$ctxr]($base.liftOpenFun3[$t0,$t1,$t2,$tr]($t))"
+                
               case AsVariableFun(varTyp,existSyms,retTyp,retCtx) =>
                 debug(s"Insertion of variable function with",varTyp,existSyms,retTyp,retCtx)
                 t match {
@@ -361,6 +362,9 @@ class QuasiBlackboxMacros(val c: blackbox.Context) {
                     q"$base.$$$$_varFun[$varTyp,$retTyp,$ctx](${x.name})($t0)"
                   case _ => throw QuasiException("Inserted variable functions must be lambda expressions.", Some(t.pos))
                 }
+              case AsFun2(AsVariable(_),AsVariable(_), _) | AsFun3(AsVariable(_),AsVariable(_),AsVariable(_), _) =>
+                throw QuasiException("Inserted variable functions are currently only supported for function arity 1.", Some(t.pos))
+                
               case _ => 
                 debug(s"Unrecognized insertion of type '${t.tpe}': ${t}\n –– typing may be imprecise as a result.")
                 q"$base.$$($t)"

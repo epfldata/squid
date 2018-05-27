@@ -81,9 +81,15 @@ class CrossQuotationVariableFunctions extends MyFunSuite {
   
   test("Arities 2 and 3") {
     
-    // TODO
+    // TODO: support arities 2 and 3
     
-    // TODO test error on arity 4
+    //code"val v = 0; val w = 1; ${(v:Variable[Int], w:Variable[Int]) => foo(code"$v + $w")} * 2"
+    // ^ Error:(85, 69) Quasiquote Error: Inserted variable functions are currently only supported for function arity 1.
+    
+    assertDoesNotCompile("""
+      code"val v_0 = 0; val v_1 = 1; val v_2 = 2; val v_3 = 3; ${
+        (v_0:Variable[Int],v_1:Variable[Int],v_2:Variable[Int],v_3:Variable[Int]) => code"42"} * 2"
+    """) // Error:(89, 5) Embedding Error: Quoted expression does not type check: overloaded method value $ with alternatives: [...]
     
   }
   
