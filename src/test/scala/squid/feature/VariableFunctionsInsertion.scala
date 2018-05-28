@@ -19,7 +19,7 @@ import squid.ir.BottomUpTransformer
 import squid.ir.SimpleRuleBasedTransformer
 import squid.utils._
 
-class CrossQuotationVariableFunctions extends MyFunSuite {
+class VariableFunctionsInsertion extends MyFunSuite {
   import DSL.Predef._
   import DSL.Quasicodes._
   
@@ -90,6 +90,23 @@ class CrossQuotationVariableFunctions extends MyFunSuite {
       code"val v_0 = 0; val v_1 = 1; val v_2 = 2; val v_3 = 3; ${
         (v_0:Variable[Int],v_1:Variable[Int],v_2:Variable[Int],v_3:Variable[Int]) => code"42"} * 2"
     """) // Error:(89, 5) Embedding Error: Quoted expression does not type check: overloaded method value $ with alternatives: [...]
+    
+  }
+  
+  test("Inside Rewritings") {
+    
+    val pgrm0 = code"println(readInt + readInt * 2)"
+    
+    val pgrm1 = pgrm0 rewrite {
+      case code"readInt" =>
+        code"val rd = readDouble; ${(rd:Variable[Double]) => foo(code"$rd.toInt")}"
+    }
+    pgrm1 eqt code"println({val a = readDouble; a.toInt+1} + {val a = readDouble; a.toInt+1} * 2)"
+    
+    pgrm1 rewrite {
+      case code"val $x = readDouble; $body: $bt" =>
+        code"val ri = readInt; ${(ri:Variable[Int]) => body.subs(x) ~> code"$ri.toDouble"}"
+    } eqt code"println({val a = readInt; a.toDouble.toInt+1} + {val a = readInt; a.toDouble.toInt+1} * 2)"
     
   }
   

@@ -347,7 +347,7 @@ class QuasiBlackboxMacros(val c: blackbox.Context) {
                       case _ => false }
                     val ctx = mkContext(newBases, vs)
                     debug(s"New context: $ctx")
-                    val t0 = c.parse(showCode(t))
+                    val t0 = try c.parse(showCode(t))
                     /* ^ unfortunately, I couldn't find a way of doing this properly; the problem is that singleton
                          Variable types get broken, rainsing errors such as:
                              found   : VariableSymbolTests.this.DSL.Code[v.Typ,v.Ctx]
@@ -357,8 +357,14 @@ class QuasiBlackboxMacros(val c: blackbox.Context) {
                          things I've tried independently and together:
                            - c.untypecheck(t)  – only changes when the problem occurs
                            - renewing every identifier in `t` with a fresh tree without symbol (`case Ident(n) => Ident(n)`)
-                           - deeply transform the tree, setting the symbols or types to `null`
-                     */
+                           - deeply transform the tree, setting the symbols or types to `null` */
+                    catch {
+                      /* Reparsing does not always succeed because, for example, code in rewritings end up containing
+                         references to fictitious types such as '<context @ line:column>'
+                         In case parsing failed, hope for the best and try the untyped tree.
+                         Yes, this is an ugly wishful-thinking-based hack, but it seems to somehow get the job done. */ 
+                      case e: scala.reflect.macros.ParseException => c.untypecheck(t)
+                    }
                     q"$base.$$$$_varFun[$varTyp,$retTyp,$ctx](${x.name})($t0)"
                   case _ => throw QuasiException("Inserted variable functions must be lambda expressions.", Some(t.pos))
                 }
