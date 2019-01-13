@@ -342,6 +342,9 @@ self: Base =>
       }
     }
     
+    @compileTimeOnly("The cross-stage persistence annotation '%' has no effect outside of code fragments.")
+    def %[A](a: A): A = a
+    
     import scala.language.dynamics
     object ? extends Dynamic {
       @compileTimeOnly("The `?` syntax can only be used inside quasiquotes and quasicode.")

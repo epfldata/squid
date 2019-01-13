@@ -1,4 +1,4 @@
-// Copyright 2017 EPFL DATA Lab (data.epfl.ch)
+// Copyright 2019 EPFL DATA Lab (data.epfl.ch)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,6 +16,17 @@ package squid
 package lib
 
 import scala.annotation.StaticAnnotation
+
+
+// General-purpose annotations:
+
+/** This is used to annotate value definitions (variables, fields, parameters), to indicate that references to the value
+  * should be interpreted as cross-stage-persistent references, meaning that they are not lifted to code, but that code
+  * fragments that reference them carry them around at runtime, and use them when calling `_.run` or `_.compile`. */
+class persist extends StaticAnnotation
+
+
+// Annotations for the effect system:
 
 /** The method has no other effects than the latent effects of closures (or other objects) passed to it. */
 class transparent extends StaticAnnotation

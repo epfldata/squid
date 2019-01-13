@@ -509,6 +509,11 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
               
               b.letin(bound, value, body2, liftType(expectedType getOrElse x.tpe))
               
+            case q"$predefTree.%[$tpt]($tree)" => // TODO check predefTree
+              val mb = b.asInstanceOf[(MetaBases {val u: c.universe.type})#MirrorBase with b.type]
+              requireCrossStageEnabled
+              insertedTermTrees += tree
+              q"${mb.Base}.crossStage($tree, ${liftType(x.tpe).asInstanceOf[Tree]})".asInstanceOf[b.Rep]
               
             case q"$baseTree.$$$$_var[$tpt]($v)" =>
               val ctx = variableContext(v)
@@ -614,7 +619,7 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
               
               
               
-            /** Handling of the new new FV syntax: */
+            /** Handling of the new FV syntax: */
             
             // Correct usage of the `?` FV prefix
             case q"$baseTree.Predef.?.selectDynamic($nameTree)" => // TODO check baseTree
@@ -717,11 +722,21 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
           
           override def unknownFeatureFallback(x: Tree, parent: Tree): b.Rep = x match {
             
-            case id @ Ident(name) =>
-              requireCrossStageEnabled
-              insertedTermTrees += id
-              val mb = b.asInstanceOf[(MetaBases{val u: c.universe.type})#MirrorBase with b.type]
-              q"${mb.Base}.crossStage($id, ${liftType(x.tpe).asInstanceOf[Tree]})".asInstanceOf[b.Rep]
+            case id @ Ident(name: TermName) =>
+              
+              val isCrossQuotationReference = !x.symbol.annotations.exists(_.tree.tpe =:= typeOf[squid.lib.persist])
+              
+              val mb = b.asInstanceOf[(MetaBases {val u: c.universe.type})#MirrorBase with b.type]
+              
+              if (isCrossQuotationReference) {
+                
+                throw QuasiException(s"Cross-quotation references not yet supported.")
+                
+              } else {
+                requireCrossStageEnabled
+                insertedTermTrees += id
+                q"${mb.Base}.crossStage($id, ${liftType(x.tpe).asInstanceOf[Tree]})".asInstanceOf[b.Rep]
+              }
               
             case _ => super.unknownFeatureFallback(x, parent)
           }

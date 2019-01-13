@@ -1,4 +1,4 @@
-// Copyright 2018 EPFL DATA Lab (data.epfl.ch)
+// Copyright 2019 EPFL DATA Lab (data.epfl.ch)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 package squid
 package feature
 
+import squid.lib.persist
 import squid.utils._
 
 class ImplicitLiftingTests extends MyFunSuite(CrossStageDSL) {
@@ -35,7 +36,7 @@ class ImplicitLiftingTests extends MyFunSuite(CrossStageDSL) {
   
   test("Cross-Stage Implicit Lifting") {
     
-    implicit val ev: Ordering[MyClass] = Ordering.by(_.hashCode) // local instance value
+    @persist implicit val ev: Ordering[MyClass] = Ordering.by(_.hashCode) // local instance value
     
     val ordCde = implicitly[ClosedCode[Ordering[MyClass]]]
     ordCde eqt c"ev" // cross-stage persistence

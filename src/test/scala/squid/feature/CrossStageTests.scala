@@ -1,4 +1,4 @@
-// Copyright 2018 EPFL DATA Lab (data.epfl.ch)
+// Copyright 2019 EPFL DATA Lab (data.epfl.ch)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,15 +15,17 @@
 package squid
 package feature
 
+import squid.lib.persist
+
 class CrossStageTests extends MyFunSuite(CrossStageDSL) {
   import DSL.Predef._
   import DSL.Quasicodes._
   
-  test("Cross-Stage Persistence of Local Variables") {
+  test("Implicit Cross-Stage Persistence of Local Variables") {
     
-    val field = 'ok
-    var mutfield = 'ok
-    def method(x: Int) = x + 1
+    @persist val field = 'ok
+    @persist var mutfield = 'ok
+    @persist def method(x: Int) = x + 1
     
     eqt(code"field.name" : ClosedCode[String], code"${CrossStage(field)}.name")
     eqt(code{field.name} : ClosedCode[String], code{${CrossStage(field)}.name}) // using quasicode
@@ -36,6 +38,31 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
     
     assertDoesNotCompile(""" code"method(3)" """) // no cross-stage persistence of local methods
     // ^ Error:(30, 9) Embedding Error: Unsupported feature: Reference to local method `method`
+    
+  }
+  
+  test("Explicit Cross-Stage Persistence") {
+    
+    val field = 'ok
+    var mutfield = 'ok
+    def method(x: Int) = x + 1
+    
+    eqt(code"%(field).name" : ClosedCode[String], code"${CrossStage(field)}.name")
+    eqt(code{%(field).name} : ClosedCode[String], code{${CrossStage(field)}.name}) // using quasicode
+    
+    eqt(code"%(mutfield).name" : ClosedCode[String], code"${CrossStage(mutfield)}.name")
+    
+    val c0 = code"%(method _)(3)"
+    assert(c0.run == 4)
+    
+    eqt(code"%(field.name).length" : ClosedCode[Int], code"${CrossStage(mutfield.name)}.length")
+    eqt(code{%(field.name).length} : ClosedCode[Int], code{${CrossStage(mutfield.name)}.length})
+    
+    assertDoesNotCompile(""" code"%(mutfield) = 'ko" """) // no cross-stage mutable variable update
+    // ^ Error:(54, 5) Embedding Error: Quoted expression does not type check: missing argument list for method % in class Predef
+    
+    assertDoesNotCompile(""" code"%(method)(3)" """) // no cross-stage persistence of local methods
+    // ^ Error:(55, 14) Embedding Error: Quoted expression does not type check: missing argument list for method method
     
   }
   
@@ -67,22 +94,22 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
   
   test("Cross-Stage References to Primitive Types Yield Constants") {
     
-    def const(v:Int) = code"v"
+    def const(@persist v:Int) = code"v"
     eqt(const(123), code"123")
     eqt(const(123), Const(123))
     eqt(CrossStage(123), Const(123))
     same(const(123).run, 123)
     
     val a = 123
-    val p = code"a+1"
+    val p = code"%(a) + 1"
     same(p.toString, """code"(123).+(1)"""")
     
   }
   
   test("MSP") {
     
-    val v0 = Some(123)
-    val v1 = code"v0.get + 1"
+    @persist val v0 = Some(123)
+    @persist val v1 = code"v0.get + 1"
     same(v1.toString, """code"((cs_0: scala.Some[scala.Int]) => cs_0.get.+(1)) % (Some(123))"""")
     val v2 = code"v1.compile + 1"
     same(v2.compile, 125)
@@ -91,14 +118,14 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
   
   test("Matching") {
     
-    val a = 123 // will be converted to a constant
+    @persist val a = 123 // will be converted to a constant
     
     code"a + 1" match {
       case code"(${CrossStage(n)}:Int)+1" => fail  // constants can no longer be interpreted as cross-stage values... could be confusing 
       case code"(${Const(n)}:Int)+1" => same(n, 123)
     }
     
-    val s = 'test // not a primitive that can be converted to a constant
+    @persist val s = 'test // not a primitive that can be converted to a constant
     
     same(code"s.name".compile, s.name)
     
@@ -107,7 +134,7 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
       case code"(${CrossStage(sym)}:Symbol).name" => same(sym, 'test)
     }
     
-    val ns = new{} // non-serializable object
+    @persist val ns = new{} // non-serializable object
     assert(code"ns.toString".toString startsWith """code"((cs_0: java.lang.Object) => cs_0.toString()) % """)
     assert(code"Some(ns)".compile.get eq ns)
     
@@ -115,7 +142,7 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
   
   test("Patterns Containing Cross-Stage Values") {
     
-    val ls = List(1,2,3)
+    @persist val ls = List(1,2,3)
     
     code"ls.size" matches {
       case code"ls.size" =>
@@ -124,7 +151,7 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
         l eqt CrossStage(ls)
     }
     
-    def foo(lspat: List[Int], cde: ClosedCode[Int]) = cde match {
+    def foo(@persist lspat: List[Int], cde: ClosedCode[Int]) = cde match {
       case code"lspat.size" => true
       case _ => false
     }
@@ -136,7 +163,7 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
   test("No Cross-Stage References Unless Allowed") {
     import TestDSL.Predef._
     
-    val ls = List(1,2,3)
+    @persist val ls = List(1,2,3)
     assertDoesNotCompile(""" code"ls.size" """)
     // ^ Error:(77, 5) Embedding Error: Cannot use cross-stage reference: base TestDSL.Predef.base does not extend squid.lang.CrossStageEnabled.
     
@@ -147,7 +174,7 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
   
   test("Serialization of Cross-Stage Values") {
     
-    val ls = List(1,2,3)
+    @persist val ls = List(1,2,3)
     val cde = code"ls.map(x => x+1).sum"
     
     val tree = base.scalaTree(cde.rep)
@@ -173,6 +200,5 @@ class CrossStageTests extends MyFunSuite(CrossStageDSL) {
     same(code"${(new DataManager{val data=Array(1,2,3)}).stagedIterator}.sum".compile, 6)
     
   }
-  
   
 }
