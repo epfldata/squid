@@ -478,6 +478,10 @@ self: Base =>
   @compileTimeOnly("This method is not supposed to be used manually.")
   def $$_varFun[V,T,C](refIdent: V)(vf: Variable[V] => OpenCode[T]): T = ???
   
+  @compileTimeOnly("Cross-quotation reference was never captured. " +
+    "Perhaps you intended to use a cross-stage-persistent reference, which needs the @squid.lib.persist annotation.")
+  def crossQuotation(x: Any): Rep = ???
+  
   // note: the following functions are implicitly inserted by QuasiEmbedder,
   //       so that code"$f(...)" is equivalent to code"${liftOpenFun(f)}(...)"
   implicit def liftOpenFun[A:CodeType,B](qf: OpenCode[A] => OpenCode[B]): OpenCode[A => B] = {

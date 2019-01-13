@@ -29,8 +29,8 @@ case class QuasiException(msg: String, pos: Option[scala.reflect.api.Position] =
 
 object QuasiEmbedder {
   private val knownSubtypes = mutable.ArrayBuffer[Any]()
+  private val variableSymbols = mutable.Map[Any,Any]()
 }
-import QuasiEmbedder._
 
 /** Holes represent free variables and free types (introduced as unquotes in a pattern or alternative unquotes in expressions).
   * Here, insertion unquotes are _not_ viewed as holes (they should simply correspond to a base.$[T,C](tree) node).
@@ -52,7 +52,9 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
   
   /** Stores known subtyping knowledge extracted during pattern matching, 
     * along with the scope (scala compiler context) in which they are true. */
-  val curTypeEqs = knownSubtypes.asInstanceOf[mutable.ArrayBuffer[(RCtx,Type,Type)]]
+  val knownSubtypes = QuasiEmbedder.knownSubtypes.asInstanceOf[mutable.ArrayBuffer[(RCtx,Type,Type)]]
+  
+  val variableSymbols = QuasiEmbedder.variableSymbols.asInstanceOf[mutable.Map[TermSymbol,Type]]
   
   val UnknownContext = typeOf[utils.UnknownContext]
   val scal = q"_root_.scala"
@@ -117,7 +119,7 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
     val vals = termHoles map { vname => q"val $vname: Nothing = ???" }
     
     val curCtxs = rc.callsiteTyper.context.enclosingContextChain
-    val (convNames, convs) = curTypeEqs.flatMap {
+    val (convNames, convs) = knownSubtypes.flatMap {
       case (ctx,lhs,rhs) => 
         if (curCtxs.contains(ctx)) {
           val fresh = TermName(c.freshName("__conv"))
@@ -238,7 +240,7 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
           as0.iterator zip as1.iterator foreach (zip _).tupled
         case _ =>
           debug(s"Subtyping knowledge: $lhs <:< $rhs")
-          curTypeEqs += ((curCtxs.head, lhs, rhs))
+          knownSubtypes += ((curCtxs.head, lhs, rhs))
       }
       zip(typedTreeType,asc)
     }
@@ -459,7 +461,12 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
                       val (bound,cntx) = interpretInsertedVariableSymbol(name, tpt)
                       cntxs ::= p.symbol.asTerm -> cntx
                       bound
-                    } else {
+                    } else variableSymbols.get(p.symbol.asTerm) match {
+                      case Some(tp) =>
+                        debug(s"Binding cross-quotation lambda parameter $name of type $tp")
+                        cntxs ::= p.symbol.asTerm -> tp
+                        b.bindVal(name.toString, liftType(p.symbol.typeSignature), liftAnnots(p,x))
+                      case None =>
                       // Q: need to check tpt here?
                       b.bindVal(name.toString, liftType(p.symbol.typeSignature), liftAnnots(p,x))
                     }
@@ -508,6 +515,20 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
               )(ctx + (vdef.symbol.asTerm -> bound)) }
               
               b.letin(bound, value, body2, liftType(expectedType getOrElse x.tpe))
+              
+            /** Processes TODO */
+            case q"${vdef: ValDef}; ..$body" =>
+              val sym = vdef.symbol.asTerm
+              variableSymbols.get(sym) match {
+                case Some(tp) =>
+                  debug(s"Binding cross-quotation val ${vdef.name} of type $tp")
+                  val cntx = sym -> tp
+                  bindScope(cntx::Nil) {
+                    super.liftTerm(x, parent, expectedType, inVarargsPos)
+                  }
+                case None =>
+                  super.liftTerm(x, parent, expectedType, inVarargsPos)
+              }
               
             case q"$predefTree.%[$tpt]($tree)" => // TODO check predefTree
               val mb = b.asInstanceOf[(MetaBases {val u: c.universe.type})#MirrorBase with b.type]
@@ -559,8 +580,21 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
                 importedFreeVars ++= free.iterator map { case (n,t) => n.toString -> t }
               }
               
-              def subs(ir: Tree) =
-                insert(ir, captured.iterator map {case(n,bv) => n.toString->bv} toMap) // TODO also pass liftType(tpt.tpe)
+              def subs(tree: Tree) = {
+                val adapted = tree transform {
+                  case q"$base.crossQuotation(${cq @ Ident(_)})" // TODO check 'base'
+                    if cq.symbol =/= null && (ctx contains cq.symbol.asTerm)
+                  =>
+                    val bv = ctx(cq.symbol.asTerm)
+                    val mb = b.asInstanceOf[(MetaBases{val u: c.universe.type})#MirrorBase with b.type]
+                    q"${mb.Base}.readVal(${bv.asInstanceOf[mb.BoundVal].tree})"
+                }
+                adapted analyse {
+                  case x @ Ident(_) if x.symbol =/= null && x.symbol.isTerm && (ctx contains x.symbol.asTerm) =>
+                    throw QuasiException(s"Cannot refer to local quoted variable '${x}' from outside of quotation.", Some(x.pos))
+                }
+                insert(adapted, captured.iterator map { case (n, bv) => n.toString -> bv } toMap) // TODO also pass liftType(tpt.tpe)
+              }
               
               debug("Unquoting",s"$idts: Code[$tpt,$scp]", ";  env",varsInScope,";  capt",captured,";  free",free)
               
@@ -730,7 +764,16 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
               
               if (isCrossQuotationReference) {
                 
-                throw QuasiException(s"Cross-quotation references not yet supported.")
+                debug("Cross-quotation reference:", x)
+                
+                val sym = x.symbol.asTerm
+                val varType = variableSymbols.getOrElseUpdate(sym, {
+                  val cde = q"val $name: ${baseTree.tpe}#Variable[${x.tpe}] = _root_.scala.Predef.??? ; _root_.scala.Predef.??? : $name.Ctx"
+                  c.typecheck(cde).tpe
+                })
+                termScope ::= varType
+                
+                q"${mb.Base}.crossQuotation($x)".asInstanceOf[b.Rep]
                 
               } else {
                 requireCrossStageEnabled
