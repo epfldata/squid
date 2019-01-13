@@ -54,6 +54,16 @@ class TrickyTypes extends MyFunSuite {
     
   }
   
+  test("Singleton Contexts") {
+    
+    val v = Variable[Int]
+    object M { type C = v.Ctx }
+    val c0: Code[Int,M.C] = c"$v + 1"
+    val c1: ClosedCode[Int => Int] = c"{$v => $c0}"
+    c1 eqt c"{x: Int => x + 1}"
+    
+  }
+  
   
   test("Lambda with Expected Type") {
     import base.Quasicodes._

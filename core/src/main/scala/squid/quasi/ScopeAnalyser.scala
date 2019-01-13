@@ -33,8 +33,16 @@ trait ScopeAnalyser[U <: scala.reflect.api.Universe] extends UniverseHelpers[U] 
   def bases_variables(typ: Type): (List[Type], List[(TermName, Type)]) = {
     //println("[C] "+typ+" : "+typ.getClass)
     typ.dealias match {
+        
+      // We used to have the following case enabled, but I don't think it ever makes sense; OTOH, there are situations
+      // where we'd prefer to keep singleton types precise, and widening them would be wrong!
+      // An example is when we type cross-quotation boundaries, as in code{x:Int => ... code{x} ...}; there, the code
+      // in the middle has type Code[Int, x.type].
+      /*
       case st @ SingleType(pre: Type, sym: Symbol) =>
         bases_variables(sym.typeSignature) // or use 'st.widen'
+      */
+        
       case RefinedType(parents: List[Type], decls: Scope) =>
         val (baseSyms, varSyms) = parents map bases_variables unzip;
         val vars = decls flatMap {

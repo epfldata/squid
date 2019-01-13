@@ -45,13 +45,20 @@ class CrossQuotationTests extends MyFunSuite(CrossStageDSL) {
   test("Lambda-Bound") {
     
     val c0 = code{ x: Int => ${
+      
+      //val c: Code[Int,x.type] = code{x+1}
+      // ^ Scalac as of 2.12 does not allow taking the .type of a non-AnyRef type
+      val c = code{x+1}
+      
       eqt(DSL.crossQuotation(x), code{x}.rep)
       //println(DSL.crossQuotation(x+1)) // Quasiquote Error: Cannot refer to local quoted variable 'x' from outside of quotation.
-      identity(code{x + 1})
+      
+      identity(code{${c} * x})
+      
     }}
-    c0 eqt code"(x:Int) => x+1"
+    c0 eqt code"(x:Int) => (x+1)*x"
     val f0 = c0.compile
-    assert(f0(42) == 43)
+    assert(f0(42) == 43 * 42)
     
     assertCompiles      ("code{ x: Int => ${ println( ); code{   x  } } }")
     assertDoesNotCompile("code{ x: Int => ${ println(x); code{   x  } } }")
@@ -60,6 +67,12 @@ class CrossQuotationTests extends MyFunSuite(CrossStageDSL) {
     
     val f1 = code{ (x:Int, y:String) => ${ foo(code{y * x}) } }
     assert(f1.run.apply(3,"hey!") == "hey!hey!hey!!")
+    
+    val c1 = code{ x: String => ${
+      val c: Code[Int,x.type] = code{x.length}
+      code{${c} + 1}
+    }}
+    c1 eqt code"(x: String) => x.length + 1"
     
   }
   

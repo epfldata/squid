@@ -767,10 +767,7 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
                 debug("Cross-quotation reference:", x)
                 
                 val sym = x.symbol.asTerm
-                val varType = variableSymbols.getOrElseUpdate(sym, {
-                  val cde = q"val $name: ${baseTree.tpe}#Variable[${x.tpe}] = _root_.scala.Predef.??? ; _root_.scala.Predef.??? : $name.Ctx"
-                  c.typecheck(cde).tpe
-                })
+                val varType = variableSymbols.getOrElseUpdate(sym, internal.singleType(NoPrefix, sym))
                 termScope ::= varType
                 
                 q"${mb.Base}.crossQuotation($x)".asInstanceOf[b.Rep]
