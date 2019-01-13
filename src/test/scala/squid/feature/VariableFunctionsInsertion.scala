@@ -40,6 +40,12 @@ class VariableFunctionsInsertion extends MyFunSuite {
       code"val x = 0; (${code"42"}+1) * 2"
     
     
+    code"{ x: Int => ${ (x: Variable[Int]) => identity(code{ ${x} + 1 }) } }" eqt
+      code"{ y: Int => y + 1 }"
+    
+    // Note: syntax is currently unsupported in quasicode; but there we now have cross-quotation references so it does not seems necessary
+    //code{ x: Int => ${ (x: Variable[Int]) => identity(code{ ${x} + 1 }) } } alsoApply println
+    
     // result of function is the WRONG existential:
     import scala.language.existentials
     val w -> cde = { val v = Variable[Int]; v -> code"$v+1" } 

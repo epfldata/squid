@@ -90,6 +90,9 @@ class VariableSymbolTests extends MyFunSuite {
     
     //code{val $v = 0; ${identity(code{$v + 1})}} // TODO enable this syntax, for consistency
     
+    code{ $v: Int => ${ identity(code{ ${v} + 1 }) } } eqt
+      code"{ a: Int => a + 1 }"
+    
   }
   
   
