@@ -14,6 +14,9 @@
 
 package squid.utils
 
+import scala.collection.mutable
+import scala.reflect.macros.whitebox
+
 package object typing {
   
   // Scala does not have a built-in way to go from, e.g., List[A] to List[B] when implicitly[A <:< B]; this corrects that
@@ -44,5 +47,44 @@ package object typing {
   
   type Poly[F[_]] = Poly1[F]
   val Poly = Poly1
+  
+  
+  // Helper for singleton types:
+  
+  object singleton {
+    import scala.language.experimental.macros
+    import scala.reflect.macros.whitebox
+    
+    def scope: Any = macro `scope macro`
+    
+    def `scope macro`(c: whitebox.Context): c.Tree = {
+      val c2 = c.asInstanceOf[reflect.macros.runtime.Context with whitebox.Context]
+      import c2.{universe => u2}
+      val ctx: c2.universe.analyzer.Context = c2.callsiteTyper.context
+      
+      val syms2 = ctx.outer.enclosingContextChain.flatMap { ctx =>
+        var syms = mutable.Buffer.empty[u2.TermName -> u2.TermSymbol]
+        new u2.Traverser {
+          override def traverse(tree: u2.Tree): Unit = tree match {
+            case d:u2.ValDef 
+              if d.symbol.isInitialized
+              && d.symbol.isTerm
+            =>
+              syms += d.name -> d.symbol.asTerm
+            case _ => super.traverse(tree)
+          }
+        } traverse ctx.tree
+        syms
+      }.groupBy(_._1).map(_._2.head._2).toList
+      
+      import c.universe._
+      val syms = syms2.asInstanceOf[List[TermSymbol]]
+      val tpe = c.typecheck(tq"{..${syms.map{ sym => q"type ${sym.name.toTypeName} = ${internal.singleType(NoPrefix,sym)}" }}}", c.TYPEmode).tpe
+      
+      import internal.decorators._
+      q"()".setType(tpe)
+    }
+    
+  }
   
 }

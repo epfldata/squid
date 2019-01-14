@@ -17,6 +17,7 @@ package feature
 
 import squid.lib.persist
 import utils._
+import utils.typing.singleton.scope
 
 /*
 
@@ -46,9 +47,11 @@ class CrossQuotationTests extends MyFunSuite(CrossStageDSL) {
     
     val c0 = code{ x: Int => ${
       
-      //val c: Code[Int,x.type] = code{x+1}
+      //val c: Code[Int, x.type] = code{x+1}
       // ^ Scalac as of 2.12 does not allow taking the .type of a non-AnyRef type
+      val c0: Code[Int, scope.x] = code{x+1}
       val c = code{x+1}
+      c eqt c0
       
       eqt(DSL.crossQuotation(x), code{x}.rep)
       //println(DSL.crossQuotation(x+1)) // Quasiquote Error: Cannot refer to local quoted variable 'x' from outside of quotation.
