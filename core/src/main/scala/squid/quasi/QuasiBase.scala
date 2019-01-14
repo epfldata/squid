@@ -20,6 +20,7 @@ import squid.ir.Transformer
 import utils._
 import utils.typing._
 import squid.lang.Base
+import squid.lang.EffectfulReification
 import squid.lang.InspectableBase
 import squid.lang.IntermediateBase
 import utils.MacroUtils.MacroSetting
@@ -160,6 +161,17 @@ self: Base =>
     //  case that: IR[_,_] => rep =~= that.rep
     //  case _ => false
     //}
+    
+    def bind_!(implicit ev: self.type <:< self.type with EffectfulReification with IntermediateBase): OpenCode[T] = {
+      val self0 = self.asInstanceOf[EffectfulReification with self.type]
+      val v = self0.registerBoundRep(rep.asInstanceOf[self0.Rep])
+      Code(self.readVal(v))
+    }
+    def !(implicit ev: self.type <:< self.type with EffectfulReification): ClosedCode[Unit] = {
+      val self0 = self.asInstanceOf[EffectfulReification with self.type]
+      self0.registerEffectRep(rep.asInstanceOf[self0.Rep])
+      Code(const(()))
+    }
     
     def cast[S >: T]: Code[S, C] = this
     def erase: Code[Any, C] = this
@@ -558,6 +570,10 @@ self: Base =>
     def $$[T](name: Symbol): T = macro QuasiMacros.forward$$
     
     type $[QT <: TypeErased] = TypeOf[QT]
+    
+    /** This is sometimes useful, for example when antiquoting something for its effects,
+      * as in: `${ for (e <- ls) c"plus($e * x)".! }`. */
+    implicit def unitToCode(unit: Unit): ClosedCode[Unit] = Const(())
     
   }
   object Quasicodes extends Quasicodes[DefaultQuasiConfig]
