@@ -71,12 +71,29 @@ class EffectfulReificationTests extends MyFunSuite(EffectfulReificationTests.IR)
       println(res)
       res
     }
-    cde eqt c""" (x: Int) => {
+    cde eqt c"""{ x: Int =>
       var res = 0
       res = res + (1 * x)
       res = res + (2 * x)
       res = res + (3 * x)
       ()
+      println(res)
+      res
+    }"""
+    
+    // Just for completeness, the standard alternative without effectful reification:
+    import utils.typing.singleton.scope
+    val cde2: ClosedCode[Int => Int] = code{ x: Int => ${
+      var res: Code[Int,scope.x] = code{0}
+      for (e <- ls) res = code"${res} + $e * x"
+      code{
+        val r = ${res}
+        println(r)
+        r
+      }
+    }}
+    cde2 eqt c"""{ x: Int =>
+      val res = 0 + (1 * x) + (2 * x) + (3 * x)
       println(res)
       res
     }"""

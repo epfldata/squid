@@ -3,9 +3,9 @@
 
 ## Design
 
-I decided _note_ make `code"..."` quasiquotes themselves effectful (as in, say, LMS, or the old SC backend).
+I decided _not_ to make `code"..."` quasiquotes themselves effectful (as in, say, LMS, or the old SC backend).
 Instead, I use _separate_ functions `.!` and `.bind_!` on coe fragments. The main advantage is that pure programs using
-`code"..."` retains the same referentially-transparent meaning, and programs that makes use of effectful reification
+`code"..."` retains the same referentially-transparent meaning, and programs that wish to make use of effectful reification
 have to be explicit about it.
 It also has the nice property of decoupling effectful reification from the IR being an ANF or similar, where
 _every subexpression_ is automatically let-bound by default.
