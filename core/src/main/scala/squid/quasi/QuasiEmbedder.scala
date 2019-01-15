@@ -750,6 +750,30 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
               // ^ Q: correct to pass this expectedType? -- currently not passing through the current one 
               // because it would mean that sometimes the actual type is not a known subtype of the expected type...
               
+            case q"${vari @ Ident(_)} = $valu" if !ctx.contains(vari.symbol.asTerm) =>
+              // the code below is very similar to the one in the `unknownFeatureFallback` override; perhaps should factor it
+              val x = vari
+              
+              val isCrossQuotationReference = !x.symbol.annotations.exists(_.tree.tpe =:= typeOf[squid.lib.persist])
+              
+              if (isCrossQuotationReference) {
+                
+                val mb = b.asInstanceOf[(MetaBases {val u: c.universe.type})#MirrorBase with b.type]
+                
+                debug("Cross-quotation variable assignment to:", x)
+                
+                val sym = x.symbol.asTerm
+                val varType = variableSymbols.getOrElseUpdate(sym, internal.singleType(NoPrefix, sym))
+                termScope ::= varType
+                
+                val ref = q"${mb.Base}.crossQuotation($x)".asInstanceOf[b.Rep]
+                
+                val mtd = loadMtdSymbol(varTypSym, "$colon$eq", None)
+                val retTp = liftType(Unit)
+                base.methodApp(ref, mtd, Nil, base.Args(liftTerm(valu, parent, Some(vari.symbol.typeSignature)))::Nil, retTp)
+                
+              } else throw EmbeddingException.Unsupported(s"update to cross-stage mutable variable '$vari'")
+              
             case _ => 
               //debug("NOPE",x)
               super.liftTerm(x, parent, expectedType)
@@ -771,7 +795,14 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
                 val varType = variableSymbols.getOrElseUpdate(sym, internal.singleType(NoPrefix, sym))
                 termScope ::= varType
                 
-                q"${mb.Base}.crossQuotation($x)".asInstanceOf[b.Rep]
+                val ref = q"${mb.Base}.crossQuotation($x)".asInstanceOf[b.Rep]
+                
+                if (sym.asTerm.isVar) {
+                  val varTyp = x.symbol.typeSignature
+                  val mtd = loadMtdSymbol(varTypSym, "$bang", None)
+                  base.methodApp(ref, mtd, Nil, Nil, liftType(varTyp))
+                }
+                else ref
                 
               } else {
                 requireCrossStageEnabled

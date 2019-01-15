@@ -62,26 +62,20 @@ class EffectfulReificationTests extends MyFunSuite(EffectfulReificationTests.IR)
     
     val ls = List(c"1", c"2", c"3")
     
-    // unrolled loop example
+    // Unrolled loop example:
     val cde: ClosedCode[Int => Int] = code{ x: Int =>
       var res = 0
       
-      // TODO implement this?
-      //${ for (e <- ls) c"res = res + $e * x".! }
-      // ^ Error:(67, 24) Embedding Error: Unsupported feature: update to cross-quotation or cross-stage mutable variable 'res'
-      
-      val plus = (v: Int) => res += v
-      ${ for (e <- ls) c"plus($e * x)".! }  // uses automatic convertion from () to code"()", imported from Quasicodes._
+      ${ for (e <- ls) c"res += $e * x".! }  // uses automatic convertion from () to code"()", imported from Quasicodes._
       
       println(res)
       res
     }
     cde eqt c""" (x: Int) => {
       var res = 0
-      val plus = (v: Int) => res += v
-      plus(1 * x)
-      plus(2 * x)
-      plus(3 * x)
+      res = res + (1 * x)
+      res = res + (2 * x)
+      res = res + (3 * x)
       ()
       println(res)
       res
