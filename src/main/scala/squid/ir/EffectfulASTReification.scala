@@ -28,11 +28,15 @@ trait EffectfulASTReification extends AST with squid.lang.EffectfulReification {
   
   def registerBoundRep(r: Rep): BoundVal = {
     val v = new AutomaticVal(r)
-    reificationContext.head += v
+    reificationContext.headOption.getOrElse(
+      throw IRException("Cannot register binding outside of quoted context.")
+    ) += v
     v
   }
   def registerEffectRep(r: Rep): Unit = {
-    reificationContext.head += new AutomaticEffect(r)
+    reificationContext.headOption.getOrElse(
+      throw IRException("Cannot register effect outside of quoted context.")
+    ) += new AutomaticEffect(r)
   }
   
   override def wrapConstruct(mkRep: => Rep): Rep =

@@ -56,6 +56,12 @@ class EffectfulReificationTests extends MyFunSuite(EffectfulReificationTests.IR)
       s
     }"""
     
+    assert(intercept[IRException](code"'oops".!).msg ==
+      "Cannot register effect outside of quoted context.")
+    
+    assert(intercept[IRException](code"'oops".bind_!).msg ==
+      "Cannot register binding outside of quoted context.")
+    
   }
   
   test("Effectful Reification Without Bindings") {
