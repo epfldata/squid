@@ -14,6 +14,8 @@
 
 package squid.lang
 
+import squid.utils._
+
 /** A set of types and methods for manipulating class, object, field, and method definitions using Squid.
   * This is notably used as the output of the `@lift` macro. */
 trait Definitions extends Base {
@@ -36,8 +38,8 @@ trait Definitions extends Base {
     val members: List[Member]
     
     trait Parameterized {
-      val tparams: List[TypParam]
-      val typeParams: List[CodeType[_]] =
+      def tparams: List[TypParam]
+      lazy val typeParams: List[CodeType[_]] =
         tparams.map(tp => CodeType(staticTypeApp(tp, Nil)))
     }
     
@@ -58,17 +60,24 @@ trait Definitions extends Base {
     trait ObjectOf[+C] {
       val name: String
     }
+    //abstract class Object[C: CodeType](val name: String, val init: Code[Unit,Scp]) extends ClassOrObject[C] with ObjectOf[C] {
     abstract class Object[C: CodeType](val name: String) extends ClassOrObject[C] with ObjectOf[C] {
+      type Scp = outerScope.Scp
       val companion: Option[outerScope.Clasz[_]]
+      //val constructor: Method[Unit,Scp] { val typParam: Nil.type; val vparams: Nil.type }
+      val constructor: ObjectConstructor
+      def initCode: constructor.body.type = constructor.body
       
       override def toString = s"object $name"
     }
     type AnyClasz = Clasz[_]
     /* Note: in Scala 2.11, naming this Class results in strange failures, as in:
      *   java.lang.NoClassDefFoundError: squid/lang/Definitions$Scope$Class (wrong name: squid/lang/Definitions$Scope$class) */
-    abstract class Clasz[C: CodeType](val name: String, val tparams: List[TypParam]) extends ClassOrObject[C] with Parameterized {
+    //abstract class Clasz[C: CodeType](val name: String, val tparams: List[TypParam]) extends ClassOrObject[C] with Parameterized {
+    abstract class Clasz[C: CodeType](val name: String) extends ClassOrObject[C] with Parameterized {
       val companion: Option[outerScope.Object[_]]
       val self: Variable[C]
+      def tparams: constructor.tparams.type = constructor.tparams
       
       override def toString = s"class $name${if (tparams.isEmpty) "" else tparams.mkString("[",",","]")}"
     }
@@ -79,6 +88,7 @@ trait Definitions extends Base {
       
       val name: String
       val parents: List[CodeType[_]]
+      val constructor: Method[Unit,_]
       val fields: List[Field[_]]
       val methods: List[Method[_,_]]
       
@@ -112,7 +122,7 @@ trait Definitions extends Base {
       class Method[A0: CodeType, S <: Scp](
         val symbol: MtdSymbol,
         val tparams: List[TypParam],
-        val vparams: List[List[Variable[_]]],
+        val vparamss: List[List[Variable[_]]],
         val body: Code[A0,S]
       ) extends FieldOrMethod[A0] with Parameterized {
         type Scp = S
@@ -120,10 +130,16 @@ trait Definitions extends Base {
         
         //println(s"METHOD $this")
         
-        override def toString = s"def ${symbol}[${tparams.mkString(",")}]${vparams.map(vps => vps.map(vp =>
+        override def toString = s"def ${symbol}[${tparams.mkString(",")}]${vparamss.map(vps => vps.map(vp =>
           //s"${vp.`internal bound`}: ${vp.Typ.rep}"
           s"$vp"
         ).mkString("(",",",")")).mkString}: ${A.rep} = ${showRep(body.rep)}"
+      }
+      private lazy val UnitType = staticTypeApp(loadTypSymbol("scala.Unit"),Nil)
+      class ObjectConstructor(symbol: MtdSymbol, body: Code[Unit,Scp])
+      extends Method[Unit,Scp](symbol, Nil, Nil, body)(CodeType(UnitType)) {
+        override val vparamss: Nil.type = Nil
+        override val tparams: Nil.type = Nil
       }
       
       // A helper for creating Field objects; used by the `@lift` macro
@@ -134,7 +150,15 @@ trait Definitions extends Base {
           //get.map(_.asInstanceOf[FieldGetter]),
           set.map(_.asInstanceOf[FieldSetter]),init.map(Code(_)))(CodeType[Any](typ))
       
-      def showWithBody: String = s"$toString {${if (members.isEmpty) "" else members.map("\n  "+_).mkString+"\n"}}"
+      def showWithBody: String = s"$toString${
+        if (constructor.vparamss.isEmpty) "" else constructor.vparamss.map(vps =>
+          //vps.map(vp => vp)
+          vps.mkString("",",","")
+        ).mkString("(",",",")")
+      } {\n${
+        showRep(constructor.body.rep).splitSane('\n').map("  "+_).mkString("\n")
+      }${if (members.isEmpty) "" else members.map("\n  "+_).mkString+"\n"}}"
+      //} {${if (members.isEmpty) "" else members.map("\n  "+_).mkString+"\n"}}"
       
       // TODO an API for modifying these constructs in a safe way...
       /*

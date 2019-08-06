@@ -29,19 +29,19 @@ class ClassLiftingTests extends MyFunSuite {
     
     cls.methods.find(_.symbol == TestDSL.methodSymbol[MyClass]("bar")) |>! {
       case Some(mtd) =>
-        val v = mtd.vparams.head.head.asInstanceOf[Variable[Int]]
+        val v = mtd.vparamss.head.head.asInstanceOf[Variable[Int]]
         mtd.body eqt code"$v + 1"
     }
     cls.methods.find(_.symbol == TestDSL.methodSymbol[MyClass]("foo")) |>! {
       case Some(mtd) =>
-        val str = mtd.vparams.head.head.asInstanceOf[Variable[String]]
+        val str = mtd.vparamss.head.head.asInstanceOf[Variable[String]]
         mtd.body eqt code"${cls.self}.bar($str.length)"
     }
     obj.methods.find(_.symbol == TestDSL.methodSymbol[MyClass.type]("swap")) |>! {
       case Some(mtd) =>
         mtd.typeParams.head |> { implicit A =>
-          val x = mtd.vparams.head.head.asInstanceOf[Variable[(A.Typ,A.Typ)]]
-          val name = mtd.vparams.tail.head.head.asInstanceOf[Variable[Symbol]]
+          val x = mtd.vparamss.head.head.asInstanceOf[Variable[(A.Typ,A.Typ)]]
+          val name = mtd.vparamss.tail.head.head.asInstanceOf[Variable[Symbol]]
           mtd.body eqt code"$name -> $x.swap"
         }
     }
@@ -58,7 +58,7 @@ class ClassLiftingTests extends MyFunSuite {
     obj.methods.find(_.symbol == TestDSL.methodSymbol[OrphanObject.type]("test")) |>! {
       case Some(mtd) =>
         mtd.typeParams.head |> { implicit A =>
-          val a = mtd.vparams.head.head.asInstanceOf[Variable[A.Typ]]
+          val a = mtd.vparamss.head.head.asInstanceOf[Variable[A.Typ]]
           mtd.body eqt code"($a, $a)"
         }
     }
@@ -78,8 +78,13 @@ class ClassLiftingTests extends MyFunSuite {
     
     obj.methods.find(_.symbol == TestDSL.methodSymbol[MyClass2.type]("testo")) |>! {
       case Some(mtd) =>
-        val x = mtd.vparams.head.head.asInstanceOf[Variable[Int]]
+//<<<<<<< HEAD
+        val x = mtd.vparamss.head.head.asInstanceOf[Variable[Int]]
         mtd.body eqt code"val m = new MyClass2($x, 0.0, true); Some(m.mut + $x)"
+//=======
+//        val x = mtd.vparamss.head.head.asInstanceOf[Variable[Int]]
+//        mtd.body eqt code"Some((new MyClass2($x, 0.0, true)).mut + $x)"
+//>>>>>>> WIP
     }
     
     assert(cls.methods.head.symbol.asMethodSymbol.owner.isClass)

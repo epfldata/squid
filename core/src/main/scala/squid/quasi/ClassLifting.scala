@@ -53,9 +53,11 @@ class doNotLift extends StaticAnnotation
     - val/var parameters
     - doNotLift
   TODO: cache generated symbols! (is it already done?)
+  TODO: bail on private[this]? 
 */
 class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
   import c.universe._
+  import Helpers._
   
   def req(cnd: Bool, msg: => String): Unit = if (!cnd) reqFail(msg)
   def reqFail(msg: String): Nothing = throw new EmbeddingException(msg)
@@ -136,8 +138,22 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
     
     //val tpack = c.typecheck(pack2).asInstanceOf[PackageDef]
     val tpack = c.typecheck(pack2, withMacrosDisabled = true).asInstanceOf[PackageDef]
-    //debug(s"Typed: ${showCode(tpack)}")
+    //debug(s"Pretty: ${showCode(tpack)}")
     debug(s"Typed: ${tpack}")
+    
+    var hasErrors = false
+    tpack analyse {
+      case tpt: TypeTree =>
+        //println(tpt.tpe)
+        if (isErroneous(tpt.tpe)) {
+          hasErrors = true
+          //throw EmbeddingException("An error in the class or object definition prevented its lifting.", tpt.pos)
+          //c.error(tpt.pos, s"Error detected here: ${tpt.tpe}")
+          c.error(tpt.pos, s"[lifting] Error detected here.")
+        }
+    }
+    if (hasErrors)
+      c.abort(d.pos, "One or more errors in the class or object definition prevented their lifting.")
     
     val (tobj,tcls) = {
       val objs = tpack.stats.collect{ case md: ModuleDef => md }
@@ -163,23 +179,26 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
     val Base = new MBM.MirrorBase(d, Some(td.tpe))
     class MEBase extends ModularEmbedding[c.universe.type, Base.type](c.universe, Base, str => debug(str))
     
-    def liftTemplate(name: Name, templ: Template, self: Tree, sign: Type): (List[Tree], List[Tree]) = {
-      debug(s"###### Lifting $name ######")
+    def liftTemplate(name: Name, templ: Template, self: Tree, sign: Type): (List[Tree], List[Tree], Tree) = {
+      val isObj = name.isTermName
+      val printName = (if (isObj) "object " else "class ") + name
+      debug(s"###### Lifting $printName ######")
       debug(s"Signature: ${sign}")
       
-      val methods = templ.body.collect {
+      val allMethods: List[Bool -> Tree] = templ.body.collect {
         case md: DefDef
           if (md.symbol =/= c2.enclosingMethod.symbol.asInstanceOf[Symbol]) // avoid lifting the `reflect` method itself
-          && (md.name =/= termNames.CONSTRUCTOR)
+          //&& (md.name =/= termNames.CONSTRUCTOR)
           && !md.symbol.asMethod.isAccessor // accessors are SOMETIMES(!!) generated for class fields at this point
         =>
+          val isCtor = md.name === termNames.CONSTRUCTOR
           debug(s"====== Lifting ${md.symbol} ======")
           
           object ME extends MEBase {
             lazy val tparams = md.symbol.typeSignature.typeParams.map{tp =>
               assert(tp.asType.typeParams.isEmpty)
               tp -> Base.typeParam(tp.name.toString)}
-            lazy val vparams = md.symbol.typeSignature.paramLists.map(vps =>
+            lazy val vparamss = md.symbol.typeSignature.paramLists.map(vps =>
               vps.map{vp =>
                 vp -> Base.bindVal(vp.name.toString, ME.liftType(vp.typeSignature), Nil)})
             override def unknownTypefallBack(tp: Type): base.TypeRep = {
@@ -195,7 +214,7 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
             override def unknownFeatureFallback(x: Tree, parent: Tree) = x match {
               case Ident(TermName(name)) =>
                 assert(name === x.symbol.name.toString)
-                vparams.iterator.flatten.find(
+                vparamss.iterator.flatten.find(
                   _._1.name.toString === name // FIXME hygiene
                 ).get._2 |> Base.readVal
               case This(tpnme) =>
@@ -203,21 +222,62 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
                 //assert(tpnme === typeNames.EMPTY || tpnme === templ.symbol.name.toTypeName, (tpnme, templ.symbol.name))
                 // ^ weirdly fails, with things like  (MyClass3,<local MyClass3>)
                 self
+              case Select(This(tpnme), fnme) =>
+                debug(x.symbol)
+                debug(x.symbol.isPrivate,x.symbol.isPrivateThis,x.symbol.isParameter,x.symbol.asTerm.isParamAccessor,x.symbol.asTerm.isAccessor)
+                vparamss.iterator.flatten.find(
+                  //_._1.name.toString === x.symbol.name.toString // FIXME hygiene
+                  _._1.name.toString === fnme.toString // FIXME hygiene
+                ).get._2 |> Base.readVal
+                //die
               case _ =>
+                //println(x.getClass)
                 super.unknownFeatureFallback(x, parent)
             }
           }
+          /*
+<<<<<<< HEAD
           val expTyp = md.symbol.asMethod.returnType
           assert(md.symbol.typeSignature.finalResultType =:= expTyp, s"${md.tpe.finalResultType} =:= ${expTyp}")
           val res = ME.apply(md.rhs, Some(expTyp))
+=======
+          val body = if (isCtor) { // TODO check ctor actually empty?
+            val stmts = templ.body.flatMap {
+              case _: MemberDef => Nil
+              case expr: TermTree => expr :: Nil
+            }
+            internal.setType(q"..${stmts}", typeOf[Unit])
+          } else md.rhs
+          debug(s"Body: ${showCode(body)}")
+          val res = ME.apply(body, Some(md.symbol.typeSignature))
+>>>>>>> WIP
+          */
+          val expTyp = md.symbol.asMethod.returnType
+          assert(md.symbol.typeSignature.finalResultType =:= expTyp, s"${md.tpe.finalResultType} =:= ${expTyp}")
+          val body = if (isCtor) { // TODO check ctor actually empty?
+            val stmts = templ.body.flatMap {
+              case _: MemberDef => Nil
+              case expr: TermTree => expr :: Nil
+            }
+            internal.setType(q"..${stmts}", typeOf[Unit])
+          } else md.rhs
+          debug(s"Body: ${showCode(body)}")
+          val res = ME.apply(body, Some(expTyp))
+          
           val sym = ME.getMtd(md.symbol.asMethod)
-          q"..${
-            ME.vparams.flatMap(_.map(vp => vp._2.toValDef))
-          }; new Method[Any,Scp]($sym,${
-            ME.tparams.map(tp => tp._2._2)
-          },${
-            ME.vparams.map(_.map(tv => q"$td.Variable.mk(${tv._2.tree},${tv._2.typRep})"))
-          },$td.Code($res))($td.CodeType(${ME.liftType(md.rhs.tpe)}))"
+          val tree = if (isObj && isCtor) {
+            assert(ME.vparamss.flatten.isEmpty, ME.vparamss)
+            assert(ME.tparams.isEmpty, ME.tparams)
+            q"new ObjectConstructor($sym,$td.Code($res))"
+          }
+          else q"..${
+              ME.vparamss.flatMap(_.map(vp => vp._2.toValDef))
+            }; new Method[Unit,Scp]($sym,${
+              ME.tparams.map(tp => tp._2._2)
+            },${
+              ME.vparamss.map(_.map(tv => q"$td.Variable.mk(${tv._2.tree},${tv._2.typRep})"))
+            },$td.Code($res))($td.CodeType(${ME.liftType(md.rhs.tpe)}))"
+          isCtor -> tree
       }
       object ME extends MEBase
       
@@ -311,39 +371,51 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
 >>>>>>> WIP
           */
       }
-      (fields, methods)
+      //debug(sign.member(termNames.CONSTRUCTOR))
+      //val (methods, ctors) = allMethods.partition(_._1)
+      //(fields, methods, q"???")
+      allMethods.partition(_._1) match {
+        case (Nil, _) => lastWords(s"No ctor for $printName")
+        case (ctor :: Nil, methods) => (fields, methods.map(_._2), ctor._2)
+        case (ctors, _) =>
+          lastWords(s"Multiple ctors for $printName")
+          ??? // TODO B/E
+      }
     }
     
     val objSelf = q"this"
     
     val trees = tcls match {
       case None =>
-        val (fields, methods) = liftTemplate(tobj.name, tobj.impl, objSelf, tobj.symbol.typeSignature)
+        val (fields, methods, ctor) = liftTemplate(tobj.name, tobj.impl, objSelf, tobj.symbol.typeSignature)
         q"""
         new $d.TopLevel.Object[${tobj.name}.type](${tobj.name.toString})($d.Predef.implicitType[${tobj.name}.type])
         with $d.TopLevel.ObjectWithoutClass[${tobj.name}.type] {
           val parents = Nil
+          val constructor = $ctor
           val fields: List[AnyField] = $fields
           val methods: List[AnyMethod[Scp]] = $methods
         }
         """
       case Some(tcls) =>
-        val (fields, methods) = liftTemplate(tobj.name, tobj.impl, objSelf, tobj.symbol.typeSignature)
+        val (fields, methods, ctor) = liftTemplate(tobj.name, tobj.impl, objSelf, tobj.symbol.typeSignature)
         val cls2 = tcls
         val clsSelf = q"self.rep"
-        val (cfields, cmethods) = liftTemplate(cls2.name, cls2.impl, clsSelf, tcls.symbol.typeSignature)
+        val (cfields, cmethods, cctor) = liftTemplate(cls2.name, cls2.impl, clsSelf, tcls.symbol.typeSignature)
         q"""
         object obj extends $d.TopLevel.Object[${tobj.name}.type](${tobj.name.toString})($d.Predef.implicitType[${tobj.name}.type])
                    with $d.TopLevel.ObjectWithClass[${tobj.name}.type] {
           val parents = Nil
+          val constructor = $ctor
           val fields: List[AnyField] = $fields
           val methods: List[AnyMethod[Scp]] = $methods
           lazy val companion = Some(cls) // lazy otherwise diverges!
         }
-        object cls extends $d.TopLevel.Clasz[${tcls.name}](${tcls.name.toString},Nil)($d.Predef.implicitType[${tcls.name}])
+        object cls extends $d.TopLevel.Clasz[${tcls.name}](${tcls.name.toString})($d.Predef.implicitType[${tcls.name}])
                    with $d.TopLevel.ClassWithObject[${tcls.name}] {
           val parents = Nil
           val self = $d.Variable[${tcls.name}]("this")($d.Predef.implicitType[${tcls.name}])
+          val constructor: Method[Unit,_] = $cctor
           val fields: List[AnyField] = $cfields
           val methods: List[AnyMethod[Scp]] = $cmethods
           val companion = Some(obj)

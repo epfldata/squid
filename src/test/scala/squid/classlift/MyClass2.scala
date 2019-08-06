@@ -46,7 +46,17 @@ object MyClass2 {
 @dbg_lift
 //class MyClass4(private val s: Int)
 //class MyClass4(private[this] val s: Int)
-class MyClass4(val x: Int, var st: Int) // FIXME
+class MyClass4(val x: Int = 0, name: String) { // FIXME
+  print("Hello ")
+  println(name)
+  //val (x,b) = x->x
+  //val (a,b) = x->x
+  //def hola = println("¡hola "+name+"!" * x) // FIXME
+}
+//class MyClass5(val x: Int = 0, st: Int) { // FIXME
+//  println(x)
+//  val (x,y) = x->x
+//}
 
 @lift
 class MyClass3 {

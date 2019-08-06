@@ -1,4 +1,4 @@
-// Copyright 2017 EPFL DATA Lab (data.epfl.ch)
+// Copyright 2019 EPFL DATA Lab (data.epfl.ch)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,8 +22,3 @@ object EmbeddingException {
   case class Typing(typeError: String) extends EmbeddingException("Quoted expression does not type check: "+typeError)
   case class Unsupported(featureName: String) extends EmbeddingException(s"Unsupported feature: $featureName")
 }
-
-
-
-
-
