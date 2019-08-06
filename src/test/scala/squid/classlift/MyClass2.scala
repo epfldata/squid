@@ -19,7 +19,8 @@ import squid.quasi._
 class My
 
 @lift
-class MyClass2 extends My {
+//class MyClass2(val a: Int, var b: Double, c: Boolean) {
+class MyClass2(val a: Int, var b: Double, val c: Boolean) extends My {
   def test = List(1,2,3)
   var mut = 42
   def oops = Ooops.oopsy2(this,'hi)
@@ -36,17 +37,22 @@ object MyClass2 {
   object A
   
   def testo(x: Int) = {
-    val mc = new MyClass2
+    val mc = new MyClass2(x, 0.0, true)
     Some(mc.mut + x)
   }
   
 }
 
+@dbg_lift
+//class MyClass4(private val s: Int)
+//class MyClass4(private[this] val s: Int)
+class MyClass4(val x: Int, var st: Int) // FIXME
+
 @lift
 class MyClass3 {
   var met = 345
   def getMet(els: Int) = if (met < 0) els else met
-  def test = (new MyClass2).foo(this)
+  def test = (new MyClass2(1, 2.0, false)).foo(this)
 }
 object MyClass3 {
 }

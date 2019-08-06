@@ -49,8 +49,8 @@ class doNotLift extends StaticAnnotation
     - inherited parents
     - generic classes
     - nested classes
-    - immutable fields
     - class and object constructors
+    - val/var parameters
     - doNotLift
   TODO: cache generated symbols! (is it already done?)
 */
@@ -93,9 +93,20 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
     }
     req(obj.symbol.owner.isPackage, "Can only lift top-level definitions.")
     /*
+<<<<<<< HEAD
     val pack2 = new Transformer {
       override def transform(tree: Tree) = tree match {
           
+=======
+    debug(s"############ Lifting ${obj.symbol} ############")
+    val pack2 = new Transformer {
+      override def transform(tree: Tree) = tree match {
+          
+        case cd @ (_: ClassDef | _: ModuleDef) if !obj.symbol.fullName.startsWith(cd.symbol.fullName) =>
+          debug(s"Ignoring ${cd.symbol.fullName} =/= ${obj.symbol.fullName}")
+          q""
+          
+>>>>>>> WIP
         // The goal of the following was to remove references to the macro call and the macro annotation...
         // Unfortunately, while these _seem_ to achieve their purpose I, could not prevent recursive execution of
         // the macro in certain cases. It's not clear why.
@@ -125,6 +136,8 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
     
     //val tpack = c.typecheck(pack2).asInstanceOf[PackageDef]
     val tpack = c.typecheck(pack2, withMacrosDisabled = true).asInstanceOf[PackageDef]
+    //debug(s"Typed: ${showCode(tpack)}")
+    debug(s"Typed: ${tpack}")
     
     val (tobj,tcls) = {
       val objs = tpack.stats.collect{ case md: ModuleDef => md }
@@ -150,7 +163,9 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
     val Base = new MBM.MirrorBase(d, Some(td.tpe))
     class MEBase extends ModularEmbedding[c.universe.type, Base.type](c.universe, Base, str => debug(str))
     
-    def liftTemplate(name: Name, templ: Template, self: Tree): (List[Tree], List[Tree]) = {
+    def liftTemplate(name: Name, templ: Template, self: Tree, sign: Type): (List[Tree], List[Tree]) = {
+      debug(s"###### Lifting $name ######")
+      debug(s"Signature: ${sign}")
       
       val methods = templ.body.collect {
         case md: DefDef
@@ -204,10 +219,31 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
             ME.vparams.map(_.map(tv => q"$td.Variable.mk(${tv._2.tree},${tv._2.typRep})"))
           },$td.Code($res))($td.CodeType(${ME.liftType(md.rhs.tpe)}))"
       }
+      object ME extends MEBase
+      
       val fields = templ.body.collect {
-        case vd: ValDef if vd.symbol.asTerm.isVar 
+        //case vd: ValDef
+        //  //if vd.symbol.asTerm.isParameter
+        //  if vd.symbol.asTerm.isParamAccessor
+        //=>
+        //  ???
+        case vd: ValDef //if vd.symbol.asTerm.isVar
+          //if !vd.symbol.isPrivateThis // this happens for non-var/val parameters, or if the user specified it so
+          //|| { if (vd.symbol.asTerm.isVar || vd.symbol.asTerm.isVal)
+          //  c.warning(vd.pos, s"Cannot lift a private[this] field."); false }
+          //if sign.member(vd.symbol.name).typeSignature.isInstanceOf[NullaryMethodTypeApi]
+          if {
+            val nmeStr = vd.name.toString
+            val nme = TermName(if (nmeStr.endsWith(" ")) nmeStr.init else nmeStr)
+            sign.member(nme).typeSignature.isInstanceOf[NullaryMethodTypeApi]
+          }
         =>
-          debug(s"====== Lifting ${vd.symbol} ======")
+          val sym = vd.symbol.asTerm
+          debug(s"====== Lifting ${sym} ======")
+          assert(sym.isVar || sym.isVal, sym)
+          debug(sym.isAccessor)
+          
+          //println(vd.symbol, vd.symbol.isParameter, vd.symbol.asTerm.isParamAccessor)
           
           //assert(vd.name.toString.endsWith(" "), vd) // we're looking at a transformed private[this] field
           //val nme = TermName(vd.name.toString.init)
@@ -215,20 +251,65 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
           val nmeStr = vd.name.toString
           val nme = TermName(if (nmeStr.endsWith(" ")) nmeStr.init else nmeStr)
           
-          object ME extends MEBase
           val self = name match {
             case name: TermName => q"${Ident(name)}"
             //case name: TypeName => q"${Ident(name)}.this" // not type-checked within the scope of the class!
             case name: TypeName => q"(??? : ${Ident(name)})"
           }
+          //assert(sym.isVar || sym.isVal)
+          //println(sym.isParamAccessor, sym.isGetter, sym.isMethod, sym.isParameter, sym.isPrivateThis, sym.isPrivate)
+          //val get = if (sym.isPrivateThis) None else Some {
+          //  c.typecheck(q"$self.${nme}").symbol.asMethod alsoApply (get =>
+          //    assert(get.asTerm.isGetter, get))
+          //}
+          //debug(sign.member(vd.symbol.name).typeSignature.isInstanceOf[NullaryMethodTypeApi])
+          debug(sign.member(nme).typeSignature |>? {
+            //case _: MethodType =>
+            case _: NullaryMethodType =>
+          })
+          //debug(sign.member(vd.symbol.name).typeSignature.isInstanceOf[NullaryMethodType])
+          //debug(sign.member(nme).isPrivate)
+          //debug(sign.member(nme).isPrivateThis)
+          //debug(sign.member(nme).isSynthetic)
+          //debug(sign.member(nme).alternatives)
+          //debug(sign.member(nme).asTerm.isAccessor)
           val get = c.typecheck(q"$self.${nme}").symbol.asMethod
           assert(get.asTerm.isGetter, get)
-          val set = c.typecheck(q"$self.${nme} = ???").symbol.asMethod
-          assert(set.asTerm.isSetter, set)
+          val set = if (sym.isVar) Some {
+            c.typecheck(q"$self.${nme} = ???").symbol.asMethod alsoApply (set =>
+              assert(set.asTerm.isSetter, set))
+          } else None
           
+          q"mkField(${vd.name.toString},${ME.getMtd(get)},${set.map(ME.getMtd)},${
+            if (vd.rhs.isEmpty) {
+              assert(sym.isParamAccessor)
+              None
+            } else {
+              assert(!sym.isParamAccessor)
+              debug(s"RHS ${vd.rhs}")
+              Some(ME(vd.rhs, Some(sym.typeSignature)))
+            }
+          })(${ME.liftType(vd.symbol.typeSignature)})"
+          
+          /*
+<<<<<<< HEAD
           q"mkField(${vd.name.toString},${ME.getMtd(get)},Some(${ME.getMtd(set)}),${
             ME(vd.rhs, Some(vd.symbol.typeSignature))
           })(${ME.liftType(vd.symbol.typeSignature)})"
+=======
+          //q"mkField(${nme.toString},${get.map(ME.getMtd)},${set.map(ME.getMtd)},${
+          q"mkField(${nme.toString},${ME.getMtd(get)},${set.map(ME.getMtd)},${
+            if (vd.rhs.isEmpty) {
+              assert(sym.isParamAccessor)
+              None
+            } else {
+              assert(!sym.isParamAccessor)
+              debug(s"RHS ${vd.rhs}")
+              Some(ME(vd.rhs, Some(sym.typeSignature)))
+            }
+          })(${ME.liftType(sym.typeSignature)})"
+>>>>>>> WIP
+          */
       }
       (fields, methods)
     }
@@ -237,7 +318,7 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
     
     val trees = tcls match {
       case None =>
-        val (fields, methods) = liftTemplate(tobj.name, tobj.impl, objSelf)
+        val (fields, methods) = liftTemplate(tobj.name, tobj.impl, objSelf, tobj.symbol.typeSignature)
         q"""
         new $d.TopLevel.Object[${tobj.name}.type](${tobj.name.toString})($d.Predef.implicitType[${tobj.name}.type])
         with $d.TopLevel.ObjectWithoutClass[${tobj.name}.type] {
@@ -247,10 +328,10 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
         }
         """
       case Some(tcls) =>
-        val (fields, methods) = liftTemplate(tobj.name, tobj.impl, objSelf)
+        val (fields, methods) = liftTemplate(tobj.name, tobj.impl, objSelf, tobj.symbol.typeSignature)
         val cls2 = tcls
         val clsSelf = q"self.rep"
-        val (cfields, cmethods) = liftTemplate(cls2.name, cls2.impl, clsSelf)
+        val (cfields, cmethods) = liftTemplate(cls2.name, cls2.impl, clsSelf, tcls.symbol.typeSignature)
         q"""
         object obj extends $d.TopLevel.Object[${tobj.name}.type](${tobj.name.toString})($d.Predef.implicitType[${tobj.name}.type])
                    with $d.TopLevel.ObjectWithClass[${tobj.name}.type] {

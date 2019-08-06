@@ -69,19 +69,30 @@ class ClassLiftingTests extends MyFunSuite {
   
   test("MyClass2") {
     
+    // TODO test params and fields
+    
     val cls: ClassWithObject[MyClass2] = MyClass2.reflect(TestDSL)
     val obj = cls.companion.value
+    
+    //println(cls.showWithBody)
     
     obj.methods.find(_.symbol == TestDSL.methodSymbol[MyClass2.type]("testo")) |>! {
       case Some(mtd) =>
         val x = mtd.vparams.head.head.asInstanceOf[Variable[Int]]
-        mtd.body eqt code"val m = new MyClass2; Some(m.mut + $x)"
+        mtd.body eqt code"val m = new MyClass2($x, 0.0, true); Some(m.mut + $x)"
     }
     
     assert(cls.methods.head.symbol.asMethodSymbol.owner.isClass)
     assert(obj.methods.head.symbol.asMethodSymbol.owner.isModuleClass)
     
     eqt(cls.fields.head.A, codeTypeOf[Int])
+    
+  }
+  test("MyClass4") {
+    val cls: Clasz[MyClass4] = MyClass4.reflect(TestDSL)
+    
+    println(cls.showWithBody)
+    
     
   }
   

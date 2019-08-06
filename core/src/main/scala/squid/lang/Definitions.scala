@@ -54,14 +54,23 @@ trait Definitions extends Base {
       val companion: None.type = None
     }
     
-    abstract class Object[C: CodeType](val name: String) extends ClassOrObject[C] {
-      val companion: Option[outerScope.Clasz[_]]
+    type AnyObject = Object[_]
+    trait ObjectOf[+C] {
+      val name: String
     }
+    abstract class Object[C: CodeType](val name: String) extends ClassOrObject[C] with ObjectOf[C] {
+      val companion: Option[outerScope.Clasz[_]]
+      
+      override def toString = s"object $name"
+    }
+    type AnyClasz = Clasz[_]
     /* Note: in Scala 2.11, naming this Class results in strange failures, as in:
      *   java.lang.NoClassDefFoundError: squid/lang/Definitions$Scope$Class (wrong name: squid/lang/Definitions$Scope$class) */
     abstract class Clasz[C: CodeType](val name: String, val tparams: List[TypParam]) extends ClassOrObject[C] with Parameterized {
       val companion: Option[outerScope.Object[_]]
       val self: Variable[C]
+      
+      override def toString = s"class $name${if (tparams.isEmpty) "" else tparams.mkString("[",",","]")}"
     }
     abstract class ClassOrObject[C](implicit val C: CodeType[C]) extends Member with Scope {
       type Scp <: outerScope.Scp
@@ -79,18 +88,25 @@ trait Definitions extends Base {
         val symbol: MtdSymbol
       }
       type AnyField = Field[_]
+      /** If `set` is empty, this is an immutable field.
+        * If `get` is empty, this is a private[this] field.
+        * If `init` is empty, this is a parameter. */
       class Field[A0: CodeType](
        val name: String,
        val get: FieldGetter,
+       //val get: Option[FieldGetter],
        val set: Option[FieldSetter],
-       val init: Code[A0,Scp]
+       val init: Option[Code[A0,Scp]]
      ) extends FieldOrMethod[A0] {
         type A = A0
         val symbol: MtdSymbol = get
+        //val symbol: MtdSymbol = get.getOrElse(???)
         
         //println(s"FIELD $this")
         
-        override def toString = s"va(l/r) ${symbol}: ${A.rep} = ${showRep(init.rep)}"
+        override def toString =
+          s"${if (set.isDefined) "var" else "val"} ${symbol}: ${A.rep} = ${
+            init.fold("<param>")(i => showRep(i.rep))}"
       }
       type AnyMethod[S <: Scp] = Method[_, S]
       class Method[A0: CodeType, S <: Scp](
@@ -111,10 +127,14 @@ trait Definitions extends Base {
       }
       
       // A helper for creating Field objects; used by the `@lift` macro
-      def mkField(name: String, get: MtdSymbol, set: Option[MtdSymbol], init: Rep)(typ: TypeRep): Field[_] =
-        new Field[Any](name, get.asInstanceOf[FieldGetter],
-          set.map(_.asInstanceOf[FieldSetter]),Code(init))(CodeType[Any](typ))
+      def mkField(name: String, get: MtdSymbol, set: Option[MtdSymbol], init: Option[Rep])(typ: TypeRep): Field[_] =
+      //def mkField(name: String, get: Option[MtdSymbol], set: Option[MtdSymbol], init: Option[Rep])(typ: TypeRep): Field[_] =
+        new Field[Any](name,
+          get.asInstanceOf[FieldGetter],
+          //get.map(_.asInstanceOf[FieldGetter]),
+          set.map(_.asInstanceOf[FieldSetter]),init.map(Code(_)))(CodeType[Any](typ))
       
+      def showWithBody: String = s"$toString {${if (members.isEmpty) "" else members.map("\n  "+_).mkString+"\n"}}"
       
       // TODO an API for modifying these constructs in a safe way...
       /*
