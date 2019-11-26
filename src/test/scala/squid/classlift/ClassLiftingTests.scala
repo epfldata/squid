@@ -93,10 +93,22 @@ class ClassLiftingTests extends MyFunSuite {
     eqt(cls.fields.head.A, codeTypeOf[Int])
     
   }
+  
   test("MyClass4") {
+    
     val cls: Clasz[MyClass4] = MyClass4.reflect(TestDSL)
     
     println(cls.showWithBody)
+    
+    
+  }
+  
+  test("MySubClass") {
+    
+    val cls: Clasz[MySubClass] = MySubClass.reflect(TestDSL)
+    
+    println(cls.showWithBody)
+    
     
     
   }

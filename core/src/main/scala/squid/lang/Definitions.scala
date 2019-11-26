@@ -155,9 +155,9 @@ trait Definitions extends Base {
           //vps.map(vp => vp)
           vps.mkString("",",","")
         ).mkString("(",",",")")
-      } {\n${
-        showRep(constructor.body.rep).splitSane('\n').map("  "+_).mkString("\n")
-      }${if (members.isEmpty) "" else members.map("\n  "+_).mkString+"\n"}}"
+      } {${if (members.isEmpty) "" else members.map("\n  "+_).mkString}${
+        showRep(constructor.body.rep).splitSane('\n').map("\n  "+_).mkString
+      }\n}"
       //} {${if (members.isEmpty) "" else members.map("\n  "+_).mkString+"\n"}}"
       
       // TODO an API for modifying these constructs in a safe way...
