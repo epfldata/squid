@@ -109,7 +109,7 @@ class ClassLiftingTests extends MyFunSuite {
     
     println(cls.showWithBody)
     
-    
+    assert(cls.parents == List(codeTypeOf[MyClass2]))
     
   }
   

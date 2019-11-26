@@ -155,6 +155,9 @@ trait Definitions extends Base {
           //vps.map(vp => vp)
           vps.mkString("",",","")
         ).mkString("(",",",")")
+      }${
+        if (parents.isEmpty) ""
+        else " extends " + parents.map(p => p.rep.toString).mkString(" with ")
       } {${if (members.isEmpty) "" else members.map("\n  "+_).mkString}${
         showRep(constructor.body.rep).splitSane('\n').map("\n  "+_).mkString
       }\n}"

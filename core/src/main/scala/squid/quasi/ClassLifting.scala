@@ -53,6 +53,9 @@ class doNotLift extends StaticAnnotation
     - val/var parameters
     - doNotLift
   TODO: cache generated symbols! (is it already done?)
+    Currently we get repeated things like:
+      val IntSym$macro$17 = defs.loadTypSymbol("scala.Int");
+      val Int$macro$18 = defs.staticTypeApp(IntSym$macro$17, scala.Nil); 
   TODO: bail on private[this]? 
 */
 class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
@@ -96,11 +99,15 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
     req(obj.symbol.owner.isPackage, "Can only lift top-level definitions.")
     /*
 <<<<<<< HEAD
+<<<<<<< HEAD
     val pack2 = new Transformer {
       override def transform(tree: Tree) = tree match {
           
 =======
     debug(s"############ Lifting ${obj.symbol} ############")
+=======
+    debug(s"############ Lifting ${obj.name} ############")
+>>>>>>> WIP lift extends clause types
     val pack2 = new Transformer {
       override def transform(tree: Tree) = tree match {
           
@@ -179,11 +186,15 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
     val Base = new MBM.MirrorBase(d, Some(td.tpe))
     class MEBase extends ModularEmbedding[c.universe.type, Base.type](c.universe, Base, str => debug(str))
     
-    def liftTemplate(name: Name, templ: Template, self: Tree, sign: Type): (List[Tree], List[Tree], Tree) = {
+    def liftTemplate(name: Name, templ: Template, self: Tree, sign: Type): (List[Tree], List[Tree], Tree, List[Tree]) = {
       val isObj = name.isTermName
       val printName = (if (isObj) "object " else "class ") + name
       debug(s"###### Lifting $printName ######")
       debug(s"Signature: ${sign}")
+      
+      //debug(s"====== code ${showCode(templ)} ======")
+      //debug(s"====== f ${templ.getClass.getFields.toList} ======")
+      //debug(s"====== f ${templ.getClass} ======")
       
       val allMethods: List[Bool -> Tree] = templ.body.collect {
         case md: DefDef
@@ -281,6 +292,20 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
       }
       object ME extends MEBase
       
+      val parents = templ.parents.flatMap {
+        case tq"scala.AnyRef" => Nil
+        case par =>
+          debug(s"====== Lifting parent ${par} ======")
+          //debug(s"P ${par === q"scala.AnyRef"}")
+          debug(s"P ${par.getClass}")
+          debug(s"P ${showCode(par)}")
+          debug(s"P ${par.tpe}")
+          //par :: Nil
+          val ltp = ME.liftType(par.tpe)
+          q"$td.CodeType($ltp)" :: Nil
+      }
+      //if (parents.nonEmpty) ???
+      
       val fields = templ.body.collect {
         //case vd: ValDef
         //  //if vd.symbol.asTerm.isParameter
@@ -376,7 +401,7 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
       //(fields, methods, q"???")
       allMethods.partition(_._1) match {
         case (Nil, _) => lastWords(s"No ctor for $printName")
-        case (ctor :: Nil, methods) => (fields, methods.map(_._2), ctor._2)
+        case (ctor :: Nil, methods) => (fields, methods.map(_._2), ctor._2, parents)
         case (ctors, _) =>
           lastWords(s"Multiple ctors for $printName")
           ??? // TODO B/E
@@ -387,25 +412,25 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
     
     val trees = tcls match {
       case None =>
-        val (fields, methods, ctor) = liftTemplate(tobj.name, tobj.impl, objSelf, tobj.symbol.typeSignature)
+        val (fields, methods, ctor, pars) = liftTemplate(tobj.name, tobj.impl, objSelf, tobj.symbol.typeSignature)
         q"""
         new $d.TopLevel.Object[${tobj.name}.type](${tobj.name.toString})($d.Predef.implicitType[${tobj.name}.type])
         with $d.TopLevel.ObjectWithoutClass[${tobj.name}.type] {
-          val parents = Nil
+          val parents = $pars
           val constructor = $ctor
           val fields: List[AnyField] = $fields
           val methods: List[AnyMethod[Scp]] = $methods
         }
         """
       case Some(tcls) =>
-        val (fields, methods, ctor) = liftTemplate(tobj.name, tobj.impl, objSelf, tobj.symbol.typeSignature)
+        val (fields, methods, ctor, pars) = liftTemplate(tobj.name, tobj.impl, objSelf, tobj.symbol.typeSignature)
         val cls2 = tcls
         val clsSelf = q"self.rep"
-        val (cfields, cmethods, cctor) = liftTemplate(cls2.name, cls2.impl, clsSelf, tcls.symbol.typeSignature)
+        val (cfields, cmethods, cctor, cpars) = liftTemplate(cls2.name, cls2.impl, clsSelf, tcls.symbol.typeSignature)
         q"""
         object obj extends $d.TopLevel.Object[${tobj.name}.type](${tobj.name.toString})($d.Predef.implicitType[${tobj.name}.type])
                    with $d.TopLevel.ObjectWithClass[${tobj.name}.type] {
-          val parents = Nil
+          val parents = $pars
           val constructor = $ctor
           val fields: List[AnyField] = $fields
           val methods: List[AnyMethod[Scp]] = $methods
@@ -413,7 +438,7 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
         }
         object cls extends $d.TopLevel.Clasz[${tcls.name}](${tcls.name.toString})($d.Predef.implicitType[${tcls.name}])
                    with $d.TopLevel.ClassWithObject[${tcls.name}] {
-          val parents = Nil
+          val parents = $cpars
           val self = $d.Variable[${tcls.name}]("this")($d.Predef.implicitType[${tcls.name}])
           val constructor: Method[Unit,_] = $cctor
           val fields: List[AnyField] = $cfields

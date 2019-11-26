@@ -43,7 +43,8 @@ object MyClass2 {
   
 }
 
-@dbg_lift
+//@dbg_lift
+@lift
 //class MyClass4(private val s: Int)
 //class MyClass4(private[this] val s: Int)
 class MyClass4(val x: Int = 0, name: String) { // FIXME ordering of initialization...
