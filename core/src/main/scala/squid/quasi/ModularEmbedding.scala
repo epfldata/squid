@@ -628,6 +628,7 @@ class ModularEmbedding[U <: scala.reflect.api.Universe, B <: Base](val uni: U, v
   }
   
   def unknownTypefallBack(tpe: Type) = {
+    require(tpe.typeSymbol =/= NoSymbol, s"type `$tpe` does not have a type symbol.") // Make sure we don't have a method type or some other weird nonsense
     val tag = mkTag(tpe)
     uninterpretedType(tag)
   }

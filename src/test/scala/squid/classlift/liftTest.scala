@@ -25,5 +25,5 @@ class liftTest {
 }
 object driverTest extends App {
   val r = liftTest.reflect(TestDSL)
-  println(r)
+  println(r.showWithBody)
 }

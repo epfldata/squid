@@ -74,7 +74,7 @@ abstract class Definitions2 extends Base { base =>
   class Field[A: CodeType](
     val name: String,
     val get: FieldGetter,
-    val set: Option[FieldSetter],
+    val set: Option[FieldSetter]
   ) extends FieldOrMethod[A] {
     val symbol: MtdSymbol = get
     override def toString =
