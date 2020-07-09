@@ -16,8 +16,8 @@ package squid.classlift
 
 import squid.quasi._
 
-@dbg_lift
-//@lift
+// @dbg_lift
+@lift
 class MySubClass(p: Int) extends MyClass2(p + 1, p - 1, p > 0) {
   
   println(p)

@@ -451,8 +451,11 @@ class ClassLifting(override val c: whitebox.Context) extends QuasiMacros(c) {
     }
     
     val res = q"""
-      ..${Base.mkSymbolDefs}
-      $trees
+      object Symbols {
+        ..${Base.mkSymbolDefs}
+      }
+      import Symbols._
+      ..$trees
     """
     
     debug(s"====== Generated ====== ${showCode(res)}")
