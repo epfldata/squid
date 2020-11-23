@@ -765,7 +765,7 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
               // the code below is very similar to the one in the `unknownFeatureFallback` override; perhaps should factor it
               val x = vari
               
-              val isCrossQuotationReference = !x.symbol.annotations.exists(_.tree.tpe =:= typeOf[squid.lib.persist])
+              val isCrossQuotationReference = !x.symbol.annotations.exists(_.tree.tpe =:= typeOf[squid.lib.crossStage])
               
               if (isCrossQuotationReference) {
                 
@@ -794,7 +794,7 @@ class QuasiEmbedder[C <: blackbox.Context](val c: C) {
             
             case id @ Ident(name: TermName) =>
               
-              val isCrossQuotationReference = !x.symbol.annotations.exists(_.tree.tpe =:= typeOf[squid.lib.persist])
+              val isCrossQuotationReference = !x.symbol.annotations.exists(_.tree.tpe =:= typeOf[squid.lib.crossStage])
               
               val mb = b.asInstanceOf[(MetaBases {val u: c.universe.type})#MirrorBase with b.type]
               

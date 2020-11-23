@@ -15,7 +15,7 @@
 package squid
 package feature
 
-import squid.lib.persist
+import squid.lib.crossStage
 import squid.utils._
 
 class ImplicitLiftingTests extends MyFunSuite(CrossStageDSL) {
@@ -36,7 +36,7 @@ class ImplicitLiftingTests extends MyFunSuite(CrossStageDSL) {
   
   test("Cross-Stage Implicit Lifting") {
     
-    @persist implicit val ev: Ordering[MyClass] = Ordering.by(_.hashCode) // local instance value
+    @crossStage implicit val ev: Ordering[MyClass] = Ordering.by(_.hashCode) // local instance value
     
     val ordCde = implicitly[ClosedCode[Ordering[MyClass]]]
     ordCde eqt c"ev" // cross-stage persistence

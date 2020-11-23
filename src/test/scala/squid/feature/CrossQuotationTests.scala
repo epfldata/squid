@@ -15,7 +15,7 @@
 package squid
 package feature
 
-import squid.lib.persist
+import squid.lib.crossStage
 import utils._
 import utils.typing.singleton.scope
 
@@ -137,7 +137,7 @@ class CrossQuotationTests extends MyFunSuite(CrossStageDSL) {
     val oops2 = 'ko
     code{oops2.name.length} alsoApply println
     */
-    // ^ Error: Cross-quotation reference was never captured. Perhaps you intended to use a cross-stage-persistent reference, which needs the @squid.lib.persist annotation.
+    // ^ Error: Cross-quotation reference was never captured. Perhaps you intended to use a cross-stage-persistent reference, which needs the @squid.lib.crossStage annotation.
     
   }
   

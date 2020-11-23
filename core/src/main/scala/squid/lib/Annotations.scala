@@ -23,7 +23,7 @@ import scala.annotation.StaticAnnotation
 /** This is used to annotate value definitions (variables, fields, parameters), to indicate that references to the value
   * should be interpreted as cross-stage-persistent references, meaning that they are not lifted to code, but that code
   * fragments that reference them carry them around at runtime, and use them when calling `_.run` or `_.compile`. */
-class persist extends StaticAnnotation
+class crossStage extends StaticAnnotation
 
 
 // Annotations for the effect system:

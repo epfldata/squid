@@ -15,7 +15,7 @@
 package squid
 package feature
 
-import squid.lib.persist
+import squid.lib.crossStage
 import utils._
 
 /** Demonstrating the use of OpenCode when we don't want to track context dependencies. */
@@ -106,7 +106,7 @@ class OpenCodeTests extends MyFunSuite(CrossStageDSL) {
     t1 eqt code{List($(ri)(),$(ri)()).sum}
     assert(t1.close.isEmpty)
     var i = 1
-    @persist val foo = () => i alsoDo {i += 1}
+    @crossStage val foo = () => i alsoDo {i += 1}
     
     val t2 = code"val $ri = foo; $t1"
     same(t2.close.get, t2.unsafe_asClosedCode)

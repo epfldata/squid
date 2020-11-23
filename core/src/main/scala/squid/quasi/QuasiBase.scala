@@ -499,7 +499,7 @@ self: Base =>
   //def $$_varFun[V,T,C](refIdent: V)(vf: Variable[V] => OpenCode[T]): T = ???
   
   @compileTimeOnly("Cross-quotation reference was never captured. " +
-    "Perhaps you intended to use a cross-stage-persistent reference, which needs the @squid.lib.persist annotation.")
+    "Perhaps you intended to use a cross-stage reference, which needs the @squid.lib.crossStage annotation.")
   def crossQuotation(x: Any): Rep = ???
   
   // note: the following functions are implicitly inserted by QuasiEmbedder,
