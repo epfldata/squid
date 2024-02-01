@@ -2,7 +2,7 @@
 
 // === Init ===
 
-// Transfo time: 0ms  Stringifying time: 44ms
+// Transfo time: 0ms  Stringifying time: 33ms
 
 {
   val posNats_1 = new sfusion.Sequence[scala.Int]((() => sfusion.impl.`package`.iterate[scala.Int](1)(((x$1_0: scala.Int) => x$1_0.+(1)))), scala.`package`.Right.apply[scala.Nothing, scala.Boolean](false));
@@ -22,13 +22,13 @@
 
 // === HL ===
 
-// Transfo time: 3ms  Stringifying time: 14ms
+// Transfo time: 2ms  Stringifying time: 11ms
 
 // Same as above.
 
 // === Impl ===
 
-// Transfo time: 34ms  Stringifying time: 146ms
+// Transfo time: 37ms  Stringifying time: 104ms
 
 {
   val posNats_1 = new sfusion.Sequence[scala.Int]((() => sfusion.impl.`package`.iterate[scala.Int](1)(((x$1_0: scala.Int) => x$1_0.+(1)))), scala.`package`.Right.apply[scala.Nothing, scala.Boolean](false));
@@ -84,7 +84,7 @@
 
 // === CtorInline ===
 
-// Transfo time: 82ms  Stringifying time: 63ms
+// Transfo time: 23ms  Stringifying time: 36ms
 
 {
   val x_0 = sfusion.impl.`package`.single[scala.Int](2);
@@ -107,13 +107,13 @@
 
 // === ImplOptim ===
 
-// Transfo time: 0ms  Stringifying time: 28ms
+// Transfo time: 0ms  Stringifying time: 5ms
 
 // Same as above.
 
 // === Imperative ===
 
-// Transfo time: 211ms  Stringifying time: 158ms
+// Transfo time: 102ms  Stringifying time: 106ms
 
 {
   var cur_0: scala.Int = 1;
@@ -265,19 +265,19 @@
 
 // === FlatMapFusion ===
 
-// Transfo time: 2ms  Stringifying time: 219ms
+// Transfo time: 0ms  Stringifying time: 71ms
 
 // Same as above.
 
 // === LateImperative ===
 
-// Transfo time: 0ms  Stringifying time: 181ms
+// Transfo time: 0ms  Stringifying time: 76ms
 
 // Same as above.
 
 // === VarFlattening ===
 
-// Transfo time: 95ms  Stringifying time: 182ms
+// Transfo time: 65ms  Stringifying time: 107ms
 
 {
   var cur_0: scala.Int = 1;
@@ -439,7 +439,7 @@
 
 // === Low-Level Norm ===
 
-// Transfo time: 424ms  Stringifying time: 169ms
+// Transfo time: 202ms  Stringifying time: 91ms
 
 {
   var cur_0: scala.Int = 1;
@@ -584,6 +584,6 @@
 
 // === ReNorm (should be the same) ===
 
-// Transfo time: 66ms  Stringifying time: 76ms
+// Transfo time: 54ms  Stringifying time: 36ms
 
 // Same as above.

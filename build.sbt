@@ -14,6 +14,7 @@
 
 val scala211Version = "2.11.12"
 val scala212Version = "2.12.10"
+val scala213Version = "2.13.6"
 
 val paradiseVersion = "2.1.0"
 val squidVersion = "0.4.1-SNAPSHOT"
@@ -21,10 +22,21 @@ val squidIsSnapshot: Boolean = squidVersion endsWith "-SNAPSHOT"
 
 val initialConsoleCommands = "import squid.IR, IR.Predef._, IR.Quasicodes._"
 
+// def compileWithMacroParadise: Command = Command.command("compileWithMacroParadise") { state =>
+//   import Project._
+//   val extractedState = extract(state)
+//   val stateWithMacroParadise = CrossVersion.partialVersion(extractedState.get(scalaVersion)) match {
+//     case Some((2, n)) if n >= 13 => extractedState.appendWithSession(Seq(Compile / scalacOptions += "-Ymacro-annotations"), state)
+//     case _ => extractedState.appendWithSession(addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full), state)
+//   }
+//   val (stateAfterCompileWithMacroParadise, _) = extract(stateWithMacroParadise).runTask(Compile / compile, stateWithMacroParadise)
+//   stateAfterCompileWithMacroParadise
+// }
+
 lazy val commonSettings = Seq(
   version := squidVersion,
   scalaVersion := scala212Version, // default Scala version
-  crossScalaVersions := Seq(scala211Version, scala212Version),
+  crossScalaVersions := Seq(scala211Version, scala212Version, scala213Version),
   organization := "ch.epfl.data",
   autoCompilerPlugins := true,
   scalacOptions ++= Seq("-feature", "-language:implicitConversions", "-language:higherKinds", "-language:postfixOps"
@@ -37,12 +49,16 @@ lazy val commonSettings = Seq(
   parallelExecution in Test := false,
   resolvers += Resolver.sonatypeRepo("snapshots"),
   resolvers += Resolver.sonatypeRepo("releases"),
-  addCompilerPlugin("org.scalamacros" % "paradise" % paradiseVersion cross CrossVersion.full),
+  // addCompilerPlugin("org.scalamacros" % "paradise" % paradiseVersion cross CrossVersion.full),
+  // addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
+  // commands += compileWithMacroParadise,
+  // addCommandAlias("compile", "compileWithMacroParadise"),
+  
   unmanagedSources in Compile := (unmanagedSources in Compile).value.filterNot(_.getPath.contains("_perso")),
-  libraryDependencies += "org.scalactic" %% "scalactic" % "3.0.5",
-  libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.5" % "test",
-  libraryDependencies += "com.lihaoyi" %% "sourcecode" % "0.1.4",
-  libraryDependencies += "eu.timepit" %% "singleton-ops" % "0.3.1",
+  // libraryDependencies += "org.scalactic" %% "scalactic" % "3.0.5",
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % "test",
+  libraryDependencies += "com.lihaoyi" %% "sourcecode" % "0.2.7",
+  libraryDependencies += "eu.timepit" %% "singleton-ops" % "0.5.0",
   libraryDependencies += "com.chuusai" %% "shapeless" % "2.3.3",
   
   //libraryDependencies += "com.lihaoyi" % "ammonite" % "1.1.2" % "test" cross CrossVersion.full,
@@ -53,7 +69,12 @@ lazy val commonSettings = Seq(
   //  Seq(file)
   //}.taskValue,
   
-) ++ publishSettings
+) ++ publishSettings //++ addCommandAlias("compile", "compileWithMacroParadise")
+// ++ {
+//   if (scalaVersion.value.startsWith("2.11") || scalaVersion.value.startsWith("2.12"))
+//     addCompilerPlugin("org.scalamacros" % "paradise" % paradiseVersion cross CrossVersion.full) :: Nil
+//   else Nil
+// }
 
 lazy val main = (project in file(".")).
   dependsOn(core).
@@ -66,7 +87,8 @@ lazy val main = (project in file(".")).
 
 lazy val core = (project in file("core")).
   dependsOn(core_macros).
-  settings(commonSettings: _*).
+  settings(commonSettings: _*)//.commands(compileWithMacroParadise)
+  .
   settings(
     name := "squid-core",
     //libraryDependencies += "ch.epfl.lamp" % "scala-yinyang_2.11" % "0.2.0-SNAPSHOT",

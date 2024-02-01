@@ -227,7 +227,7 @@ self: Base =>
     def apply[T:CodeType](): Variable[T] = apply("x")
     def fromBound[T](bound: BoundVal)(implicit ev: self.type <:< self.type with IntermediateBase): Variable[T] = {
       val s: self.type with IntermediateBase = self
-      val b: s.BoundVal = substBounded[Base,self.type,s.type,({type λ[X<:Base] = X#BoundVal})#λ](bound)
+      val b: s.BoundVal = substBounded[Base,self.type,s.type,({type λ[X<:Base] = X#BoundVal})#λ](bound)(singletonIsSingleton(ev))
       s.mkVariable(b)
     }
     def mk[T](bound: BoundVal, typ: TypeRep): Variable[T] = new Variable[T](bound)(CodeType(typ))

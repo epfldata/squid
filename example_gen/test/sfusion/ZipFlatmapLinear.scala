@@ -2,7 +2,7 @@
 
 // === Init ===
 
-// Transfo time: 0ms  Stringifying time: 39ms
+// Transfo time: 0ms  Stringifying time: 27ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.Int], ys_1: scala.collection.Iterable[scala.Int]) => {
   val sch_2 = scala.`package`.Right.apply[scala.Nothing, scala.Boolean](false);
@@ -28,13 +28,13 @@
 
 // === HL ===
 
-// Transfo time: 1ms  Stringifying time: 15ms
+// Transfo time: 0ms  Stringifying time: 7ms
 
 // Same as above.
 
 // === Impl ===
 
-// Transfo time: 14ms  Stringifying time: 95ms
+// Transfo time: 8ms  Stringifying time: 63ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.Int], ys_1: scala.collection.Iterable[scala.Int]) => {
   val sch_2 = scala.`package`.Right;
@@ -82,7 +82,7 @@
 
 // === CtorInline ===
 
-// Transfo time: 21ms  Stringifying time: 34ms
+// Transfo time: 10ms  Stringifying time: 24ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.Int], ys_1: scala.collection.Iterable[scala.Int]) => {
   val x_2 = xs_0.size;
@@ -103,13 +103,13 @@
 
 // === ImplOptim ===
 
-// Transfo time: 0ms  Stringifying time: 10ms
+// Transfo time: 0ms  Stringifying time: 4ms
 
 // Same as above.
 
 // === Imperative ===
 
-// Transfo time: 30ms  Stringifying time: 60ms
+// Transfo time: 22ms  Stringifying time: 45ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.Int], ys_1: scala.collection.Iterable[scala.Int]) => {
   val x_2 = xs_0.size;
@@ -177,7 +177,7 @@
 
 // === FlatMapFusion ===
 
-// Transfo time: 21ms  Stringifying time: 84ms
+// Transfo time: 9ms  Stringifying time: 63ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.Int], ys_1: scala.collection.Iterable[scala.Int]) => {
   val x_2 = xs_0.size;
@@ -270,13 +270,13 @@
 
 // === LateImperative ===
 
-// Transfo time: 0ms  Stringifying time: 74ms
+// Transfo time: 0ms  Stringifying time: 37ms
 
 // Same as above.
 
 // === VarFlattening ===
 
-// Transfo time: 36ms  Stringifying time: 90ms
+// Transfo time: 17ms  Stringifying time: 67ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.Int], ys_1: scala.collection.Iterable[scala.Int]) => {
   val x_2 = xs_0.size;
@@ -374,7 +374,7 @@
 
 // === Low-Level Norm ===
 
-// Transfo time: 72ms  Stringifying time: 106ms
+// Transfo time: 25ms  Stringifying time: 73ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.Int], ys_1: scala.collection.Iterable[scala.Int]) => {
   val x_2 = xs_0.size;
@@ -471,6 +471,6 @@
 
 // === ReNorm (should be the same) ===
 
-// Transfo time: 47ms  Stringifying time: 72ms
+// Transfo time: 41ms  Stringifying time: 34ms
 
 // Same as above.

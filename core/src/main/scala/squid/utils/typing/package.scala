@@ -30,11 +30,13 @@ package object typing {
   def substBoundedContra[Bnd,A<:Bnd,B<:Bnd,F[-_<:Bnd]](x: F[A])(implicit ev: A <:< B): F[B] = x.asInstanceOf[F[B]]
   def substBounded      [Bnd,A<:Bnd,B<:Bnd,F[ _<:Bnd]](x: F[A])(implicit ev: A =:= B): F[B] = x.asInstanceOf[F[B]]
   
+  private val eql = implicitly[Any =:= Any]
+  
   //implicit def singletonIsSingleton[A<:Singleton,B<:A]: A =:= B =
   // ^ this is less general than the following:
   /** Scala fail to see that when `T <: x.type`, then `T == x.type` */
   implicit def singletonIsSingleton[A<:Singleton,B](implicit ev: B <:< A): A =:= B = 
-    =:=.tpEquals[A].asInstanceOf[A =:= B]
+    eql.asInstanceOf[A =:= B]
   
   
   // Helpers for first-class-polymorphism:

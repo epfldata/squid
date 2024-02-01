@@ -2,7 +2,7 @@
 
 // === Init ===
 
-// Transfo time: 0ms  Stringifying time: 124ms
+// Transfo time: 0ms  Stringifying time: 78ms
 
 {
   val xs_0 = scala.collection.Seq.apply[scala.Int](1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
@@ -15,13 +15,13 @@
 
 // === HL ===
 
-// Transfo time: 3ms  Stringifying time: 21ms
+// Transfo time: 2ms  Stringifying time: 10ms
 
 // Same as above.
 
 // === Impl ===
 
-// Transfo time: 61ms  Stringifying time: 135ms
+// Transfo time: 28ms  Stringifying time: 91ms
 
 {
   val sch_0 = "";
@@ -53,7 +53,7 @@
 
 // === CtorInline ===
 
-// Transfo time: 28ms  Stringifying time: 89ms
+// Transfo time: 23ms  Stringifying time: 44ms
 
 {
   val sch_0 = "";
@@ -83,7 +83,7 @@
 
 // === ImplOptim ===
 
-// Transfo time: 23ms  Stringifying time: 85ms
+// Transfo time: 18ms  Stringifying time: 50ms
 
 {
   val lsch_0 = squid.utils.Lazy.apply[java.lang.String]("");
@@ -105,7 +105,7 @@
   val withTrunc_14 = sfusion.impl.`package`.take[java.lang.String](withSep_13)(10);
   val strAcc_15 = new scala.collection.mutable.StringBuilder();
   sfusion.impl.`package`.foreach[java.lang.String](withTrunc_14)(((s_16: java.lang.String) => {
-    strAcc_15.++=(s_16.toString());
+    strAcc_15.++=(s_16);
     ()
   }));
   val x_17 = strAcc_15.result();
@@ -118,7 +118,7 @@
 
 // === Imperative ===
 
-// Transfo time: 110ms  Stringifying time: 109ms
+// Transfo time: 46ms  Stringifying time: 68ms
 
 {
   val xs_0 = scala.collection.Seq.apply[scala.Int](1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
@@ -156,7 +156,7 @@
       x_20.<(10).&&({
         val x_21 = taken_9;
         taken_9 = x_21.+(1);
-        strAcc_10.++=(x_19.toString());
+        strAcc_10.++=(x_19);
         true.&&({
           val x_22 = taken_9;
           x_22.<(10)
@@ -186,25 +186,25 @@
 
 // === FlatMapFusion ===
 
-// Transfo time: 2ms  Stringifying time: 59ms
+// Transfo time: 0ms  Stringifying time: 25ms
 
 // Same as above.
 
 // === LateImperative ===
 
-// Transfo time: 0ms  Stringifying time: 53ms
+// Transfo time: 0ms  Stringifying time: 23ms
 
 // Same as above.
 
 // === VarFlattening ===
 
-// Transfo time: 2ms  Stringifying time: 52ms
+// Transfo time: 1ms  Stringifying time: 23ms
 
 // Same as above.
 
 // === Low-Level Norm ===
 
-// Transfo time: 60ms  Stringifying time: 104ms
+// Transfo time: 47ms  Stringifying time: 66ms
 
 {
   val xs_0 = scala.collection.Seq.apply[scala.Int](1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
@@ -242,7 +242,7 @@
       x_20.<(10).&&({
         val x_21 = taken_9;
         taken_9 = x_21.+(1);
-        strAcc_10.++=(x_19.toString());
+        strAcc_10.++=(x_19);
         val x_22 = taken_9;
         x_22.<(10)
       })
@@ -270,6 +270,6 @@
 
 // === ReNorm (should be the same) ===
 
-// Transfo time: 50ms  Stringifying time: 48ms
+// Transfo time: 33ms  Stringifying time: 20ms
 
 // Same as above.

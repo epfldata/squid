@@ -143,7 +143,7 @@ package object utils {
   
   implicit class StringOps(private val self: String) extends AnyVal {
     import collection.mutable
-    def splitSane(Sep: Char) = {
+    def splitSane(Sep: Char): mutable.ArrayBuffer[String] = {
       val buf = mutable.ArrayBuffer(new StringBuilder)
       for (c <- self) if (c == Sep) buf += new StringBuilder else buf.last append c
       buf.map(_.toString)

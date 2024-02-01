@@ -2,7 +2,7 @@
 
 // === Init ===
 
-// Transfo time: 0ms  Stringifying time: 24ms
+// Transfo time: 0ms  Stringifying time: 19ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.collection.IndexedSeq[scala.Int]]) => {
   val sch_1 = scala.`package`.Left;
@@ -18,7 +18,7 @@
 
 // === HL ===
 
-// Transfo time: 7ms  Stringifying time: 22ms
+// Transfo time: 6ms  Stringifying time: 16ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.collection.IndexedSeq[scala.Int]]) => {
   val sch_1 = scala.`package`.Left;
@@ -33,7 +33,7 @@
 
 // === Impl ===
 
-// Transfo time: 7ms  Stringifying time: 44ms
+// Transfo time: 2ms  Stringifying time: 31ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.collection.IndexedSeq[scala.Int]]) => {
   val sch_1 = scala.`package`.Left;
@@ -56,7 +56,7 @@
 
 // === CtorInline ===
 
-// Transfo time: 8ms  Stringifying time: 17ms
+// Transfo time: 5ms  Stringifying time: 12ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.collection.IndexedSeq[scala.Int]]) => {
   val x_1 = xs_0.size;
@@ -70,13 +70,13 @@
 
 // === ImplOptim ===
 
-// Transfo time: 0ms  Stringifying time: 5ms
+// Transfo time: 0ms  Stringifying time: 3ms
 
 // Same as above.
 
 // === Imperative ===
 
-// Transfo time: 18ms  Stringifying time: 50ms
+// Transfo time: 8ms  Stringifying time: 37ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.collection.IndexedSeq[scala.Int]]) => {
   val x_1 = xs_0.size;
@@ -129,7 +129,7 @@
 
 // === FlatMapFusion ===
 
-// Transfo time: 37ms  Stringifying time: 85ms
+// Transfo time: 16ms  Stringifying time: 60ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.collection.IndexedSeq[scala.Int]]) => {
   val x_1 = xs_0.size;
@@ -155,7 +155,7 @@
             val ClosureVar_14 = x_12.size;
             val ClosureVar_15 = x_12.length;
             var v_16: scala.Int = 0;
-            envVar_5 = scala.Some.apply[scala.Tuple2[scala.Int, scala.Tuple2[scala.Int, squid.lib.`package`.MutVar[scala.Int]]]](scala.Tuple2.apply[scala.Int, scala.Tuple2[scala.Int, squid.lib.`package`.MutVar[scala.Int]]](ClosureVar_14, scala.Tuple2.apply[scala.Int, squid.lib.`package`.MutVar[scala.Int]](ClosureVar_15, new squid.lib.MutVarProxy[scala.Int](v_16, ((a) => v_16 = a)))));
+            envVar_5 = scala.Some.apply[scala.Tuple2[scala.Int, scala.Tuple2[scala.Int, squid.lib.`package`.MutVar[scala.Int]]]](scala.Tuple2.apply[scala.Int, scala.Tuple2[scala.Int, squid.lib.`package`.MutVar[scala.Int]]](ClosureVar_14, scala.Tuple2.apply[scala.Int, squid.lib.`package`.MutVar[scala.Int]](ClosureVar_15, squid.lib.MutVarProxy[scala.Int](v_16, ((a) => v_16 = a)))));
             false
           })
         }) 
@@ -208,13 +208,13 @@
 
 // === LateImperative ===
 
-// Transfo time: 0ms  Stringifying time: 75ms
+// Transfo time: 0ms  Stringifying time: 39ms
 
 // Same as above.
 
 // === VarFlattening ===
 
-// Transfo time: 115ms  Stringifying time: 82ms
+// Transfo time: 51ms  Stringifying time: 60ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.collection.IndexedSeq[scala.Int]]) => {
   val sch_1 = squid.lib.`package`.uncheckedNullValue[scala.Int];
@@ -301,7 +301,7 @@
 
 // === Low-Level Norm ===
 
-// Transfo time: 41ms  Stringifying time: 101ms
+// Transfo time: 21ms  Stringifying time: 66ms
 
 ((xs_0: scala.collection.IndexedSeq[scala.collection.IndexedSeq[scala.Int]]) => {
   val x_1 = xs_0.size;
@@ -385,6 +385,6 @@
 
 // === ReNorm (should be the same) ===
 
-// Transfo time: 45ms  Stringifying time: 74ms
+// Transfo time: 37ms  Stringifying time: 49ms
 
 // Same as above.

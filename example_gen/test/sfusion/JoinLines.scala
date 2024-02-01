@@ -2,7 +2,7 @@
 
 // === Init ===
 
-// Transfo time: 0ms  Stringifying time: 26ms
+// Transfo time: 0ms  Stringifying time: 17ms
 
 ((x$1_0: scala.collection.Iterable[java.lang.String]) => {
   val x_1 = sfusion.algo.`package`.joinLinesSimple$default$2;
@@ -23,13 +23,13 @@
 
 // === HL ===
 
-// Transfo time: 0ms  Stringifying time: 8ms
+// Transfo time: 0ms  Stringifying time: 4ms
 
 // Same as above.
 
 // === Impl ===
 
-// Transfo time: 2ms  Stringifying time: 33ms
+// Transfo time: 0ms  Stringifying time: 21ms
 
 ((x$1_0: scala.collection.Iterable[java.lang.String]) => {
   val x_1 = sfusion.algo.`package`.joinLinesSimple$default$2;
@@ -52,7 +52,7 @@
 
 // === CtorInline ===
 
-// Transfo time: 4ms  Stringifying time: 21ms
+// Transfo time: 1ms  Stringifying time: 15ms
 
 ((x$1_0: scala.collection.Iterable[java.lang.String]) => {
   val x_1 = sfusion.algo.`package`.joinLinesSimple$default$2;
@@ -71,7 +71,7 @@
 
 // === ImplOptim ===
 
-// Transfo time: 7ms  Stringifying time: 26ms
+// Transfo time: 8ms  Stringifying time: 19ms
 
 ((x$1_0: scala.collection.Iterable[java.lang.String]) => {
   val x_1 = sfusion.algo.`package`.joinLinesSimple$default$2;
@@ -87,7 +87,7 @@
       val strAcc_7 = new scala.collection.mutable.StringBuilder();
       strAcc_7.++=(x_4);
       sfusion.impl.`package`.foreach[java.lang.String](x_6)(((s_8: java.lang.String) => {
-        strAcc_7.++=(x_1.toString().+(s_8).toString());
+        strAcc_7.++=(x_1.+(s_8));
         ()
       }));
       strAcc_7.result()
@@ -96,7 +96,7 @@
 
 // === Imperative ===
 
-// Transfo time: 7ms  Stringifying time: 34ms
+// Transfo time: 6ms  Stringifying time: 26ms
 
 ((x$1_0: scala.collection.Iterable[java.lang.String]) => {
   val x_1 = sfusion.algo.`package`.joinLinesSimple$default$2;
@@ -114,7 +114,7 @@
         val x_7 = x_5.hasNext;
         x_7.&&({
           val x_8 = x_5.next();
-          strAcc_6.++=(x_1.toString().+(x_8).toString());
+          strAcc_6.++=(x_1.+(x_8));
           true
         })
       }) 
@@ -127,25 +127,25 @@
 
 // === FlatMapFusion ===
 
-// Transfo time: 0ms  Stringifying time: 14ms
+// Transfo time: 0ms  Stringifying time: 6ms
 
 // Same as above.
 
 // === LateImperative ===
 
-// Transfo time: 0ms  Stringifying time: 14ms
+// Transfo time: 0ms  Stringifying time: 6ms
 
 // Same as above.
 
 // === VarFlattening ===
 
-// Transfo time: 0ms  Stringifying time: 12ms
+// Transfo time: 0ms  Stringifying time: 5ms
 
 // Same as above.
 
 // === Low-Level Norm ===
 
-// Transfo time: 14ms  Stringifying time: 34ms
+// Transfo time: 8ms  Stringifying time: 22ms
 
 ((x$1_0: scala.collection.Iterable[java.lang.String]) => {
   val x_1 = sfusion.algo.`package`.joinLinesSimple$default$2;
@@ -164,7 +164,7 @@
         if (x_7)
           {
             val x_8 = x_5.next();
-            strAcc_6.++=(x_1.toString().+(x_8).toString());
+            strAcc_6.++=(x_1.+(x_8));
             ()
           }
         else
@@ -180,6 +180,6 @@
 
 // === ReNorm (should be the same) ===
 
-// Transfo time: 15ms  Stringifying time: 14ms
+// Transfo time: 11ms  Stringifying time: 5ms
 
 // Same as above.

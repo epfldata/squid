@@ -202,7 +202,7 @@ class StaticOptimizerMacros(override val c: whitebox.Context) extends statics.Co
         override def transform(x: Tree) = x match {
           case Ident(name) if thisNames(name) =>
             //val Seq(typ,ths,field) = name.toString.splitSane(':')
-            val Seq(typ,ths,field) = name.toString.splitSane('.')
+            val collection.Seq(typ,ths,field) = name.toString.splitSane('.')
             Select(This(TypeName(typ)),TermName(field))
           case _ => super.transform(x)
         }
